@@ -1,0 +1,101 @@
+.main-footer {
+  background-color: var(--color-accent);
+  color: var(--color-bg);
+}
+
+.footer-inner {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-lg);
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: var(--space-xl) var(--space-md) var(--space-lg);
+}
+
+@media (min-width: 768px) {
+  .footer-inner {
+    grid-template-columns: 2fr 1fr 1fr;
+    align-items: start;
+  }
+}
+
+/* ── Marca ── */
+.footer-logo {
+  display: block;
+  margin-bottom: var(--space-xs);
+  font-size: 1.25rem;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.footer-tagline {
+  font-size: 0.875rem;
+  font-weight: var(--font-weight-light);
+  line-height: var(--line-height-base);
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* ── Links ── */
+.footer-links {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.footer-links a {
+  font-size: 0.8125rem;
+  font-weight: var(--font-weight-regular);
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.7);
+  transition: color var(--transition-fast);
+}
+
+.footer-links a:hover {
+  color: var(--color-bg);
+}
+
+/* ── Redes sociales ── */
+.footer-social {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.social-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  color: rgba(255, 255, 255, 0.7);
+  background-color: rgba(255, 255, 255, 0.06);
+  border: none;
+  border-radius: var(--radius-pill);
+  transition:
+    color var(--transition-fast),
+    background-color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+.social-link:hover {
+  color: var(--color-bg);
+  background-color: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+/* ── Copyright ── */
+.footer-bottom {
+  border-top: var(--border-width) solid rgba(255, 255, 255, 0.1);
+}
+
+.footer-copyright {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: var(--space-md);
+  font-size: 0.75rem;
+  font-weight: var(--font-weight-light);
+  letter-spacing: 0.04em;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.4);
+}

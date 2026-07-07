@@ -1,0 +1,13 @@
+{
+  "name": "atelier-boutique",
+  "version": "1.0.0",
+  "description": "Tienda online boutique con panel de administración",
+  "private": true,
+  "scripts": {
+    "start": "npm --prefix server start",
+    "install:server": "npm --prefix server install"
+  },
+  "keywords": ["ecommerce", "boutique", "tienda-online"],
+  "author": "Fran Crovo",
+  "license": "UNLICENSED"
+}

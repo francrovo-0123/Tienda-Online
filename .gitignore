@@ -1,0 +1,25 @@
+# Variables de entorno (credenciales)
+.env
+.env.local
+.env.*.local
+server/.env
+
+# Dependencias
+node_modules/
+server/node_modules/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editores
+.vscode/
+.idea/
+*.swp
+*.swo

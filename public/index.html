@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Boutique premium — descubrí piezas únicas con diseño contemporáneo.">
+  <title>Atelier — Boutique Premium</title>
+  <link rel="stylesheet" href="css/global.css?v=2.0">
+  <link rel="stylesheet" href="css/header.css?v=2.2">
+  <link rel="stylesheet" href="css/main.css?v=2.0">
+  <link rel="stylesheet" href="css/footer.css?v=2.0">
+  <link rel="stylesheet" href="css/cart.css?v=2.0">
+</head>
+<body>
+
+  <div id="store-view">
+    <header class="main-header">
+      <div class="header-inner">
+        <a href="/" class="logo" aria-label="Atelier — Inicio">
+          <span class="logo-text">Atelier</span>
+        </a>
+
+        <nav class="main-nav" aria-label="Navegación principal">
+          <ul class="nav-list">
+            <li><a href="#inicio" class="nav-link">Inicio</a></li>
+            <li><a href="#coleccion" class="nav-link">Colección</a></li>
+            <li><a href="#tracking-section" class="nav-link">Mis Pedidos</a></li>
+            <li><a href="#nosotros" class="nav-link">Nosotros</a></li>
+            <li><a href="#contacto" class="nav-link">Contacto</a></li>
+          </ul>
+        </nav>
+
+        <div class="header-actions">
+          <div class="header-iconos-grupo" aria-label="Acciones rápidas">
+            <button type="button" class="header-icono-btn" id="header-search-btn" aria-label="Buscar productos">
+              <svg class="header-icono-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/>
+              </svg>
+            </button>
+            <button type="button" class="header-icono-btn" id="admin-access-btn" aria-label="Iniciar sesión">
+              <svg class="header-icono-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"/>
+              </svg>
+            </button>
+            <button type="button" class="header-icono-btn" id="header-favoritos-btn" aria-label="Favoritos">
+              <svg class="header-icono-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z"/>
+              </svg>
+            </button>
+            <button type="button" class="header-icono-btn cart-btn" id="cart-btn" aria-label="Abrir carrito">
+              <svg class="header-icono-svg cart-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M8.25 7.5V6.75A2.25 2.25 0 0 1 10.5 4.5h3a2.25 2.25 0 0 1 2.25 2.25V7.5"/>
+                <path d="M6 8.25h12a1.5 1.5 0 0 1 1.5 1.5v9a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 18.75v-9A1.5 1.5 0 0 1 6 8.25z"/>
+              </svg>
+              <span class="cart-count" id="cart-count">0</span>
+            </button>
+          </div>
+          <div class="header-session hidden" id="header-session">
+            <span class="header-session__email" id="header-session-email"></span>
+            <button type="button" class="header-session__logout" id="header-logout-btn">Cerrar sesión</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero-section" id="inicio">
+        <div class="hero-content">
+          <p class="hero-eyebrow">Nueva Colección 2026</p>
+          <h1 class="hero-title">Diseño atemporal,<br>hecho para perdurar</h1>
+          <p class="hero-subtitle">Piezas seleccionadas con materiales de primera calidad y una estética minimalista que trasciende las temporadas.</p>
+          <a href="#coleccion" class="hero-cta">Explorar colección</a>
+        </div>
+      </section>
+
+      <section class="products-section" id="coleccion">
+        <div class="section-header">
+          <h2 class="section-title">Colección destacada</h2>
+          <p class="section-subtitle">Selección curada de nuestras piezas más exclusivas</p>
+        </div>
+        <div class="filtros-container">
+          <div class="dropdown-categorias" id="dropdown-categorias">
+            <button
+              type="button"
+              class="btn-dropdown-trigger"
+              id="btn-colecciones"
+              aria-haspopup="true"
+              aria-expanded="false"
+              aria-controls="dropdown-categorias-list"
+            >
+              Colecciones <span class="arrow-icon" aria-hidden="true">▼</span>
+            </button>
+            <div
+              class="dropdown-menu-content"
+              id="dropdown-categorias-list"
+              role="menu"
+              aria-label="Filtrar por categoría"
+            ></div>
+          </div>
+          <div class="dropdown-orden" id="dropdown-orden">
+            <button
+              type="button"
+              class="btn-dropdown-trigger"
+              id="btn-ordenar"
+              aria-haspopup="true"
+              aria-expanded="false"
+              aria-controls="dropdown-orden-list"
+            >
+              Ordenar por <span class="arrow-icon" aria-hidden="true">▼</span>
+            </button>
+            <div
+              class="dropdown-menu-content"
+              id="dropdown-orden-list"
+              role="menu"
+              aria-label="Ordenar productos"
+            >
+              <button type="button" class="dropdown-item active" data-orden="predeterminado">Destacados</button>
+              <button type="button" class="dropdown-item" data-orden="precio-asc">Menor precio</button>
+              <button type="button" class="dropdown-item" data-orden="precio-desc">Mayor precio</button>
+              <button type="button" class="dropdown-item" data-orden="alfa-asc">Nombre (A - Z)</button>
+              <button type="button" class="dropdown-item" data-orden="alfa-desc">Nombre (Z - A)</button>
+            </div>
+          </div>
+          <div class="dropdown-genero" id="dropdown-genero">
+            <button
+              type="button"
+              class="btn-dropdown-trigger"
+              id="btn-genero"
+              aria-haspopup="true"
+              aria-expanded="false"
+              aria-controls="dropdown-genero-list"
+            >
+              Género: <span id="btn-genero-label">Todos</span> <span class="arrow-icon" aria-hidden="true">▼</span>
+            </button>
+            <div
+              class="dropdown-menu-content"
+              id="dropdown-genero-list"
+              role="menu"
+              aria-label="Filtrar por género"
+            >
+              <button type="button" class="dropdown-item active" data-genero="todos">Todos</button>
+              <button type="button" class="dropdown-item" data-genero="hombre">Hombre</button>
+              <button type="button" class="dropdown-item" data-genero="mujer">Mujer</button>
+              <button type="button" class="dropdown-item" data-genero="ninos">Niños</button>
+            </div>
+          </div>
+          <div class="buscador-container">
+            <input type="text" id="input-busqueda" placeholder="buscar tu producto" autocomplete="off">
+          </div>
+        </div>
+        <div id="store-sections-container"></div>
+      </section>
+
+      <section class="tracking-section" id="tracking-section">
+        <div class="tracking-section__inner">
+          <div class="tracking-section__header">
+            <h2 class="tracking-section__title">Mis Pedidos</h2>
+            <p class="tracking-section__subtitle">Ingresá tu teléfono para consultar el estado de tus compras</p>
+          </div>
+
+          <form class="tracking-form" id="tracking-form">
+            <div class="tracking-form__field">
+              <label for="tracking-phone" class="tracking-form__label">Teléfono</label>
+              <input
+                type="tel"
+                id="tracking-phone"
+                class="tracking-form__input"
+                placeholder="Ej: 11 2345 6789"
+                required
+              >
+            </div>
+            <button type="submit" class="tracking-form__btn">Buscar pedidos</button>
+          </form>
+
+          <div class="tracking-results" id="tracking-results" aria-live="polite"></div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="main-footer" id="contacto">
+      <div class="footer-inner">
+        <div class="footer-brand">
+          <span class="footer-logo">Atelier</span>
+          <p class="footer-tagline">Boutique premium de diseño contemporáneo.</p>
+        </div>
+
+        <nav class="footer-nav" aria-label="Enlaces del pie de página">
+          <ul class="footer-links">
+            <li><a href="#coleccion">Colección</a></li>
+            <li><a href="#nosotros">Nosotros</a></li>
+            <li><a href="#">Envíos</a></li>
+            <li><a href="#">Términos</a></li>
+          </ul>
+        </nav>
+
+        <div class="footer-social">
+          <a href="#" class="social-link" aria-label="Instagram">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+              <rect x="2" y="2" width="20" height="20" rx="5"/>
+              <circle cx="12" cy="12" r="4"/>
+              <circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/>
+            </svg>
+          </a>
+          <a href="#" class="social-link" aria-label="Pinterest">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M12 2C6.477 2 2 6.477 2 12c0 4.237 2.636 7.855 6.356 9.312-.088-.791-.167-2.005.035-2.868.181-.78 1.172-4.97 1.172-4.97s-.299-.599-.299-1.484c0-1.39.806-2.428 1.81-2.428.853 0 1.264.641 1.264 1.41 0 .858-.546 2.14-.828 3.33-.236.995.499 1.806 1.481 1.806 1.778 0 3.144-1.874 3.144-4.58 0-2.393-1.72-4.068-4.177-4.068-2.845 0-4.515 2.135-4.515 4.34 0 .859.331 1.781.745 2.281a.3.3 0 01.069.288l-.278 1.133c-.044.183-.145.223-.334.134-1.249-.581-2.03-2.407-2.03-3.874 0-3.154 2.292-6.052 6.608-6.052 3.469 0 6.165 2.473 6.165 5.776 0 3.447-2.173 6.22-5.19 6.22-1.013 0-1.965-.527-2.292-1.155l-.623 2.378c-.226.869-.835 1.958-1.244 2.621.937.29 1.931.446 2.962.446 5.523 0 10-4.477 10-10S17.523 2 12 2z"/>
+            </svg>
+          </a>
+          <a href="#" class="social-link" aria-label="Twitter / X">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+            </svg>
+          </a>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <p class="footer-copyright">&copy; 2026 Atelier. Todos los derechos reservados.</p>
+      </div>
+    </footer>
+
+    <div class="cart-overlay" id="cart-overlay" aria-hidden="true"></div>
+
+    <aside class="cart-drawer" id="cart-drawer" aria-label="Carrito de compras" aria-hidden="true">
+      <div class="cart-drawer__header">
+        <h2 class="cart-drawer__title">Tu carrito</h2>
+        <button class="cart-drawer__close" id="cart-close" aria-label="Cerrar carrito">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="cart-drawer__body">
+        <div class="cart-drawer__items" id="cart-items-container"></div>
+      </div>
+
+      <div class="cart-drawer__footer">
+        <div class="cart-drawer__total">
+          <span class="cart-drawer__total-label">Total</span>
+          <span class="cart-drawer__total-amount" id="cart-total">$ 0</span>
+        </div>
+        <button class="cart-drawer__checkout" id="cart-checkout" type="button">
+          Iniciar Compra
+        </button>
+      </div>
+    </aside>
+
+    <a href="#tracking-section" class="tracking-fab" aria-label="Ir a Mis Pedidos">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15a2.25 2.25 0 012.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z"/>
+      </svg>
+      <span>Mis Pedidos</span>
+    </a>
+
+    <div class="checkout-modal" id="checkout-modal" aria-hidden="true">
+      <div class="checkout-modal__overlay" id="checkout-modal-overlay"></div>
+      <div class="checkout-modal__card" role="dialog" aria-labelledby="checkout-modal-title" aria-modal="true">
+        <div class="checkout-modal__header">
+          <h2 class="checkout-modal__title" id="checkout-modal-title">Finalizar compra</h2>
+          <button class="checkout-modal__close" id="checkout-modal-close" type="button" aria-label="Cerrar checkout">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        <form class="checkout-form" id="checkout-form" onsubmit="procesarPedido(event)">
+          <div class="checkout-form__field">
+            <label for="checkout-nombre" class="checkout-form__label">Nombre completo</label>
+            <input type="text" id="checkout-nombre" class="checkout-form__input" required placeholder="Tu nombre">
+          </div>
+
+          <div class="checkout-form__field">
+            <label for="checkout-telefono" class="checkout-form__label">Teléfono</label>
+            <input type="tel" id="checkout-telefono" class="checkout-form__input" required placeholder="Ej: 11 2345 6789">
+          </div>
+
+          <div class="checkout-form__field">
+            <label for="checkout-direccion" class="checkout-form__label">Dirección de entrega</label>
+            <textarea id="checkout-direccion" class="checkout-form__input checkout-form__textarea" required placeholder="Calle, número, piso, localidad" rows="3"></textarea>
+          </div>
+
+          <fieldset class="checkout-form__field checkout-form__fieldset">
+            <legend class="checkout-form__label">Método de pago</legend>
+            <div class="checkout-form__radios">
+              <label class="checkout-form__radio">
+                <input type="radio" name="metodo-pago" value="Efectivo" checked>
+                <span>Efectivo</span>
+              </label>
+              <label class="checkout-form__radio">
+                <input type="radio" name="metodo-pago" value="Transferencia">
+                <span>Transferencia</span>
+              </label>
+            </div>
+          </fieldset>
+
+          <div class="checkout-form__summary">
+            <span>Total a pagar</span>
+            <strong id="checkout-summary-total">$ 0</strong>
+          </div>
+
+          <button type="submit" class="checkout-form__submit">Confirmar y enviar por WhatsApp</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div id="admin-view" style="display: none;">
+    <div class="admin-layout">
+      <aside class="admin-sidebar">
+        <div class="admin-sidebar__brand">
+          <span class="admin-sidebar__logo">Atelier</span>
+          <span class="admin-sidebar__badge">Admin</span>
+        </div>
+
+        <nav class="admin-sidebar__nav" aria-label="Navegación del panel">
+          <a href="#" class="admin-sidebar__link admin-sidebar__link--active" data-admin-panel="dashboard">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z"/>
+            </svg>
+            <span>Dashboard</span>
+          </a>
+          <a href="#" class="admin-sidebar__link" data-admin-panel="pedidos">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15a2.25 2.25 0 012.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z"/>
+            </svg>
+            <span>Pedidos</span>
+          </a>
+          <a href="#" class="admin-sidebar__link" data-admin-panel="productos">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"/>
+            </svg>
+            <span>Productos</span>
+          </a>
+          <a href="#" class="admin-sidebar__link admin-sidebar__link--disabled">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+            <span>Configuración</span>
+          </a>
+        </nav>
+
+        <div class="admin-sidebar__footer">
+          <button type="button" class="admin-sidebar__logout" id="btn-logout">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9"/>
+            </svg>
+            <span>Cerrar Sesión</span>
+          </button>
+        </div>
+      </aside>
+
+      <div class="admin-main">
+        <header class="admin-header">
+          <div class="admin-header__text">
+            <h1 class="admin-header__title" id="admin-header-title">Dashboard</h1>
+            <p class="admin-header__subtitle" id="admin-header-subtitle">Resumen general de tu negocio</p>
+          </div>
+          <div class="admin-header__actions">
+            <button class="admin-header__new-product hidden" id="btn-nuevo-producto" type="button">
+              + Nuevo Producto
+            </button>
+            <button class="admin-header__refresh" id="btn-refresh" type="button">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182"/>
+              </svg>
+              Actualizar
+            </button>
+          </div>
+        </header>
+
+        <section class="admin-panel" id="admin-panel-dashboard" data-admin-panel="dashboard">
+        <section class="admin-kpis" aria-label="Métricas clave">
+          <article class="kpi-card">
+            <p class="kpi-card__label">Total de Ventas</p>
+            <p class="kpi-card__value" id="kpi-ventas">$ 0</p>
+          </article>
+          <article class="kpi-card">
+            <p class="kpi-card__label">Pedidos Totales</p>
+            <p class="kpi-card__value" id="kpi-total">0</p>
+          </article>
+          <article class="kpi-card">
+            <p class="kpi-card__label">Pedidos Pendientes</p>
+            <p class="kpi-card__value kpi-card__value--warning" id="kpi-pendientes">0</p>
+          </article>
+        </section>
+        </section>
+
+        <section class="admin-panel hidden" id="admin-panel-pedidos" data-admin-panel="pedidos">
+        <section class="admin-orders" id="pedidos">
+          <div class="admin-orders__header">
+            <h2 class="admin-orders__title">Pedidos recientes</h2>
+            <p class="admin-orders__count" id="orders-count"></p>
+          </div>
+
+          <div class="admin-table-wrapper">
+            <table class="admin-table" id="admin-orders-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Fecha</th>
+                  <th>Cliente</th>
+                  <th>Teléfono</th>
+                  <th>Productos</th>
+                  <th>Total</th>
+                  <th>Estado</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="admin-orders-body"></tbody>
+            </table>
+
+            <div class="admin-empty" id="admin-empty" hidden>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"/>
+              </svg>
+              <p class="admin-empty__title">No hay pedidos aún</p>
+              <p class="admin-empty__text">Los pedidos realizados desde la tienda aparecerán aquí automáticamente.</p>
+            </div>
+          </div>
+        </section>
+        </section>
+
+        <section class="admin-panel hidden" id="admin-panel-productos" data-admin-panel="productos">
+        <section class="admin-products" id="productos">
+          <div class="admin-products__header">
+            <h2 class="admin-products__title">Catálogo de productos</h2>
+            <p class="admin-products__count" id="products-count"></p>
+          </div>
+          <p class="admin-products__hint">Los productos que agregues aparecerán automáticamente en la tienda.</p>
+
+          <div class="admin-sections">
+            <div class="admin-sections__header">
+              <h3 class="admin-sections__title">Secciones de la tienda</h3>
+              <p class="admin-sections__subtitle">Organizá tu catálogo en categorías visibles para tus clientes</p>
+            </div>
+
+            <div class="admin-sections__toolbar">
+              <button type="button" class="admin-sections__add-btn" id="btn-abrir-crear-seccion">+ Crear sección</button>
+            </div>
+
+            <div class="secciones-lista" id="lista-secciones-admin" aria-label="Secciones del catálogo"></div>
+            <p class="admin-sections__empty hidden" id="admin-sections-empty">No hay secciones creadas. Usá el botón «+ Crear sección» para agregar la primera.</p>
+          </div>
+
+          <div class="admin-table-wrapper admin-table-wrapper--products">
+            <table class="admin-table" id="admin-products-table">
+              <thead>
+                <tr>
+                  <th>Imagen</th>
+                  <th>Nombre</th>
+                  <th>Categoría</th>
+                  <th>Precio</th>
+                  <th>Stock</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="admin-products-body"></tbody>
+            </table>
+
+            <div class="admin-empty" id="admin-products-empty" hidden>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"/>
+              </svg>
+              <p class="admin-empty__title">No hay productos en el catálogo</p>
+              <p class="admin-empty__text">Usá el botón «+ Nuevo Producto» para cargar tu primera pieza.</p>
+            </div>
+          </div>
+        </section>
+        </section>
+      </div>
+    </div>
+
+    <div class="product-modal hidden" id="product-modal" aria-hidden="true">
+      <div class="product-modal__overlay" id="product-modal-overlay"></div>
+      <div class="product-modal__card" role="dialog" aria-labelledby="product-modal-title" aria-modal="true">
+        <div class="product-modal__header">
+          <h2 class="product-modal__title" id="product-modal-title">Nuevo producto</h2>
+          <button class="product-modal__close" id="product-modal-close" type="button" aria-label="Cerrar formulario">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        <form class="product-form" id="product-form" onsubmit="guardarNuevoProducto(event)">
+          <div class="product-form__field">
+            <label for="producto-nombre" class="product-form__label">Nombre del Producto</label>
+            <input type="text" id="producto-nombre" class="product-form__input" required placeholder="Ej: Remera Oversize Algodón">
+          </div>
+
+          <div class="product-form__field">
+            <label for="producto-precio" class="product-form__label">Precio</label>
+            <input type="number" id="producto-precio" class="product-form__input" required min="1" step="1" placeholder="0">
+          </div>
+
+          <div class="product-form__field">
+            <label for="producto-precio-oferta" class="product-form__label">Precio de Oferta <span class="product-form__optional">(opcional)</span></label>
+            <input type="number" id="producto-precio-oferta" class="product-form__input" min="0" step="1" placeholder="Dejar vacío si no hay oferta">
+          </div>
+
+          <div class="product-form__field">
+            <label for="producto-categoria" class="product-form__label">Sección</label>
+            <select id="producto-categoria" class="product-form__input product-form__select" required>
+              <option value="" disabled selected>Seleccioná una sección</option>
+            </select>
+          </div>
+
+          <div class="product-form__field">
+            <label for="producto-genero" class="product-form__label">Género</label>
+            <select id="producto-genero" class="product-form__input product-form__select" required>
+              <option value="hombre">Hombre</option>
+              <option value="mujer">Mujer</option>
+              <option value="ninos">Niños</option>
+            </select>
+          </div>
+
+          <div class="product-form__field">
+            <label for="producto-stock" class="product-form__label">Stock disponible</label>
+            <input type="number" id="producto-stock" class="product-form__input" required min="0" step="1" value="10" placeholder="0">
+          </div>
+
+          <div class="product-form__field">
+            <span class="product-form__label">Talles disponibles</span>
+            <div class="product-form__talles" id="producto-talles">
+              <label class="product-form__talle">
+                <input type="checkbox" name="producto-talle" value="S" checked>
+                <span>S</span>
+              </label>
+              <label class="product-form__talle">
+                <input type="checkbox" name="producto-talle" value="M" checked>
+                <span>M</span>
+              </label>
+              <label class="product-form__talle">
+                <input type="checkbox" name="producto-talle" value="L" checked>
+                <span>L</span>
+              </label>
+              <label class="product-form__talle">
+                <input type="checkbox" name="producto-talle" value="XL" checked>
+                <span>XL</span>
+              </label>
+              <label class="product-form__talle">
+                <input type="checkbox" name="producto-talle" value="XXL" checked>
+                <span>XXL</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="product-form__field">
+            <label for="producto-descripcion" class="product-form__label">Descripción (opcional)</label>
+            <textarea id="producto-descripcion" class="product-form__input product-form__textarea" rows="3" placeholder="Ej: Remera oficial, algodón premium, edición limitada..."></textarea>
+          </div>
+
+          <div class="product-form__field">
+            <span class="product-form__label">Imagen del Producto</span>
+            <div class="product-form__file">
+              <input
+                type="file"
+                id="producto-imagen"
+                class="product-form__file-input"
+                accept="image/*"
+                required
+              >
+              <label for="producto-imagen" class="product-form__file-btn">Elegir archivo</label>
+              <span class="product-form__file-name" id="producto-imagen-nombre">Ningún archivo seleccionado</span>
+            </div>
+            <img
+              class="product-form__preview hidden"
+              id="producto-imagen-preview"
+              alt="Vista previa del producto"
+            >
+          </div>
+
+          <div class="product-form__actions">
+            <button type="button" class="product-form__cancel" id="product-modal-cancel">Cancelar</button>
+            <button type="submit" class="product-form__submit">Guardar Producto</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="admin-modal" id="modal-crear-seccion" aria-hidden="true">
+      <div class="admin-modal__overlay" id="modal-crear-seccion-overlay"></div>
+      <div class="admin-modal__card admin-modal__card--compact" role="dialog" aria-labelledby="modal-crear-seccion-titulo" aria-modal="true">
+        <div class="admin-modal__header">
+          <h2 class="admin-modal__title" id="modal-crear-seccion-titulo">Nueva Sección</h2>
+          <button class="admin-modal__close" id="modal-crear-seccion-cerrar" type="button" aria-label="Cerrar">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+        <form class="seccion-modal-form" id="modal-crear-seccion-form">
+          <div class="seccion-modal-form__field">
+            <label for="modal-seccion-nombre" class="seccion-modal-form__label">Nombre de la sección</label>
+            <input
+              type="text"
+              id="modal-seccion-nombre"
+              class="seccion-modal-form__input"
+              placeholder="Ej: Remeras, Camperas..."
+              required
+              maxlength="40"
+              autocomplete="off"
+            >
+          </div>
+          <div class="seccion-modal-form__actions">
+            <button type="button" class="seccion-modal-form__cancel" id="modal-crear-seccion-cancelar">Cancelar</button>
+            <button type="submit" class="seccion-modal-form__submit">Crear Sección</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="admin-modal" id="modal-detalle-seccion" aria-hidden="true">
+      <div class="admin-modal__overlay" id="modal-detalle-seccion-overlay"></div>
+      <div class="modal-contenido" role="dialog" aria-labelledby="modal-detalle-seccion-titulo" aria-modal="true">
+        <div class="modal-contenido__header">
+          <h2 class="modal-contenido__titulo" id="modal-detalle-seccion-titulo">Carpeta: Remeras</h2>
+          <button class="modal-contenido__cerrar" id="modal-detalle-seccion-cerrar" type="button" aria-label="Cerrar">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+        <div class="modal-contenido__acciones">
+          <button type="button" class="btn-modal-agregar-producto" id="btn-modal-agregar-producto">
+            + Agregar Producto a esta sección
+          </button>
+        </div>
+        <div class="modal-contenido__cuerpo">
+          <div id="lista-productos-seccion-modal" aria-label="Productos de la sección"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="admin-modal" id="order-modal" aria-hidden="true">
+      <div class="admin-modal__overlay" id="order-modal-overlay"></div>
+      <div class="admin-modal__card" role="dialog" aria-labelledby="order-modal-title" aria-modal="true">
+        <div class="admin-modal__header">
+          <div>
+            <h2 class="admin-modal__title" id="order-modal-title">Detalle del pedido</h2>
+            <p class="admin-modal__id" id="order-modal-id"></p>
+          </div>
+          <button class="admin-modal__close" id="order-modal-close" type="button" aria-label="Cerrar detalle">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+        <div class="admin-modal__body" id="order-modal-body"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="auth-modal" id="auth-modal" aria-hidden="true">
+    <div class="auth-modal__overlay" id="auth-modal-overlay"></div>
+    <div class="auth-modal__card" role="dialog" aria-labelledby="auth-modal-title" aria-modal="true">
+      <div class="auth-modal__header">
+        <h2 class="auth-modal__title" id="auth-modal-title">Tu cuenta</h2>
+        <button class="auth-modal__close" id="auth-modal-close" type="button" aria-label="Cerrar">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="auth-modal__body">
+        <div class="auth-toast hidden" id="auth-toast" role="status" aria-live="polite"></div>
+
+        <div class="auth-view" id="auth-view-login">
+          <form class="auth-form" id="auth-login-form">
+            <div class="auth-form__field">
+              <label for="auth-login-email" class="auth-form__label">Email</label>
+              <input type="email" id="auth-login-email" class="auth-form__input" required autocomplete="email" placeholder="tu@email.com">
+            </div>
+            <div class="auth-form__field">
+              <label for="auth-login-password" class="auth-form__label">Contraseña</label>
+              <input type="password" id="auth-login-password" class="auth-form__input" required autocomplete="current-password" placeholder="••••••••">
+            </div>
+            <p class="auth-form__error hidden" id="auth-login-error">Email o contraseña incorrectos.</p>
+            <button type="submit" class="auth-form__submit">Ingresar</button>
+            <button type="button" class="auth-form__link" id="btn-ir-registro">¿No tenés cuenta? Registrate</button>
+          </form>
+        </div>
+
+        <div class="auth-view hidden" id="auth-view-registro">
+          <form class="auth-form" id="auth-registro-form">
+            <div class="auth-form__field">
+              <label for="auth-registro-email" class="auth-form__label">Email</label>
+              <input type="email" id="auth-registro-email" class="auth-form__input" required autocomplete="email" placeholder="tu@email.com">
+            </div>
+            <div class="auth-form__field">
+              <label for="auth-registro-password" class="auth-form__label">Nueva contraseña</label>
+              <input type="password" id="auth-registro-password" class="auth-form__input" required autocomplete="new-password" placeholder="Mínimo 6 caracteres" minlength="6">
+            </div>
+            <p class="auth-form__error hidden" id="auth-registro-error">Este email ya está registrado.</p>
+            <button type="submit" class="auth-form__submit">Continuar</button>
+            <button type="button" class="auth-form__link" id="btn-volver-login-registro">¿Ya tenés cuenta? Iniciá sesión</button>
+          </form>
+        </div>
+
+        <div class="auth-view hidden" id="auth-view-verificacion">
+          <p class="auth-verificacion__text">Ingresá el código de 6 dígitos enviado a tu mail</p>
+          <p class="auth-verificacion__email" id="auth-verificacion-email"></p>
+          <div class="auth-form__field">
+            <label for="verification-code-input" class="auth-form__label">Código de verificación</label>
+            <input
+              type="text"
+              id="verification-code-input"
+              class="auth-form__input auth-form__input--code"
+              maxlength="6"
+              inputmode="numeric"
+              pattern="[0-9]{6}"
+              placeholder="000000"
+              autocomplete="one-time-code"
+            >
+          </div>
+          <p class="auth-form__error hidden" id="auth-verificacion-error">El código ingresado no es válido.</p>
+          <button type="button" class="auth-form__submit" id="btn-confirmar-registro">Verificar y Activar</button>
+          <button type="button" class="auth-form__link" id="btn-volver-login-verificacion">Volver al login</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
