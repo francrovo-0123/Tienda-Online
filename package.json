@@ -1,13 +1,13 @@
 {
-  "name": "atelier-boutique",
+  "name": "jerseys-store",
   "version": "1.0.0",
-  "description": "Tienda online boutique con panel de administración",
+  "description": "Tienda online de camisetas de fútbol - Jerseys Store",
   "private": true,
   "scripts": {
     "start": "npm --prefix server start",
     "install:server": "npm --prefix server install"
   },
-  "keywords": ["ecommerce", "boutique", "tienda-online"],
+  "keywords": ["ecommerce", "jerseys", "futbol", "tienda-online"],
   "author": "Fran Crovo",
   "license": "UNLICENSED"
 }

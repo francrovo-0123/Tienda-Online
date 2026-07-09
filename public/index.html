@@ -3,45 +3,88 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Boutique premium — descubrí piezas únicas con diseño contemporáneo.">
-  <title>Atelier — Boutique Premium</title>
-  <link rel="stylesheet" href="css/global.css?v=2.0">
-  <link rel="stylesheet" href="css/header.css?v=2.2">
-  <link rel="stylesheet" href="css/main.css?v=2.0">
-  <link rel="stylesheet" href="css/footer.css?v=2.0">
-  <link rel="stylesheet" href="css/cart.css?v=2.0">
+  <meta name="description" content="Jerseys Store — camisetas de fútbol oficiales y de colección.">
+  <title>Jerseys Store</title>
+  <link rel="stylesheet" href="css/global.css?v=3.13">
+  <link rel="stylesheet" href="css/header.css?v=5.2">
+  <link rel="stylesheet" href="css/main.css?v=3.5">
+  <link rel="stylesheet" href="css/footer.css?v=3.0">
+  <link rel="stylesheet" href="css/cart.css?v=2.8">
 </head>
 <body>
 
   <div id="store-view">
     <header class="main-header">
       <div class="header-inner">
-        <a href="/" class="logo" aria-label="Atelier — Inicio">
-          <span class="logo-text">Atelier</span>
+        <a href="/" class="logo" aria-label="Jerseys Store — Inicio">
+          <svg class="logo-shield" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 60" aria-hidden="true">
+            <defs>
+              <linearGradient id="shield-body" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#1a1a1a"/>
+                <stop offset="100%" stop-color="#0a0a0a"/>
+              </linearGradient>
+              <linearGradient id="shield-accent" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#f5c842"/>
+                <stop offset="100%" stop-color="#d4a017"/>
+              </linearGradient>
+            </defs>
+            <path d="M26 2 L48 10 V28 C48 42 38 54 26 58 C14 54 4 42 4 28 V10 Z" fill="url(#shield-body)" stroke="url(#shield-accent)" stroke-width="2"/>
+            <path d="M26 8 L42 14 V27 C42 38 35 47 26 51 C17 47 10 38 10 27 V14 Z" fill="none" stroke="rgba(245,200,66,0.35)" stroke-width="1"/>
+            <text x="26" y="34" text-anchor="middle" fill="url(#shield-accent)" font-family="Plus Jakarta Sans, sans-serif" font-size="11" font-weight="700" letter-spacing="1">JS</text>
+          </svg>
+          <span class="logo-text">
+            <span class="logo-text__brand">Jerseys</span>
+            <span class="logo-text__store">Store</span>
+          </span>
         </a>
 
-        <nav class="main-nav" aria-label="Navegación principal">
-          <ul class="nav-list">
-            <li><a href="#inicio" class="nav-link">Inicio</a></li>
-            <li><a href="#coleccion" class="nav-link">Colección</a></li>
-            <li><a href="#tracking-section" class="nav-link">Mis Pedidos</a></li>
-            <li><a href="#nosotros" class="nav-link">Nosotros</a></li>
-            <li><a href="#contacto" class="nav-link">Contacto</a></li>
-          </ul>
-        </nav>
+        <div class="header-search" aria-label="Buscar productos">
+          <div class="search-bar">
+            <input
+              type="search"
+              id="input-busqueda"
+              class="search-bar__input"
+              placeholder="Buscar productos, marcas y más..."
+              autocomplete="off"
+              aria-autocomplete="list"
+              aria-controls="contenedor-resultados-predicativos"
+              aria-expanded="false"
+            >
+            <svg class="search-bar__icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/>
+            </svg>
+            <div
+              class="search-suggestions"
+              id="contenedor-resultados-predicativos"
+              role="listbox"
+              aria-label="Sugerencias de productos"
+              hidden
+            ></div>
+          </div>
+        </div>
 
         <div class="header-actions">
-          <div class="header-iconos-grupo" aria-label="Acciones rápidas">
-            <button type="button" class="header-icono-btn" id="header-search-btn" aria-label="Buscar productos">
-              <svg class="header-icono-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/>
-              </svg>
-            </button>
-            <button type="button" class="header-icono-btn" id="admin-access-btn" aria-label="Iniciar sesión">
-              <svg class="header-icono-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
+          <div class="header-cuenta-menu" id="header-cuenta-menu">
+            <button type="button" class="header-ingresa-btn" id="admin-access-btn" aria-label="Iniciar sesión" aria-haspopup="true" aria-expanded="false" aria-controls="header-cuenta-dropdown">
+              <svg class="header-ingresa-btn__icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"/>
               </svg>
+              <span class="header-ingresa-btn__text">Ingresá</span>
+              <svg class="header-cuenta-menu__chevron hidden" id="header-cuenta-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
             </button>
+            <div class="header-cuenta-dropdown hidden" id="header-cuenta-dropdown" role="menu" aria-label="Menú de cuenta">
+              <p class="header-cuenta-dropdown__email" id="header-cuenta-email"></p>
+              <button type="button" class="header-cuenta-dropdown__item" data-cuenta-panel="resumen" role="menuitem">Resumen</button>
+              <button type="button" class="header-cuenta-dropdown__item" data-cuenta-panel="perfil" role="menuitem">Mi perfil</button>
+              <button type="button" class="header-cuenta-dropdown__item" data-cuenta-panel="pedidos" role="menuitem">Mis pedidos</button>
+              <button type="button" class="header-cuenta-dropdown__item" data-cuenta-panel="configuracion" role="menuitem">Configuración</button>
+              <div class="header-cuenta-dropdown__divider" role="separator"></div>
+              <button type="button" class="header-cuenta-dropdown__item header-cuenta-dropdown__item--logout" id="header-cuenta-logout" role="menuitem">Cerrar sesión</button>
+            </div>
+          </div>
+          <div class="header-iconos-grupo" aria-label="Acciones rápidas">
             <button type="button" class="header-icono-btn" id="header-favoritos-btn" aria-label="Favoritos">
               <svg class="header-icono-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z"/>
@@ -55,21 +98,56 @@
               <span class="cart-count" id="cart-count">0</span>
             </button>
           </div>
-          <div class="header-session hidden" id="header-session">
-            <span class="header-session__email" id="header-session-email"></span>
-            <button type="button" class="header-session__logout" id="header-logout-btn">Cerrar sesión</button>
-          </div>
         </div>
       </div>
+
+      <nav class="club-nav" id="club-nav" aria-label="Filtrar por sección">
+        <div class="club-nav__carousel">
+          <button type="button" class="club-nav__arrow club-nav__arrow--prev" id="club-nav-prev" aria-label="Secciones anteriores">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+          </button>
+          <div class="club-nav__viewport">
+            <ul class="club-nav__list" id="club-nav-list" role="list" aria-label="Secciones de la tienda"></ul>
+          </div>
+          <button type="button" class="club-nav__arrow club-nav__arrow--next" id="club-nav-next" aria-label="Secciones siguientes">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+          </button>
+        </div>
+      </nav>
     </header>
 
     <main>
-      <section class="hero-section" id="inicio">
-        <div class="hero-content">
-          <p class="hero-eyebrow">Nueva Colección 2026</p>
-          <h1 class="hero-title">Diseño atemporal,<br>hecho para perdurar</h1>
-          <p class="hero-subtitle">Piezas seleccionadas con materiales de primera calidad y una estética minimalista que trasciende las temporadas.</p>
-          <a href="#coleccion" class="hero-cta">Explorar colección</a>
+      <section class="stadium-section grass-texture" id="inicio">
+        <div class="stadium-section__inner">
+          <div class="stadium-block">
+            <h2 class="stadium-section__title">PRODUCTOS DESTACADOS</h2>
+            <div class="stadium-carousel" id="destacados-carousel" aria-label="Productos destacados">
+              <button type="button" class="stadium-carousel__arrow stadium-carousel__arrow--prev" id="destacados-carousel-prev" aria-label="Productos destacados anteriores">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5"/></svg>
+              </button>
+              <div class="stadium-carousel__viewport">
+                <div class="stadium-carousel__track" id="destacados-carousel-track" role="list" aria-busy="true"></div>
+              </div>
+              <button type="button" class="stadium-carousel__arrow stadium-carousel__arrow--next" id="destacados-carousel-next" aria-label="Productos destacados siguientes">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="stadium-block">
+            <h2 class="stadium-section__title">INGRESOS DE LA ULTIMA SEMANA</h2>
+            <div class="stadium-carousel" id="stadium-carousel" aria-label="Productos recientes">
+            <button type="button" class="stadium-carousel__arrow stadium-carousel__arrow--prev" id="stadium-carousel-prev" aria-label="Productos anteriores">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5"/></svg>
+            </button>
+            <div class="stadium-carousel__viewport">
+              <div class="stadium-carousel__track" id="stadium-carousel-track" role="list" aria-busy="true"></div>
+            </div>
+            <button type="button" class="stadium-carousel__arrow stadium-carousel__arrow--next" id="stadium-carousel-next" aria-label="Productos siguientes">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>
+            </button>
+          </div>
+          </div>
         </div>
       </section>
 
@@ -79,24 +157,6 @@
           <p class="section-subtitle">Selección curada de nuestras piezas más exclusivas</p>
         </div>
         <div class="filtros-container">
-          <div class="dropdown-categorias" id="dropdown-categorias">
-            <button
-              type="button"
-              class="btn-dropdown-trigger"
-              id="btn-colecciones"
-              aria-haspopup="true"
-              aria-expanded="false"
-              aria-controls="dropdown-categorias-list"
-            >
-              Colecciones <span class="arrow-icon" aria-hidden="true">▼</span>
-            </button>
-            <div
-              class="dropdown-menu-content"
-              id="dropdown-categorias-list"
-              role="menu"
-              aria-label="Filtrar por categoría"
-            ></div>
-          </div>
           <div class="dropdown-orden" id="dropdown-orden">
             <button
               type="button"
@@ -144,78 +204,75 @@
               <button type="button" class="dropdown-item" data-genero="ninos">Niños</button>
             </div>
           </div>
-          <div class="buscador-container">
-            <input type="text" id="input-busqueda" placeholder="buscar tu producto" autocomplete="off">
-          </div>
         </div>
         <div id="store-sections-container"></div>
       </section>
-
-      <section class="tracking-section" id="tracking-section">
-        <div class="tracking-section__inner">
-          <div class="tracking-section__header">
-            <h2 class="tracking-section__title">Mis Pedidos</h2>
-            <p class="tracking-section__subtitle">Ingresá tu teléfono para consultar el estado de tus compras</p>
-          </div>
-
-          <form class="tracking-form" id="tracking-form">
-            <div class="tracking-form__field">
-              <label for="tracking-phone" class="tracking-form__label">Teléfono</label>
-              <input
-                type="tel"
-                id="tracking-phone"
-                class="tracking-form__input"
-                placeholder="Ej: 11 2345 6789"
-                required
-              >
-            </div>
-            <button type="submit" class="tracking-form__btn">Buscar pedidos</button>
-          </form>
-
-          <div class="tracking-results" id="tracking-results" aria-live="polite"></div>
-        </div>
-      </section>
     </main>
 
-    <footer class="main-footer" id="contacto">
+    <footer class="main-footer">
       <div class="footer-inner">
         <div class="footer-brand">
-          <span class="footer-logo">Atelier</span>
-          <p class="footer-tagline">Boutique premium de diseño contemporáneo.</p>
+          <span class="footer-logo">Jerseys Store</span>
+          <p class="footer-tagline">Tu tienda de camisetas de fútbol.</p>
+          <div class="footer-social">
+            <a href="#" class="social-link" aria-label="Instagram" target="_blank" rel="noopener noreferrer">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="22" height="22" aria-hidden="true">
+                <rect x="2" y="2" width="20" height="20" rx="5"/>
+                <circle cx="12" cy="12" r="4"/>
+                <circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/>
+              </svg>
+            </a>
+          </div>
         </div>
 
-        <nav class="footer-nav" aria-label="Enlaces del pie de página">
+        <div class="footer-col">
+          <h3 class="footer-col__title">Explorar</h3>
           <ul class="footer-links">
-            <li><a href="#coleccion">Colección</a></li>
-            <li><a href="#nosotros">Nosotros</a></li>
-            <li><a href="#">Envíos</a></li>
-            <li><a href="#">Términos</a></li>
+            <li><a href="#inicio">Inicio</a></li>
+            <li><a href="#coleccion">Productos</a></li>
+            <li><a href="info.html#nosotros">Quiénes Somos</a></li>
           </ul>
-        </nav>
+        </div>
 
-        <div class="footer-social">
-          <a href="#" class="social-link" aria-label="Instagram">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-              <rect x="2" y="2" width="20" height="20" rx="5"/>
-              <circle cx="12" cy="12" r="4"/>
-              <circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/>
-            </svg>
+        <div class="footer-col">
+          <h3 class="footer-col__title">Legales</h3>
+          <ul class="footer-links">
+            <li><a href="info.html#terminos">Términos y Condiciones</a></li>
+            <li><a href="info.html#privacidad">Privacidad</a></li>
+          </ul>
+          <a id="afip-data-fiscal-link" href="#" target="_blank" rel="noopener noreferrer" style="display: none;">
+            <img src="https://www.afip.gob.ar/images/f960/DATA_FISCAL_2.png" alt="Data Fiscal" style="width: 50px; height: auto;">
           </a>
-          <a href="#" class="social-link" aria-label="Pinterest">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <path d="M12 2C6.477 2 2 6.477 2 12c0 4.237 2.636 7.855 6.356 9.312-.088-.791-.167-2.005.035-2.868.181-.78 1.172-4.97 1.172-4.97s-.299-.599-.299-1.484c0-1.39.806-2.428 1.81-2.428.853 0 1.264.641 1.264 1.41 0 .858-.546 2.14-.828 3.33-.236.995.499 1.806 1.481 1.806 1.778 0 3.144-1.874 3.144-4.58 0-2.393-1.72-4.068-4.177-4.068-2.845 0-4.515 2.135-4.515 4.34 0 .859.331 1.781.745 2.281a.3.3 0 01.069.288l-.278 1.133c-.044.183-.145.223-.334.134-1.249-.581-2.03-2.407-2.03-3.874 0-3.154 2.292-6.052 6.608-6.052 3.469 0 6.165 2.473 6.165 5.776 0 3.447-2.173 6.22-5.19 6.22-1.013 0-1.965-.527-2.292-1.155l-.623 2.378c-.226.869-.835 1.958-1.244 2.621.937.29 1.931.446 2.962.446 5.523 0 10-4.477 10-10S17.523 2 12 2z"/>
-            </svg>
-          </a>
-          <a href="#" class="social-link" aria-label="Twitter / X">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
-            </svg>
-          </a>
+        </div>
+
+        <div class="footer-col">
+          <h3 class="footer-col__title">Contacto</h3>
+          <ul class="footer-contact">
+            <li class="footer-contact__item">
+              <svg class="footer-contact__icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z"/>
+              </svg>
+              <span>Marconi 1599, Tandil</span>
+            </li>
+            <li class="footer-contact__item">
+              <svg class="footer-contact__icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.435 9.884-9.882 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+              </svg>
+              <a href="#" id="footer-whatsapp" class="footer-contact__link" target="_blank" rel="noopener noreferrer">+54 249 4XX-XXXX</a>
+            </li>
+          </ul>
         </div>
       </div>
 
       <div class="footer-bottom">
-        <p class="footer-copyright">&copy; 2026 Atelier. Todos los derechos reservados.</p>
+        <div class="footer-bottom__inner">
+          <p class="footer-copyright">
+            &copy; 2026 <span class="footer-copyright__company">Jerseys Store</span>. Todos los derechos reservados.
+            <span class="footer-copyright__sep">|</span>
+            Desarrollado por <strong>Francisco Crovo</strong>
+          </p>
+        </div>
       </div>
     </footer>
 
@@ -246,7 +303,38 @@
       </div>
     </aside>
 
-    <a href="#tracking-section" class="tracking-fab" aria-label="Ir a Mis Pedidos">
+    <div class="product-detail-modal" id="product-detail-modal" aria-hidden="true">
+      <div class="product-detail-modal__overlay" id="product-detail-modal-overlay"></div>
+      <div class="product-detail-modal__dialog" role="dialog" aria-labelledby="product-detail-title" aria-modal="true">
+        <button class="product-detail-modal__close" id="product-detail-modal-close" type="button" aria-label="Cerrar detalle del producto">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+        <div class="product-detail-modal__gallery">
+          <img
+            class="product-detail-modal__main-image"
+            id="product-detail-main-image"
+            src=""
+            alt=""
+          >
+          <div class="product-detail-modal__thumbs" id="product-detail-thumbs" role="list" aria-label="Miniaturas del producto"></div>
+        </div>
+        <div class="product-detail-modal__info">
+          <h2 class="product-detail-modal__title" id="product-detail-title"></h2>
+          <p class="product-detail-modal__price" id="product-detail-price"></p>
+          <p class="product-detail-modal__description" id="product-detail-description"></p>
+        </div>
+      </div>
+    </div>
+
+    <a href="#" id="whatsapp-fab" class="whatsapp-fab" target="_blank" rel="noopener noreferrer" aria-label="Contactar por WhatsApp">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.435 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+      </svg>
+    </a>
+
+    <a href="cuenta.html#pedidos" class="tracking-fab hidden" aria-label="Ir a Mis Pedidos">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
         <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15a2.25 2.25 0 012.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z"/>
       </svg>
@@ -257,7 +345,7 @@
       <div class="checkout-modal__overlay" id="checkout-modal-overlay"></div>
       <div class="checkout-modal__card" role="dialog" aria-labelledby="checkout-modal-title" aria-modal="true">
         <div class="checkout-modal__header">
-          <h2 class="checkout-modal__title" id="checkout-modal-title">Finalizar compra</h2>
+          <h2 class="checkout-modal__title" id="checkout-modal-title">Confirmar pedido</h2>
           <button class="checkout-modal__close" id="checkout-modal-close" type="button" aria-label="Cerrar checkout">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
@@ -266,41 +354,50 @@
         </div>
 
         <form class="checkout-form" id="checkout-form" onsubmit="procesarPedido(event)">
-          <div class="checkout-form__field">
-            <label for="checkout-nombre" class="checkout-form__label">Nombre completo</label>
-            <input type="text" id="checkout-nombre" class="checkout-form__input" required placeholder="Tu nombre">
+          <div class="checkout-account" id="checkout-account">
+            <span class="checkout-account__label">Comprando con</span>
+            <strong id="checkout-cuenta-email" class="checkout-account__email"></strong>
           </div>
 
-          <div class="checkout-form__field">
-            <label for="checkout-telefono" class="checkout-form__label">Teléfono</label>
-            <input type="tel" id="checkout-telefono" class="checkout-form__input" required placeholder="Ej: 11 2345 6789">
-          </div>
+          <div class="checkout-resumen" id="checkout-resumen" aria-label="Resumen del pedido"></div>
 
-          <div class="checkout-form__field">
-            <label for="checkout-direccion" class="checkout-form__label">Dirección de entrega</label>
-            <textarea id="checkout-direccion" class="checkout-form__input checkout-form__textarea" required placeholder="Calle, número, piso, localidad" rows="3"></textarea>
-          </div>
+          <div class="checkout-section">
+            <h3 class="checkout-section__title">Datos de entrega</h3>
+            <p class="checkout-section__hint" id="checkout-datos-hint">Completá tus datos de entrega para continuar.</p>
 
-          <fieldset class="checkout-form__field checkout-form__fieldset">
-            <legend class="checkout-form__label">Método de pago</legend>
-            <div class="checkout-form__radios">
-              <label class="checkout-form__radio">
-                <input type="radio" name="metodo-pago" value="Efectivo" checked>
-                <span>Efectivo</span>
-              </label>
-              <label class="checkout-form__radio">
-                <input type="radio" name="metodo-pago" value="Transferencia">
-                <span>Transferencia</span>
-              </label>
+            <div class="checkout-form__field">
+              <label for="checkout-nombre" class="checkout-form__label">Nombre completo</label>
+              <input type="text" id="checkout-nombre" class="checkout-form__input" required placeholder="Tu nombre" autocomplete="name">
             </div>
-          </fieldset>
+
+            <div class="checkout-form__field">
+              <label for="checkout-telefono" class="checkout-form__label">Teléfono</label>
+              <input type="tel" id="checkout-telefono" class="checkout-form__input" required placeholder="Ej: 11 2345 6789" autocomplete="tel">
+            </div>
+
+            <div class="checkout-form__field">
+              <label for="checkout-direccion" class="checkout-form__label">Dirección de entrega</label>
+              <textarea id="checkout-direccion" class="checkout-form__input checkout-form__textarea" required placeholder="Calle, número, piso, localidad" rows="2" autocomplete="street-address"></textarea>
+            </div>
+
+            <label class="checkout-guardar-datos">
+              <input type="checkbox" id="checkout-guardar-datos">
+              <span>¿Querés guardar estos datos para futuras compras?</span>
+            </label>
+          </div>
+
+          <div class="checkout-section">
+            <h3 class="checkout-section__title">Método de pago</h3>
+            <p class="checkout-section__hint">Pagá con tarjeta, dinero en cuenta u otros medios a través de Mercado Pago.</p>
+          </div>
 
           <div class="checkout-form__summary">
             <span>Total a pagar</span>
             <strong id="checkout-summary-total">$ 0</strong>
           </div>
 
-          <button type="submit" class="checkout-form__submit">Confirmar y enviar por WhatsApp</button>
+          <button type="submit" class="checkout-form__submit" id="checkout-submit-btn">Pagar con Mercado Pago</button>
+          <p class="checkout-form__note">Serás redirigido al checkout seguro de Mercado Pago para completar el pago.</p>
         </form>
       </div>
     </div>
@@ -310,7 +407,7 @@
     <div class="admin-layout">
       <aside class="admin-sidebar">
         <div class="admin-sidebar__brand">
-          <span class="admin-sidebar__logo">Atelier</span>
+          <span class="admin-sidebar__logo">Jerseys Store</span>
           <span class="admin-sidebar__badge">Admin</span>
         </div>
 
@@ -333,7 +430,7 @@
             </svg>
             <span>Productos</span>
           </a>
-          <a href="#" class="admin-sidebar__link admin-sidebar__link--disabled">
+          <a href="#" class="admin-sidebar__link" data-admin-panel="configuracion">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z"/>
               <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
@@ -343,6 +440,13 @@
         </nav>
 
         <div class="admin-sidebar__footer">
+          <button type="button" class="admin-sidebar__store" id="btn-volver-tienda">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+            <span>Ver Tienda</span>
+          </button>
           <button type="button" class="admin-sidebar__logout" id="btn-logout">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9"/>
@@ -359,9 +463,6 @@
             <p class="admin-header__subtitle" id="admin-header-subtitle">Resumen general de tu negocio</p>
           </div>
           <div class="admin-header__actions">
-            <button class="admin-header__new-product hidden" id="btn-nuevo-producto" type="button">
-              + Nuevo Producto
-            </button>
             <button class="admin-header__refresh" id="btn-refresh" type="button">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182"/>
@@ -373,18 +474,52 @@
 
         <section class="admin-panel" id="admin-panel-dashboard" data-admin-panel="dashboard">
         <section class="admin-kpis" aria-label="Métricas clave">
-          <article class="kpi-card">
-            <p class="kpi-card__label">Total de Ventas</p>
-            <p class="kpi-card__value" id="kpi-ventas">$ 0</p>
+          <article class="kpi-card kpi-card--facturado">
+            <div class="kpi-card__icon" aria-hidden="true">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v12m-3-2.818.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+            </div>
+            <div class="kpi-card__content">
+              <p class="kpi-card__label">Total Facturado</p>
+              <p class="kpi-card__value" id="kpi-facturado">$ 0</p>
+              <p class="kpi-card__hint">Últimos 30 días</p>
+            </div>
           </article>
-          <article class="kpi-card">
-            <p class="kpi-card__label">Pedidos Totales</p>
-            <p class="kpi-card__value" id="kpi-total">0</p>
+          <article class="kpi-card kpi-card--activos">
+            <div class="kpi-card__icon" aria-hidden="true">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15a2.25 2.25 0 012.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z"/>
+              </svg>
+            </div>
+            <div class="kpi-card__content">
+              <p class="kpi-card__label">Pedidos Activos</p>
+              <p class="kpi-card__value kpi-card__value--warning" id="kpi-activos">0</p>
+              <p class="kpi-card__hint">Pendientes de gestión</p>
+            </div>
           </article>
-          <article class="kpi-card">
-            <p class="kpi-card__label">Pedidos Pendientes</p>
-            <p class="kpi-card__value kpi-card__value--warning" id="kpi-pendientes">0</p>
+          <article class="kpi-card kpi-card--buscado">
+            <div class="kpi-card__icon" aria-hidden="true">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"/>
+              </svg>
+            </div>
+            <div class="kpi-card__content">
+              <p class="kpi-card__label">Producto Más Buscado</p>
+              <p class="kpi-card__value kpi-card__value--text" id="kpi-mas-buscado">—</p>
+              <p class="kpi-card__hint">Según búsquedas en tienda</p>
+            </div>
           </article>
+        </section>
+
+        <section class="admin-chart-card" aria-label="Ventas de los últimos 7 días">
+          <div class="admin-chart-card__header">
+            <h2 class="admin-chart-card__title">Ventas de los últimos 7 días</h2>
+            <p class="admin-chart-card__subtitle">Rendimiento semanal de tu tienda</p>
+          </div>
+          <div class="admin-chart-card__canvas-wrap">
+            <canvas id="admin-chart-ventas" aria-label="Gráfico de ventas semanales"></canvas>
+          </div>
         </section>
         </section>
 
@@ -429,7 +564,7 @@
             <h2 class="admin-products__title">Catálogo de productos</h2>
             <p class="admin-products__count" id="products-count"></p>
           </div>
-          <p class="admin-products__hint">Los productos que agregues aparecerán automáticamente en la tienda.</p>
+          <p class="admin-products__hint">Abrí una sección para ver y gestionar sus productos. Los cambios se reflejan automáticamente en la tienda.</p>
 
           <div class="admin-sections">
             <div class="admin-sections__header">
@@ -445,30 +580,122 @@
             <p class="admin-sections__empty hidden" id="admin-sections-empty">No hay secciones creadas. Usá el botón «+ Crear sección» para agregar la primera.</p>
           </div>
 
-          <div class="admin-table-wrapper admin-table-wrapper--products">
-            <table class="admin-table" id="admin-products-table">
-              <thead>
-                <tr>
-                  <th>Imagen</th>
-                  <th>Nombre</th>
-                  <th>Categoría</th>
-                  <th>Precio</th>
-                  <th>Stock</th>
-                  <th>Acciones</th>
-                </tr>
-              </thead>
-              <tbody id="admin-products-body"></tbody>
-            </table>
-
-            <div class="admin-empty" id="admin-products-empty" hidden>
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"/>
-              </svg>
-              <p class="admin-empty__title">No hay productos en el catálogo</p>
-              <p class="admin-empty__text">Usá el botón «+ Nuevo Producto» para cargar tu primera pieza.</p>
+          <div class="admin-precios-masivo" id="admin-precios-masivo">
+            <div class="admin-precios-masivo__header">
+              <h3 class="admin-precios-masivo__title">Actualización masiva de precios</h3>
+              <p class="admin-precios-masivo__hint">Aplicá un aumento o descuento porcentual al catálogo (módulo anti-inflación).</p>
+            </div>
+            <div class="admin-precios-masivo__controls">
+              <div class="admin-precios-masivo__field">
+                <label for="precios-masivo-tipo" class="admin-precios-masivo__label">Operación</label>
+                <select id="precios-masivo-tipo" class="admin-precios-masivo__select" aria-label="Tipo de actualización">
+                  <option value="descuento">Descuento</option>
+                  <option value="aumento">Aumento</option>
+                  <option value="quitar-ofertas">Quitar descuentos de oferta</option>
+                </select>
+              </div>
+              <div class="admin-precios-masivo__field" id="precios-masivo-porcentaje-wrap">
+                <label for="precios-masivo-porcentaje" class="admin-precios-masivo__label">Porcentaje (%)</label>
+                <input
+                  type="number"
+                  id="precios-masivo-porcentaje"
+                  class="admin-precios-masivo__input"
+                  step="0.1"
+                  min="0"
+                  placeholder="Ej: 15"
+                  aria-label="Porcentaje de ajuste de precios"
+                >
+              </div>
+              <div class="admin-precios-masivo__field">
+                <label for="precios-masivo-categoria" class="admin-precios-masivo__label">Categoría</label>
+                <select id="precios-masivo-categoria" class="admin-precios-masivo__select" aria-label="Categoría a actualizar">
+                  <option value="">Todas las categorías</option>
+                </select>
+              </div>
+              <button type="button" class="admin-precios-masivo__btn" id="btn-aplicar-precios-masivo">
+                Aplicar actualización
+              </button>
             </div>
           </div>
         </section>
+        </section>
+
+        <section class="admin-panel hidden" id="seccion-configuracion" data-admin-panel="configuracion">
+          <div class="admin-config">
+            <div class="admin-config__header">
+              <h2 class="admin-config__title">Configuración de la tienda</h2>
+              <p class="admin-config__subtitle">Editá los datos públicos de tu marca. Los cambios se aplican al instante en toda la tienda.</p>
+            </div>
+
+            <form class="admin-config__form" id="form-configuracion">
+              <div class="admin-config__field">
+                <label for="config-nombre-tienda" class="admin-config__label">Nombre de la Tienda</label>
+                <input
+                  type="text"
+                  id="config-nombre-tienda"
+                  class="admin-config__input"
+                  required
+                  maxlength="80"
+                  placeholder="Ej: Jerseys Store"
+                  autocomplete="organization"
+                >
+              </div>
+
+              <div class="admin-config__field">
+                <label for="config-whatsapp" class="admin-config__label">WhatsApp (sin el +)</label>
+                <input
+                  type="text"
+                  id="config-whatsapp"
+                  class="admin-config__input"
+                  required
+                  inputmode="numeric"
+                  placeholder="Ej: 5491123456789"
+                  autocomplete="tel"
+                >
+                <p class="admin-config__hint">Código de país + número, sin espacios ni símbolos.</p>
+              </div>
+
+              <div class="admin-config__field">
+                <label for="config-cloudinary-cloud-name" class="admin-config__label">Cloudinary Cloud Name</label>
+                <input
+                  type="text"
+                  id="config-cloudinary-cloud-name"
+                  class="admin-config__input"
+                  placeholder="tu_cloud_name"
+                  autocomplete="off"
+                >
+              </div>
+
+              <div class="admin-config__field">
+                <label for="config-cloudinary-upload-preset" class="admin-config__label">Cloudinary Upload Preset</label>
+                <input
+                  type="text"
+                  id="config-cloudinary-upload-preset"
+                  class="admin-config__input"
+                  placeholder="tu_upload_preset"
+                  autocomplete="off"
+                >
+              </div>
+
+              <div class="admin-config__field">
+                <label for="config-afip-link" class="admin-config__label">Enlace de AFIP Data Fiscal (URL)</label>
+                <input
+                  type="url"
+                  id="config-afip-link"
+                  class="admin-config__input"
+                  placeholder="https://servicios1.afip.gov.ar/f960/DATA/..."
+                  autocomplete="off"
+                >
+                <p class="admin-config__hint">Opcional. Si lo dejás vacío, el logo de Data Fiscal no se mostrará en el footer.</p>
+              </div>
+
+              <div class="admin-config__actions">
+                <button type="submit" class="admin-config__submit" id="btn-guardar-configuracion">
+                  Guardar Cambios
+                </button>
+              </div>
+            </form>
+          </div>
         </section>
       </div>
     </div>
@@ -497,8 +724,13 @@
           </div>
 
           <div class="product-form__field">
-            <label for="producto-precio-oferta" class="product-form__label">Precio de Oferta <span class="product-form__optional">(opcional)</span></label>
-            <input type="number" id="producto-precio-oferta" class="product-form__input" min="0" step="1" placeholder="Dejar vacío si no hay oferta">
+            <label for="producto-precio-oferta" class="product-form__label">Descuento de oferta <span class="product-form__optional">(opcional, %)</span></label>
+            <div class="product-form__descuento-row">
+              <input type="number" id="producto-precio-oferta" class="product-form__input" min="1" max="99" step="1" placeholder="Ej: 15 para 15% de descuento">
+              <button type="button" class="product-form__quitar-descuento hidden" id="btn-quitar-descuento-producto">
+                Quitar descuento
+              </button>
+            </div>
           </div>
 
           <div class="product-form__field">
@@ -554,23 +786,45 @@
           </div>
 
           <div class="product-form__field">
-            <span class="product-form__label">Imagen del Producto</span>
-            <div class="product-form__file">
-              <input
-                type="file"
-                id="producto-imagen"
-                class="product-form__file-input"
-                accept="image/*"
-                required
-              >
-              <label for="producto-imagen" class="product-form__file-btn">Elegir archivo</label>
-              <span class="product-form__file-name" id="producto-imagen-nombre">Ningún archivo seleccionado</span>
+            <span class="product-form__label">Imágenes del Producto</span>
+            <div class="product-form__imagenes-dobles">
+              <div class="product-form__imagen-campo">
+                <span class="product-form__imagen-etiqueta">Frente</span>
+                <div class="product-form__file">
+                  <input
+                    type="file"
+                    id="producto-imagen-frente"
+                    class="product-form__file-input"
+                    accept="image/*"
+                  >
+                  <label for="producto-imagen-frente" class="product-form__file-btn">Subir frente</label>
+                  <span class="product-form__file-name" id="producto-imagen-frente-nombre">Sin imagen</span>
+                </div>
+                <div class="product-form__imagen-preview hidden" id="producto-imagen-frente-preview" aria-hidden="true">
+                  <img id="producto-imagen-frente-thumb" class="product-form__gallery-thumb" alt="Vista previa frente" width="88" height="118">
+                  <button type="button" class="product-form__gallery-remove" id="producto-imagen-frente-quitar" aria-label="Quitar imagen de frente">×</button>
+                </div>
+              </div>
+
+              <div class="product-form__imagen-campo">
+                <span class="product-form__imagen-etiqueta">Espalda <span class="product-form__optional">(opcional)</span></span>
+                <div class="product-form__file">
+                  <input
+                    type="file"
+                    id="producto-imagen-espalda"
+                    class="product-form__file-input"
+                    accept="image/*"
+                  >
+                  <label for="producto-imagen-espalda" class="product-form__file-btn">Subir espalda</label>
+                  <span class="product-form__file-name" id="producto-imagen-espalda-nombre">Sin imagen</span>
+                </div>
+                <div class="product-form__imagen-preview hidden" id="producto-imagen-espalda-preview" aria-hidden="true">
+                  <img id="producto-imagen-espalda-thumb" class="product-form__gallery-thumb" alt="Vista previa espalda" width="88" height="118">
+                  <button type="button" class="product-form__gallery-remove" id="producto-imagen-espalda-quitar" aria-label="Quitar imagen de espalda">×</button>
+                </div>
+              </div>
             </div>
-            <img
-              class="product-form__preview hidden"
-              id="producto-imagen-preview"
-              alt="Vista previa del producto"
-            >
+            <p class="product-form__hint">Si no subís espalda, se usará la imagen del frente en el hover de la tarjeta.</p>
           </div>
 
           <div class="product-form__actions">
@@ -599,11 +853,24 @@
               type="text"
               id="modal-seccion-nombre"
               class="seccion-modal-form__input"
-              placeholder="Ej: Remeras, Camperas..."
+              placeholder="Ej: Boca Juniors, River Plate..."
               required
               maxlength="40"
               autocomplete="off"
             >
+          </div>
+          <div class="seccion-modal-form__field">
+            <label for="modal-seccion-escudo" class="seccion-modal-form__label">Logo del carrusel</label>
+            <p class="seccion-modal-form__hint">Se muestra en la barra de secciones de la tienda.</p>
+            <input
+              type="file"
+              id="modal-seccion-escudo"
+              class="seccion-modal-form__input seccion-modal-form__input--file"
+              accept="image/*"
+            >
+            <div class="seccion-modal-form__escudo-preview hidden" id="modal-seccion-escudo-preview">
+              <img id="modal-seccion-escudo-img" alt="Vista previa del escudo" width="48" height="48">
+            </div>
           </div>
           <div class="seccion-modal-form__actions">
             <button type="button" class="seccion-modal-form__cancel" id="modal-crear-seccion-cancelar">Cancelar</button>
@@ -617,20 +884,87 @@
       <div class="admin-modal__overlay" id="modal-detalle-seccion-overlay"></div>
       <div class="modal-contenido" role="dialog" aria-labelledby="modal-detalle-seccion-titulo" aria-modal="true">
         <div class="modal-contenido__header">
-          <h2 class="modal-contenido__titulo" id="modal-detalle-seccion-titulo">Carpeta: Remeras</h2>
+          <div class="modal-contenido__titulo-wrap">
+            <span class="modal-contenido__prefijo">Carpeta</span>
+            <div class="modal-contenido__nombre-seccion">
+              <input
+                type="text"
+                id="seccion-nombre-input"
+                class="modal-contenido__nombre-input"
+                maxlength="40"
+                autocomplete="off"
+                aria-label="Nombre de la sección"
+              >
+              <button
+                type="button"
+                class="btn-guardar-nombre-seccion"
+                id="btn-guardar-nombre-seccion"
+                aria-label="Guardar nombre de la sección"
+                title="Guardar nombre"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div class="modal-contenido__escudo-seccion">
+            <span class="modal-contenido__escudo-label">Logo del carrusel</span>
+            <div class="modal-contenido__escudo-row">
+              <div class="modal-contenido__escudo-preview" id="seccion-escudo-preview" aria-hidden="true">
+                <img id="seccion-escudo-img" class="modal-contenido__escudo-img hidden" alt="" width="56" height="56">
+                <span id="seccion-escudo-placeholder" class="modal-contenido__escudo-placeholder"></span>
+              </div>
+              <div class="modal-contenido__escudo-actions">
+                <label for="seccion-escudo-input" class="btn-modal-escudo-cambiar">Elegir imagen</label>
+                <input type="file" id="seccion-escudo-input" accept="image/*" hidden>
+                <button type="button" class="btn-guardar-escudo-seccion" id="btn-guardar-escudo-seccion" disabled>
+                  Guardar logo
+                </button>
+              </div>
+            </div>
+          </div>
           <button class="modal-contenido__cerrar" id="modal-detalle-seccion-cerrar" type="button" aria-label="Cerrar">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
             </svg>
           </button>
         </div>
-        <div class="modal-contenido__acciones">
+        <div class="modal-contenido__acciones modal-contenido__acciones--dual">
           <button type="button" class="btn-modal-agregar-producto" id="btn-modal-agregar-producto">
-            + Agregar Producto a esta sección
+            + Crear producto nuevo
+          </button>
+          <button type="button" class="btn-modal-agregar-producto btn-modal-agregar-producto--secondary" id="btn-modal-agregar-producto-existente">
+            + Agregar producto existente
           </button>
         </div>
         <div class="modal-contenido__cuerpo">
-          <div id="lista-productos-seccion-modal" aria-label="Productos de la sección"></div>
+          <div id="lista-productos-seccion-modal" class="seccion-modal-productos" aria-label="Productos de la sección"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="admin-modal" id="modal-agregar-producto-existente" aria-hidden="true">
+      <div class="admin-modal__overlay" id="modal-agregar-producto-existente-overlay"></div>
+      <div class="admin-modal__card admin-modal__card--compact" role="dialog" aria-labelledby="modal-agregar-producto-existente-titulo" aria-modal="true">
+        <div class="admin-modal__header">
+          <h2 class="admin-modal__title" id="modal-agregar-producto-existente-titulo">Agregar producto existente</h2>
+          <button class="admin-modal__close" id="modal-agregar-producto-existente-cerrar" type="button" aria-label="Cerrar">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+        <div class="producto-existente-modal__body">
+          <label class="producto-existente-modal__search-label" for="buscar-producto-existente">Buscar en el catálogo</label>
+          <input
+            type="search"
+            id="buscar-producto-existente"
+            class="producto-existente-modal__search"
+            placeholder="Nombre del producto..."
+            autocomplete="off"
+          >
+          <div class="producto-existente-modal__lista" id="lista-productos-disponibles" aria-live="polite"></div>
         </div>
       </div>
     </div>
@@ -725,7 +1059,8 @@
     </div>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
   <script src="js/api.js"></script>
-  <script src="js/app.js"></script>
+  <script src="js/app.js?v=9.3"></script>
 </body>
 </html>

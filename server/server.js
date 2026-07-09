@@ -1,19 +1,65 @@
 require('dotenv').config();
 
+// Base de datos recomendada para MONGO_URI en .env: jerseys_store_db
+// Ejemplo: mongodb+srv://usuario:contraseña@cluster.mongodb.net/jerseys_store_db
+
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 const mongoose = require('mongoose');
-const multer = require('multer');
+const jwt = require('jsonwebtoken');
+const nodemailer = require('nodemailer');
+const bcrypt = require('bcrypt');
+const { spawn } = require('child_process');
+const { MercadoPagoConfig, Preference, Payment } = require('mercadopago');
 
 const app = express();
 const PORT = 3000;
-const ADMIN_EMAIL = 'admin@comercio.com';
+const JWT_SECRET = process.env.JWT_SECRET;
 
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fieldSize: 15 * 1024 * 1024, fileSize: 15 * 1024 * 1024 },
-});
+if (!JWT_SECRET || JWT_SECRET.length < 32) {
+  console.error('FATAL: JWT_SECRET no está definido o tiene menos de 32 caracteres. El servidor no puede iniciarse de forma segura.');
+  process.exit(1);
+}
+const NOMBRE_TIENDA_DEFECTO = String(process.env.NOMBRE_TIENDA || 'Jerseys Store').trim();
+const WHATSAPP_NUMERO = String(process.env.WHATSAPP_NUMERO || '').trim();
+const CLOUDINARY_CLOUD_NAME = String(process.env.CLOUDINARY_CLOUD_NAME || '').trim();
+const CLOUDINARY_UPLOAD_PRESET = String(process.env.CLOUDINARY_UPLOAD_PRESET || '').trim();
+const MP_ACCESS_TOKEN = String(process.env.MP_ACCESS_TOKEN || '').trim();
+const MP_SANDBOX = String(process.env.MP_SANDBOX || 'true').toLowerCase() !== 'false';
+const USE_NGROK = String(process.env.USE_NGROK || 'true').toLowerCase() === 'true';
+const NGROK_AUTHTOKEN = String(process.env.NGROK_AUTHTOKEN || '').trim();
+
+function resolverNgrokBin() {
+  if (process.env.NGROK_BIN) {
+    return String(process.env.NGROK_BIN).trim();
+  }
+
+  const candidatos = [
+    path.join(process.env.APPDATA || '', 'npm', 'node_modules', 'ngrok', 'bin', 'ngrok.exe'),
+    'ngrok',
+  ];
+
+  return candidatos.find((ruta) => ruta === 'ngrok' || fs.existsSync(ruta)) || 'ngrok';
+}
+
+const NGROK_BIN = resolverNgrokBin();
+let APP_BASE_URL = String(process.env.APP_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
+let WEBHOOK_BASE_URL = String(process.env.WEBHOOK_BASE_URL || APP_BASE_URL).replace(/\/$/, '');
+const ZONA_HORARIA_TIENDA = 'America/Argentina/Buenos_Aires';
+
+const mercadoPagoClient = new MercadoPagoConfig({ accessToken: MP_ACCESS_TOKEN });
+const preferenceClient = new Preference(mercadoPagoClient);
+const paymentClient = new Payment(mercadoPagoClient);
+const ESTADOS_VENTA_VALIDA = [
+  'Pendiente de pago',
+  'Aprobado',
+  'Preparación de pedido',
+  'Enviado',
+  'Entregado',
+];
+const ESTADOS_PEDIDO_ACTIVO = ['Pendiente de pago', 'pendiente_pago', 'Aprobado', 'Preparación de pedido'];
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
@@ -32,6 +78,25 @@ const productoItemPedidoSchema = new mongoose.Schema(
 const TALLES_DEFECTO = ['S', 'M', 'L', 'XL', 'XXL'];
 const TALLES_PERMITIDOS = new Set(TALLES_DEFECTO);
 const GENEROS_PERMITIDOS = ['hombre', 'mujer', 'ninos'];
+const ESTADOS_PEDIDO = [
+  'Pendiente de pago',
+  'pendiente_pago',
+  'Aprobado',
+  'Preparación de pedido',
+  'Enviado',
+  'Entregado',
+  'Rechazado',
+  'cancelado',
+];
+const ESTADO_PEDIDO_INICIAL = 'Pendiente de pago';
+const ESTADO_PEDIDO_MP_PENDIENTE = 'pendiente_pago';
+const ESTADOS_PEDIDO_LEGACY = {
+  Pendiente: 'Pendiente de pago',
+  'En Preparación': 'Preparación de pedido',
+  Listo: 'Entregado',
+  pagado: 'Aprobado',
+  confirmado: 'Aprobado',
+};
 
 const productoSchema = new mongoose.Schema({
   id: { type: Number, unique: true },
@@ -45,8 +110,11 @@ const productoSchema = new mongoose.Schema({
     enum: GENEROS_PERMITIDOS,
     default: 'hombre',
   },
-  img: { type: String, required: true },
+  imagenFrente: { type: String, default: '' },
+  imagenEspalda: { type: String, default: '' },
+  liga: { type: String, default: '' },
   stock: { type: Number, required: true, default: 10, min: 0 },
+  activo: { type: Boolean, default: true },
   talles: { type: [String], default: () => [...TALLES_DEFECTO] },
   descripcion: { type: String, default: '' },
 });
@@ -59,13 +127,17 @@ productoSchema.pre('save', function () {
 
 const pedidoSchema = new mongoose.Schema({
   id: { type: String, unique: true, required: true },
+  emailUsuario: { type: String, required: true, lowercase: true, trim: true, index: true },
   cliente: { type: String, required: true },
   telefono: { type: String, required: true },
   direccion: { type: String, default: '' },
   pago: { type: String, default: 'Efectivo' },
   productos: [productoItemPedidoSchema],
   total: { type: Number, default: 0 },
-  estado: { type: String, default: 'Pendiente' },
+  estado: { type: String, default: ESTADO_PEDIDO_INICIAL },
+  mercadopagoPreferenceId: { type: String, default: null },
+  mercadopagoPaymentId: { type: String, default: null },
+  expiraEn: { type: Date, default: null },
   fecha: { type: Date, default: Date.now },
 });
 
@@ -75,6 +147,23 @@ const usuarioSchema = new mongoose.Schema({
   rol: { type: String, default: 'cliente' },
   verificado: { type: Boolean, default: false },
   codigoVerificacion: { type: String },
+  codigoVerificacionExpira: { type: Date },
+  nombre: { type: String, default: '', trim: true },
+  telefono: { type: String, default: '', trim: true },
+  direccion: { type: String, default: '', trim: true },
+  preferencias: {
+    emailsPromos: { type: Boolean, default: true },
+    emailsPedidos: { type: Boolean, default: true },
+  },
+});
+
+const mailTransport = nodemailer.createTransport({
+  host: process.env.SMTP_HOST,
+  port: Number(process.env.SMTP_PORT) || 587,
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
 });
 
 const Producto = mongoose.model('Producto', productoSchema);
@@ -84,6 +173,7 @@ const Usuario = mongoose.model('Usuario', usuarioSchema);
 const seccionSchema = new mongoose.Schema({
   id: { type: Number, unique: true },
   nombre: { type: String, required: true, unique: true, trim: true },
+  escudo: { type: String, default: '', trim: true },
 });
 
 seccionSchema.pre('save', function () {
@@ -93,6 +183,16 @@ seccionSchema.pre('save', function () {
 });
 
 const Seccion = mongoose.model('Seccion', seccionSchema);
+
+const configuracionSchema = new mongoose.Schema({
+  nombreTienda: { type: String, default: 'Jerseys Store' },
+  whatsappNumero: { type: String, default: '' },
+  cloudinaryCloudName: { type: String, default: '' },
+  cloudinaryUploadPreset: { type: String, default: '' },
+  afipLink: { type: String, default: '' },
+});
+
+const Configuracion = mongoose.model('Configuracion', configuracionSchema);
 
 const SECCIONES_BASE = [
   { id: 1, nombre: 'Remeras' },
@@ -107,7 +207,8 @@ const PRODUCTOS_BASE = [
     precio: 8900,
     categoria: 'Remeras',
     genero: 'hombre',
-    img: 'https://placehold.co/600x800/f5f5f5/1a1a1a?text=Remera',
+    imagenFrente: 'https://placehold.co/600x800/f5f5f5/1a1a1a?text=Remera+Frente',
+    imagenEspalda: 'https://placehold.co/600x800/f5f5f5/1a1a1a?text=Remera+Espalda',
     stock: 10,
     talles: [...TALLES_DEFECTO],
     descripcion: 'Remera de algodón premium.',
@@ -118,7 +219,8 @@ const PRODUCTOS_BASE = [
     precio: 18900,
     categoria: 'Camperas',
     genero: 'hombre',
-    img: 'https://placehold.co/600x800/f5f5f5/1a1a1a?text=Campera',
+    imagenFrente: 'https://placehold.co/600x800/f5f5f5/1a1a1a?text=Campera+Frente',
+    imagenEspalda: 'https://placehold.co/600x800/f5f5f5/1a1a1a?text=Campera+Espalda',
     stock: 10,
     talles: [...TALLES_DEFECTO],
     descripcion: 'Campera liviana de temporada.',
@@ -129,7 +231,8 @@ const PRODUCTOS_BASE = [
     precio: 12800,
     categoria: 'Pantalones',
     genero: 'hombre',
-    img: 'https://placehold.co/600x800/f5f5f5/1a1a1a?text=Pantalón',
+    imagenFrente: 'https://placehold.co/600x800/f5f5f5/1a1a1a?text=Pantalón+Frente',
+    imagenEspalda: 'https://placehold.co/600x800/f5f5f5/1a1a1a?text=Pantalón+Espalda',
     stock: 10,
     talles: [...TALLES_DEFECTO],
     descripcion: 'Pantalón de corte moderno.',
@@ -145,9 +248,158 @@ function generarIdPedido() {
   return `#PED-${numero}`;
 }
 
+function normalizarEstadoPedido(estado) {
+  const valor = String(estado || '').trim();
+  if (ESTADOS_PEDIDO.includes(valor)) return valor;
+  return ESTADOS_PEDIDO_LEGACY[valor] || ESTADO_PEDIDO_INICIAL;
+}
+
 function generarCodigoVerificacion() {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
+
+function generarExpiracionCodigo(minutos = 10) {
+  return new Date(Date.now() + minutos * 60 * 1000);
+}
+
+async function verificarPassword(password, passwordAlmacenada) {
+  if (!passwordAlmacenada) return false;
+
+  const esHashBcrypt = /^\$2[aby]\$/.test(passwordAlmacenada);
+  if (esHashBcrypt) {
+    return bcrypt.compare(password, passwordAlmacenada);
+  }
+
+  return password === passwordAlmacenada;
+}
+
+function plantillaEmailVerificacion(codigo, nombreTienda) {
+  const tienda = String(nombreTienda || NOMBRE_TIENDA_DEFECTO || 'Jerseys Store').trim();
+
+  return `
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Verificación de cuenta</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f4f4f5;font-family:Arial,Helvetica,sans-serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#f4f4f5;padding:32px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:520px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+          <tr>
+            <td style="background:#111827;padding:28px 32px;text-align:center;">
+              <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;letter-spacing:0.5px;">${tienda}</h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:32px;">
+              <h2 style="margin:0 0 12px;color:#111827;font-size:20px;">Verificá tu cuenta</h2>
+              <p style="margin:0 0 24px;color:#4b5563;font-size:15px;line-height:1.6;">
+                Usá el siguiente código para completar tu registro. El código vence en <strong>10 minutos</strong>.
+              </p>
+              <div style="text-align:center;margin:0 0 24px;">
+                <span style="display:inline-block;padding:16px 32px;background:#f3f4f6;border:2px dashed #d1d5db;border-radius:8px;font-size:32px;font-weight:700;letter-spacing:8px;color:#111827;">${codigo}</span>
+              </div>
+              <p style="margin:0;color:#6b7280;font-size:13px;line-height:1.5;">
+                Si no solicitaste este registro, podés ignorar este mensaje de forma segura.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:20px 32px;background:#f9fafb;border-top:1px solid #e5e7eb;text-align:center;">
+              <p style="margin:0;color:#9ca3af;font-size:12px;">© ${tienda} — Mensaje automático, no responder.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
+
+async function enviarCodigoVerificacion(email, codigo) {
+  const config = await obtenerConfiguracionUnica();
+  const nombreTienda = formatearConfiguracion(config).nombreTienda;
+
+  await mailTransport.sendMail({
+    from: process.env.SMTP_FROM || process.env.SMTP_USER,
+    to: email,
+    subject: `Tu código de verificación — ${nombreTienda}`,
+    html: plantillaEmailVerificacion(codigo, nombreTienda),
+    text: `Tu código de verificación en ${nombreTienda} es: ${codigo}. Vence en 10 minutos.`,
+  });
+}
+
+function generarTokenAdmin(usuario) {
+  return jwt.sign(
+    { email: usuario.email, rol: usuario.rol },
+    JWT_SECRET,
+    { expiresIn: '8h' }
+  );
+}
+
+function generarTokenCliente(usuario) {
+  return jwt.sign(
+    { email: usuario.email, rol: 'cliente' },
+    JWT_SECRET,
+    { expiresIn: '7d' }
+  );
+}
+
+function verificarJWT(req, res, next) {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Acceso denegado. Se requiere autenticación.' });
+  }
+
+  const token = authHeader.slice(7);
+
+  try {
+    req.usuario = jwt.verify(token, JWT_SECRET);
+    next();
+  } catch {
+    return res.status(403).json({ error: 'Token inválido.' });
+  }
+}
+
+function verificarClienteJWT(req, res, next) {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Acceso denegado. Se requiere autenticación.' });
+  }
+
+  const token = authHeader.slice(7);
+
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    const rol = payload?.rol;
+
+    if (rol !== 'cliente' && rol !== 'admin') {
+      return res.status(403).json({ error: 'Acceso denegado.' });
+    }
+
+    req.usuario = payload;
+    next();
+  } catch {
+    return res.status(403).json({ error: 'Token inválido.' });
+  }
+}
+
+function esAdmin(req, res, next) {
+  if (req.usuario?.rol !== 'admin') {
+    return res.status(403).json({ error: 'Acceso denegado. Se requiere rol de administrador.' });
+  }
+
+  next();
+}
+
+const verificarAdminJWT = [verificarJWT, esAdmin];
 
 function sanitizarUsuario(usuario) {
   const datos = usuario.toObject ? usuario.toObject() : usuario;
@@ -156,7 +408,34 @@ function sanitizarUsuario(usuario) {
     email: datos.email,
     rol: datos.rol,
     activo: datos.verificado,
+    nombre: datos.nombre || '',
+    telefono: datos.telefono || '',
+    direccion: datos.direccion || '',
+    preferencias: {
+      emailsPromos: datos.preferencias?.emailsPromos !== false,
+      emailsPedidos: datos.preferencias?.emailsPedidos !== false,
+    },
   };
+}
+
+async function obtenerUsuarioCliente(email) {
+  const normalizado = normalizarEmail(email);
+  if (!normalizado) return null;
+
+  const usuario = await Usuario.findOne({ email: normalizado });
+  if (!usuario || !usuario.verificado || usuario.rol === 'admin') return null;
+
+  return usuario;
+}
+
+async function obtenerUsuarioVerificado(email) {
+  const normalizado = normalizarEmail(email);
+  if (!normalizado) return null;
+
+  const usuario = await Usuario.findOne({ email: normalizado });
+  if (!usuario || !usuario.verificado) return null;
+
+  return usuario;
 }
 
 function normalizarStock(stock) {
@@ -192,18 +471,84 @@ function normalizarPrecioOferta(precioOferta, precioBase) {
   return valor;
 }
 
+function normalizarImagenes(imagen) {
+  if (Array.isArray(imagen)) {
+    return imagen
+      .flatMap((item) => normalizarImagenes(item))
+      .filter(Boolean);
+  }
+
+  const texto = String(imagen || '').trim();
+  if (!texto) return [];
+
+  if (texto.includes(',http')) {
+    return texto
+      .split(/,(?=https?:\/\/)/)
+      .map((url) => url.trim())
+      .filter((url) => url.startsWith('http'));
+  }
+
+  return texto.startsWith('http') ? [texto] : [];
+}
+
+function resolverImagenesProducto(body = {}, productoExistente = null) {
+  const datosExistentes = productoExistente?.toObject
+    ? productoExistente.toObject()
+    : productoExistente || {};
+
+  let imagenFrente = String(body.imagenFrente || '').trim();
+  let imagenEspalda = String(body.imagenEspalda || '').trim();
+
+  if (!imagenFrente) {
+    const legacy = normalizarImagenes(body.imagen || body.img || datosExistentes.img);
+    imagenFrente = legacy[0] || String(datosExistentes.imagenFrente || '').trim();
+    if (!imagenEspalda) {
+      imagenEspalda = legacy[1] || String(datosExistentes.imagenEspalda || '').trim();
+    }
+  }
+
+  if (!imagenFrente) {
+    imagenFrente = String(datosExistentes.imagenFrente || '').trim();
+  }
+
+  if (!imagenEspalda) {
+    imagenEspalda = String(datosExistentes.imagenEspalda || '').trim();
+  }
+
+  if (!imagenEspalda) {
+    imagenEspalda = imagenFrente;
+  }
+
+  return { imagenFrente, imagenEspalda };
+}
+
+function obtenerImagenesDesdeDocumento(datos = {}) {
+  const frenteDirecto = String(datos.imagenFrente || '').trim();
+  const espaldaDirecta = String(datos.imagenEspalda || '').trim();
+  const legacy = normalizarImagenes(datos.img);
+  const imagenFrente = frenteDirecto || legacy[0] || '';
+  const imagenEspalda = espaldaDirecta || legacy[1] || imagenFrente;
+
+  return { imagenFrente, imagenEspalda };
+}
+
 function formatearSeccion(seccion) {
   const datos = seccion.toObject ? seccion.toObject() : seccion;
 
   return {
     id: datos.id,
     nombre: datos.nombre,
+    escudo: String(datos.escudo || '').trim(),
   };
 }
 
 function formatearProducto(producto) {
   const datos = producto.toObject ? producto.toObject() : producto;
   const precioOferta = normalizarPrecioOferta(datos.precioOferta, datos.precio);
+  const { imagenFrente, imagenEspalda } = obtenerImagenesDesdeDocumento(datos);
+  const imagen = imagenEspalda && imagenEspalda !== imagenFrente
+    ? [imagenFrente, imagenEspalda]
+    : [imagenFrente].filter(Boolean);
 
   return {
     id: datos.id,
@@ -212,10 +557,14 @@ function formatearProducto(producto) {
     precioOferta,
     categoria: datos.categoria,
     genero: normalizarGenero(datos.genero),
-    imagen: datos.img,
+    imagenFrente,
+    imagenEspalda,
+    imagen,
     stock: normalizarStock(datos.stock ?? 10),
+    activo: datos.activo !== false,
     talles: normalizarTalles(datos.talles),
     descripcion: String(datos.descripcion || '').trim(),
+    liga: String(datos.liga || '').trim(),
   };
 }
 
@@ -227,7 +576,9 @@ function formatearItemPedido(item) {
     nombre: producto.nombre || producto,
     talle: producto.talle || null,
     precio: item.precio,
-    imagen: producto.imagen,
+    imagen: normalizarImagenes(producto.imagen)[0]
+      || String(producto.imagenFrente || '').trim()
+      || obtenerImagenesDesdeDocumento(producto).imagenFrente,
     cantidad: item.cantidad,
   };
 }
@@ -237,30 +588,129 @@ function formatearPedido(pedido) {
 
   return {
     id: datos.id,
+    emailUsuario: normalizarEmail(datos.emailUsuario),
     cliente: {
       nombre: datos.cliente,
       telefono: datos.telefono,
       direccion: datos.direccion,
+      email: normalizarEmail(datos.emailUsuario),
     },
     productos: (datos.productos || []).map(formatearItemPedido),
     total: datos.total,
     metodoPago: datos.pago,
     fecha: datos.fecha instanceof Date ? datos.fecha.toISOString() : datos.fecha,
-    estado: datos.estado,
+    estado: normalizarEstadoPedido(datos.estado),
   };
 }
 
-async function asegurarAdminInicial() {
-  const adminExistente = await Usuario.findOne({ email: ADMIN_EMAIL });
+function obtenerConfiguracionDesdeEnv() {
+  return {
+    nombreTienda: NOMBRE_TIENDA_DEFECTO || 'Jerseys Store',
+    whatsappNumero: WHATSAPP_NUMERO.replace(/^\+/, ''),
+    cloudinaryCloudName: CLOUDINARY_CLOUD_NAME,
+    cloudinaryUploadPreset: CLOUDINARY_UPLOAD_PRESET,
+  };
+}
 
-  if (!adminExistente) {
-    await new Usuario({
-      email: ADMIN_EMAIL,
-      password: 'admin',
-      rol: 'admin',
-      verificado: true,
-    }).save();
+function formatearConfiguracion(config) {
+  const datos = config?.toObject ? config.toObject() : config || {};
+
+  return {
+    nombreTienda: String(datos.nombreTienda || NOMBRE_TIENDA_DEFECTO || 'Jerseys Store').trim(),
+    whatsappNumero: String(datos.whatsappNumero || '').replace(/^\+/, '').trim(),
+    cloudinaryCloudName: String(datos.cloudinaryCloudName || '').trim(),
+    cloudinaryUploadPreset: String(datos.cloudinaryUploadPreset || '').trim(),
+    afipLink: String(datos.afipLink || '').trim(),
+  };
+}
+
+async function obtenerConfiguracionUnica() {
+  let config = await Configuracion.findOne();
+
+  if (!config) {
+    await inicializarConfiguracion();
+    config = await Configuracion.findOne();
   }
+
+  return config;
+}
+
+async function inicializarConfiguracion() {
+  const total = await Configuracion.countDocuments();
+
+  if (total > 0) {
+    return;
+  }
+
+  await Configuracion.create(obtenerConfiguracionDesdeEnv());
+  console.log('=> Éxito: Configuración inicial de la tienda creada desde .env.');
+}
+
+async function inicializarAdministrador() {
+  const email = normalizarEmail(process.env.ADMIN_INICIAL_EMAIL);
+  const password = String(process.env.ADMIN_INICIAL_PASS || '');
+  const adminExistente = await Usuario.findOne({ rol: 'admin' });
+
+  if (!email || !password) {
+    if (adminExistente) {
+      console.log(`=> Base de datos lista: Administrador verificado (${adminExistente.email}).`);
+      return;
+    }
+    console.warn('=> Advertencia: No hay administrador y faltan ADMIN_INICIAL_EMAIL o ADMIN_INICIAL_PASS en .env.');
+    return;
+  }
+
+  if (adminExistente) {
+    const passwordCoincide = await verificarPassword(password, adminExistente.password);
+    const emailCoincide = adminExistente.email === email;
+
+    if (emailCoincide && passwordCoincide) {
+      console.log(`=> Base de datos lista: Administrador verificado (${adminExistente.email}).`);
+      return;
+    }
+
+    if (!emailCoincide) {
+      const emailOcupado = await Usuario.findOne({
+        email,
+        _id: { $ne: adminExistente._id },
+      });
+
+      if (emailOcupado) {
+        console.warn(
+          `=> Advertencia: No se pudo actualizar el admin. El email ${email} ya está en uso por otra cuenta.`
+        );
+        return;
+      }
+    }
+
+    adminExistente.email = email;
+    adminExistente.password = await bcrypt.hash(password, 10);
+    adminExistente.rol = 'admin';
+    adminExistente.verificado = true;
+    await adminExistente.save();
+
+    console.log(`=> Éxito: Credenciales de administrador actualizadas desde .env (${email}).`);
+    return;
+  }
+
+  const emailOcupado = await Usuario.findOne({ email });
+  if (emailOcupado) {
+    console.warn(
+      `=> Advertencia: No se pudo crear el admin. El email ${email} ya está registrado como ${emailOcupado.rol}.`
+    );
+    return;
+  }
+
+  const passwordHasheada = await bcrypt.hash(password, 10);
+
+  await new Usuario({
+    email,
+    password: passwordHasheada,
+    rol: 'admin',
+    verificado: true,
+  }).save();
+
+  console.log(`=> Éxito: Usuario administrador inicial creado de forma segura (${email}).`);
 }
 
 async function buscarProductoParaEliminar(idParam) {
@@ -287,14 +737,263 @@ async function buscarPedidoParaActualizar(idParam, actualizacion) {
   return Pedido.findOneAndUpdate({ id: idParam }, actualizacion, { new: true });
 }
 
-function resolverImagenProducto(req) {
-  if (req.file?.buffer) {
-    const mimeType = req.file.mimetype || 'image/jpeg';
-    const base64 = req.file.buffer.toString('base64');
-    return `data:${mimeType};base64,${base64}`;
+async function buscarProductoPorId(productoId) {
+  const idParam = String(productoId ?? '').trim();
+  if (!idParam) return null;
+
+  if (mongoose.isValidObjectId(idParam)) {
+    return Producto.findById(idParam);
   }
 
-  return String(req.body?.imagen || '').trim();
+  const idNumerico = Number(idParam);
+  if (Number.isFinite(idNumerico)) {
+    return Producto.findOne({ id: idNumerico });
+  }
+
+  return null;
+}
+
+function obtenerPrecioEfectivoProducto(producto) {
+  const precioOferta = normalizarPrecioOferta(producto.precioOferta, producto.precio);
+  return precioOferta ?? Number(producto.precio);
+}
+
+async function revertirDecrementosStock(decrementos) {
+  await Promise.all(
+    decrementos.map(({ productoId, cantidad }) =>
+      Producto.findByIdAndUpdate(productoId, { $inc: { stock: cantidad } })
+    )
+  );
+}
+
+async function restaurarStockDesdePedido(pedido) {
+  const incrementos = new Map();
+  const productos = pedido?.productos || [];
+
+  for (const item of productos) {
+    const productoId = item.producto?.id ?? item.producto;
+    const producto = await buscarProductoPorId(productoId);
+    if (!producto) continue;
+
+    const clave = String(producto._id);
+    incrementos.set(clave, (incrementos.get(clave) || 0) + Number(item.cantidad || 0));
+  }
+
+  await revertirDecrementosStock(
+    [...incrementos.entries()].map(([productoId, cantidad]) => ({ productoId, cantidad }))
+  );
+}
+
+async function limpiarPedidosExpirados() {
+  const ahora = new Date();
+  const pedidosExpirados = await Pedido.find({
+    estado: ESTADO_PEDIDO_MP_PENDIENTE,
+    expiraEn: { $ne: null, $lt: ahora },
+  });
+
+  for (const pedido of pedidosExpirados) {
+    await restaurarStockDesdePedido(pedido);
+    pedido.estado = 'cancelado';
+    await pedido.save();
+    console.log(`=> Pedido ${pedido.id} cancelado por expiración de pago (stock restaurado).`);
+  }
+
+  return pedidosExpirados.length;
+}
+
+async function validarItemsYReservarStock(items) {
+  if (!Array.isArray(items) || !items.length) {
+    return { error: 'Datos del pedido incompletos.', status: 400 };
+  }
+
+  const lineasValidadas = [];
+  const stockRequerido = new Map();
+
+  for (const item of items) {
+    const productoId = item.productoId ?? item.id;
+    const cantidad = Math.floor(Number(item.cantidad));
+    const talle = item.talle ? String(item.talle).trim().toUpperCase() : null;
+
+    if (!productoId || !Number.isFinite(cantidad) || cantidad <= 0) {
+      return { error: 'Uno de los ítems del pedido es inválido.', status: 400 };
+    }
+
+    const producto = await buscarProductoPorId(productoId);
+
+    if (!producto) {
+      return { error: 'Uno de los productos del pedido ya no existe.', status: 400 };
+    }
+
+    if (producto.activo === false) {
+      return {
+        error: `«${producto.nombre}» ya no está disponible para la venta.`,
+        status: 400,
+      };
+    }
+
+    const tallesDisponibles = normalizarTalles(producto.talles);
+    if (tallesDisponibles.length && (!talle || !tallesDisponibles.includes(talle))) {
+      return {
+        error: `Talle inválido para «${producto.nombre}». Talles disponibles: ${tallesDisponibles.join(', ')}.`,
+        status: 400,
+      };
+    }
+
+    const precioUnitario = obtenerPrecioEfectivoProducto(producto);
+    if (!Number.isFinite(precioUnitario) || precioUnitario <= 0) {
+      return { error: `Precio inválido para «${producto.nombre}».`, status: 400 };
+    }
+
+    const claveStock = String(producto._id);
+    stockRequerido.set(claveStock, (stockRequerido.get(claveStock) || 0) + cantidad);
+
+    lineasValidadas.push({
+      producto,
+      cantidad,
+      talle,
+      precioUnitario,
+    });
+  }
+
+  const decrementosRealizados = [];
+
+  for (const [productoIdStr, cantidadTotal] of stockRequerido) {
+    const actualizado = await Producto.findOneAndUpdate(
+      { _id: productoIdStr, activo: { $ne: false }, stock: { $gte: cantidadTotal } },
+      { $inc: { stock: -cantidadTotal } },
+      { new: true }
+    );
+
+    if (!actualizado) {
+      const linea = lineasValidadas.find((lineaItem) => String(lineaItem.producto._id) === productoIdStr);
+      const productoActual = await Producto.findById(productoIdStr);
+      const disponible = normalizarStock(productoActual?.stock ?? 0);
+      const nombreProducto = linea?.producto?.nombre || productoActual?.nombre || 'Producto';
+
+      await revertirDecrementosStock(decrementosRealizados);
+
+      return {
+        error: `Stock insuficiente para «${nombreProducto}». Disponible: ${disponible}, solicitado: ${cantidadTotal}.`,
+        status: 400,
+      };
+    }
+
+    decrementosRealizados.push({ productoId: productoIdStr, cantidad: cantidadTotal });
+  }
+
+  const productosPedido = lineasValidadas.map(({ producto, cantidad, talle, precioUnitario }) => {
+    const formateado = formatearProducto(producto);
+
+    return {
+      producto: {
+        id: formateado.id,
+        nombre: formateado.nombre,
+        talle,
+        imagen: formateado.imagenFrente || formateado.imagen[0] || '',
+      },
+      cantidad,
+      precio: precioUnitario,
+    };
+  });
+
+  const totalPedido = productosPedido.reduce(
+    (acumulado, item) => acumulado + item.precio * item.cantidad,
+    0
+  );
+
+  return {
+    productosPedido,
+    totalPedido,
+    decrementosRealizados,
+  };
+}
+
+function obtenerPaymentIdDesdeNotificacion(req) {
+  const tipo = req.query?.type || req.query?.topic || req.body?.type || req.body?.topic;
+
+  if (tipo !== 'payment') return null;
+
+  const id = req.query?.['data.id']
+    || req.query?.id
+    || req.body?.data?.id;
+
+  return id ? String(id) : null;
+}
+
+function obtenerInitPointMercadoPago(preferenceResponse) {
+  const usarSandbox = MP_SANDBOX || MP_ACCESS_TOKEN.startsWith('TEST-');
+
+  if (usarSandbox && preferenceResponse.sandbox_init_point) {
+    return preferenceResponse.sandbox_init_point;
+  }
+
+  return preferenceResponse.init_point || preferenceResponse.sandbox_init_point;
+}
+
+function esUrlLocal(url) {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '0.0.0.0';
+  } catch {
+    return true;
+  }
+}
+
+function esperar(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function obtenerUrlNgrokActiva() {
+  const respuesta = await fetch('http://127.0.0.1:4040/api/tunnels');
+  if (!respuesta.ok) return null;
+
+  const datos = await respuesta.json();
+  const tunel = (datos.tunnels || []).find((item) => item.public_url?.startsWith('https://'));
+  return tunel?.public_url?.replace(/\/$/, '') || null;
+}
+
+async function iniciarTunelNgrok(puerto) {
+  if (!NGROK_AUTHTOKEN) {
+    throw new Error('Falta NGROK_AUTHTOKEN en .env');
+  }
+
+  let urlPublica = null;
+
+  try {
+    urlPublica = await obtenerUrlNgrokActiva();
+  } catch {
+    // ngrok aún no está levantado
+  }
+
+  if (!urlPublica) {
+    await new Promise((resolve, reject) => {
+      const proceso = spawn(NGROK_BIN, ['http', String(puerto), `--authtoken=${NGROK_AUTHTOKEN}`], {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true,
+      });
+
+      proceso.once('error', reject);
+      proceso.unref();
+      proceso.once('spawn', resolve);
+    });
+
+    for (let intento = 0; intento < 40; intento += 1) {
+      await esperar(500);
+      try {
+        urlPublica = await obtenerUrlNgrokActiva();
+        if (urlPublica) break;
+      } catch {
+        // seguir esperando
+      }
+    }
+  }
+
+  if (!urlPublica) {
+    throw new Error('No se pudo obtener la URL pública de ngrok');
+  }
+
+  return urlPublica;
 }
 
 async function resolverCategoriaProducto(categoriaRaw) {
@@ -319,6 +1018,83 @@ function parsearTallesDesdeBody(talles) {
   return talles;
 }
 
+function obtenerClaveFechaLocal(fecha = new Date()) {
+  return fecha.toLocaleDateString('en-CA', { timeZone: ZONA_HORARIA_TIENDA });
+}
+
+function construirVentasUltimos7Dias(ventasAgregadas) {
+  const totalesPorDia = new Map(
+    ventasAgregadas.map((item) => [String(item._id), Number(item.total) || 0])
+  );
+  const resultado = [];
+  const hoy = new Date();
+
+  for (let i = 6; i >= 0; i -= 1) {
+    const fecha = new Date(hoy);
+    fecha.setDate(hoy.getDate() - i);
+    const clave = obtenerClaveFechaLocal(fecha);
+
+    resultado.push({
+      fecha: clave,
+      total: totalesPorDia.get(clave) || 0,
+    });
+  }
+
+  return resultado;
+}
+
+// ── Configuración pública ──
+
+app.get('/api/config', async (_req, res) => {
+  try {
+    const config = await obtenerConfiguracionUnica();
+    res.json(formatearConfiguracion(config));
+  } catch (error) {
+    console.error('Error al obtener configuración:', error);
+    res.status(500).json({ error: 'Error interno del servidor.' });
+  }
+});
+
+app.put('/api/config', verificarJWT, esAdmin, async (req, res) => {
+  try {
+    const nombreTienda = String(req.body?.nombreTienda || '').trim();
+    const whatsappNumero = String(req.body?.whatsappNumero || '').replace(/^\+/, '').trim();
+    const cloudinaryCloudName = String(req.body?.cloudinaryCloudName || '').trim();
+    const cloudinaryUploadPreset = String(req.body?.cloudinaryUploadPreset || '').trim();
+    const afipLink = String(req.body?.afipLink || '').trim();
+
+    if (!nombreTienda) {
+      return res.status(400).json({ error: 'El nombre de la tienda es obligatorio.' });
+    }
+
+    if (!whatsappNumero) {
+      return res.status(400).json({ error: 'El número de WhatsApp es obligatorio.' });
+    }
+
+    let config = await Configuracion.findOne();
+
+    if (!config) {
+      config = new Configuracion();
+    }
+
+    config.nombreTienda = nombreTienda;
+    config.whatsappNumero = whatsappNumero;
+    config.cloudinaryCloudName = cloudinaryCloudName;
+    config.cloudinaryUploadPreset = cloudinaryUploadPreset;
+    config.afipLink = afipLink;
+    await config.save();
+
+    res.json({
+      ok: true,
+      mensaje: 'Configuración actualizada correctamente.',
+      ...formatearConfiguracion(config),
+    });
+  } catch (error) {
+    console.error('Error al actualizar configuración:', error);
+    res.status(500).json({ error: 'Error interno del servidor.' });
+  }
+});
+
 // ── Secciones ──
 
 app.get('/api/secciones', async (_req, res) => {
@@ -336,9 +1112,10 @@ app.get('/api/secciones', async (_req, res) => {
   }
 });
 
-app.post('/api/secciones', async (req, res) => {
+app.post('/api/secciones', verificarAdminJWT, async (req, res) => {
   try {
     const nombreLimpio = String(req.body?.nombre || '').trim();
+    const escudo = String(req.body?.escudo || '').trim();
 
     if (!nombreLimpio) {
       return res.status(400).json({ error: 'El nombre de la sección es obligatorio.' });
@@ -352,7 +1129,7 @@ app.post('/api/secciones', async (req, res) => {
       return res.status(400).json({ error: 'Ya existe una sección con ese nombre.' });
     }
 
-    const nuevaSeccion = await new Seccion({ nombre: nombreLimpio }).save();
+    const nuevaSeccion = await new Seccion({ nombre: nombreLimpio, escudo }).save();
     res.status(201).json(formatearSeccion(nuevaSeccion));
   } catch (error) {
     console.error('Error al crear sección:', error);
@@ -360,7 +1137,83 @@ app.post('/api/secciones', async (req, res) => {
   }
 });
 
-app.delete('/api/secciones/:id', async (req, res) => {
+app.put('/api/secciones/:id', verificarAdminJWT, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const nombreLimpio = String(req.body?.nombre || '').trim();
+    const escudoEnviado = req.body?.escudo;
+    const escudo =
+      escudoEnviado === undefined ? undefined : String(escudoEnviado || '').trim();
+
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({ error: 'ID de sección inválido.' });
+    }
+
+    if (!nombreLimpio) {
+      return res.status(400).json({ error: 'El nombre de la sección es obligatorio.' });
+    }
+
+    const seccion = await Seccion.findOne({ id });
+
+    if (!seccion) {
+      return res.status(404).json({ error: 'Sección no encontrada.' });
+    }
+
+    const nombreAnterior = seccion.nombre;
+    const actualizacion = { nombre: nombreLimpio };
+
+    if (escudo !== undefined) {
+      actualizacion.escudo = escudo;
+    }
+
+    if (nombreAnterior.toLowerCase() === nombreLimpio.toLowerCase()) {
+      if (nombreAnterior !== nombreLimpio || escudo !== undefined) {
+        seccion.nombre = nombreLimpio;
+        if (escudo !== undefined) seccion.escudo = escudo;
+        await seccion.save();
+        if (nombreAnterior !== nombreLimpio) {
+          await Producto.updateMany(
+            { categoria: nombreAnterior },
+            { $set: { categoria: nombreLimpio } }
+          );
+        }
+      }
+
+      return res.json(formatearSeccion(seccion));
+    }
+
+    const existe = await Seccion.findOne({
+      id: { $ne: id },
+      nombre: { $regex: new RegExp(`^${nombreLimpio.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+    });
+
+    if (existe) {
+      return res.status(400).json({ error: 'Ya existe una sección con ese nombre.' });
+    }
+
+    const actualizada = await Seccion.findOneAndUpdate(
+      { id },
+      actualizacion,
+      { new: true, runValidators: true }
+    );
+
+    await Producto.updateMany(
+      { categoria: nombreAnterior },
+      { $set: { categoria: nombreLimpio } }
+    );
+
+    res.json(formatearSeccion(actualizada));
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(400).json({ error: 'Ya existe una sección con ese nombre.' });
+    }
+
+    console.error('Error al actualizar sección:', error);
+    res.status(500).json({ error: 'Error interno del servidor.' });
+  }
+});
+
+app.delete('/api/secciones/:id', verificarAdminJWT, async (req, res) => {
   try {
     const eliminada = await Seccion.findOneAndDelete({ id: Number(req.params.id) });
 
@@ -377,12 +1230,25 @@ app.delete('/api/secciones/:id', async (req, res) => {
 
 // ── Productos ──
 
-app.get('/api/productos', async (_req, res) => {
+app.get('/api/productos', async (req, res) => {
   try {
-    let productos = await Producto.find();
+    const incluirInactivos = req.query.todos === 'true';
+    const filtro = incluirInactivos ? {} : { activo: { $ne: false } };
 
-    if (productos.length === 0) {
-      productos = await Producto.insertMany(PRODUCTOS_BASE);
+    let productos = await Producto.find(filtro);
+
+    if (productos.length === 0 && incluirInactivos) {
+      const total = await Producto.countDocuments();
+      if (total === 0) {
+        productos = await Producto.insertMany(PRODUCTOS_BASE);
+      }
+    } else if (productos.length === 0 && !incluirInactivos) {
+      const total = await Producto.countDocuments();
+      if (total === 0) {
+        productos = await Producto.insertMany(PRODUCTOS_BASE);
+      } else {
+        productos = await Producto.find(filtro);
+      }
     }
 
     res.json(productos.map(formatearProducto));
@@ -392,23 +1258,175 @@ app.get('/api/productos', async (_req, res) => {
   }
 });
 
-app.post('/api/productos', (req, res, next) => {
-  upload.single('imagen')(req, res, (error) => {
-    if (error) {
-      console.error('Error detallado:', error);
-      return res.status(400).json({ error: 'No se pudo procesar la imagen del producto.' });
+app.get('/api/productos/buscar', async (req, res) => {
+  try {
+    const consulta = String(req.query.q || '').trim();
+
+    if (consulta.length < 2) {
+      return res.json([]);
     }
-    next();
-  });
-}, async (req, res) => {
+
+    const regex = new RegExp(consulta.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    const productos = await Producto.find({
+      activo: { $ne: false },
+      $or: [{ nombre: regex }, { descripcion: regex }, { liga: regex }],
+    })
+      .limit(5)
+      .select('id nombre precio precioOferta imagenFrente imagenEspalda img');
+
+    res.json(
+      productos.map((producto) => {
+        const { imagenFrente } = obtenerImagenesDesdeDocumento(
+          producto.toObject ? producto.toObject() : producto
+        );
+
+        return {
+          id: producto.id,
+          nombre: producto.nombre,
+          precio: producto.precio,
+          precioOferta: normalizarPrecioOferta(producto.precioOferta, producto.precio),
+          imagenFrente,
+        };
+      })
+    );
+  } catch (error) {
+    console.error('Error en búsqueda predictiva de productos:', error);
+    res.status(500).json({ error: 'Error interno del servidor.' });
+  }
+});
+
+app.put('/api/productos/actualizar-precios-masivo', verificarAdminJWT, async (req, res) => {
+  try {
+    const porcentaje = Number(req.body?.porcentaje);
+    const categoriaRaw = req.body?.categoria;
+
+    if (!Number.isFinite(porcentaje) || porcentaje === 0) {
+      return res.status(400).json({ error: 'El porcentaje debe ser un número distinto de cero.' });
+    }
+
+    const factor = 1 + porcentaje / 100;
+    const filtro = {};
+
+    if (categoriaRaw !== undefined && categoriaRaw !== null && String(categoriaRaw).trim() !== '') {
+      const categoriaNombre = await resolverCategoriaProducto(categoriaRaw);
+      if (!categoriaNombre) {
+        return res.status(400).json({ error: 'La categoría indicada no es válida.' });
+      }
+      filtro.categoria = categoriaNombre;
+    }
+
+    const productos = await Producto.find(filtro);
+
+    if (!productos.length) {
+      return res.status(404).json({ error: 'No hay productos para actualizar con los criterios indicados.' });
+    }
+
+    await Promise.all(
+      productos.map(async (producto) => {
+        const precioBase = Number(producto.precio);
+        const nuevoPrecio = Math.max(1, Math.round(precioBase * factor));
+        const ofertaActual = Number(producto.precioOferta);
+
+        producto.precio = nuevoPrecio;
+
+        if (Number.isFinite(ofertaActual) && ofertaActual > 0) {
+          producto.precioOferta = normalizarPrecioOferta(
+            Math.max(1, Math.round(ofertaActual * factor)),
+            nuevoPrecio
+          );
+        } else {
+          producto.precioOferta = null;
+        }
+
+        return producto.save();
+      })
+    );
+
+    const productosActualizados = await Producto.find(
+      { id: { $in: productos.map((producto) => producto.id) } }
+    );
+
+    res.json({
+      ok: true,
+      actualizados: productosActualizados.length,
+      porcentaje,
+      productos: productosActualizados.map(formatearProducto),
+    });
+  } catch (error) {
+    console.error('Error en actualización masiva de precios:', error);
+    res.status(500).json({ error: 'Error interno del servidor.' });
+  }
+});
+
+app.put('/api/productos/quitar-ofertas-masivo', verificarAdminJWT, async (req, res) => {
+  try {
+    const categoriaRaw = req.body?.categoria;
+    const filtro = { precioOferta: { $ne: null } };
+
+    if (categoriaRaw !== undefined && categoriaRaw !== null && String(categoriaRaw).trim() !== '') {
+      const categoriaNombre = await resolverCategoriaProducto(categoriaRaw);
+      if (!categoriaNombre) {
+        return res.status(400).json({ error: 'La categoría indicada no es válida.' });
+      }
+      filtro.categoria = categoriaNombre;
+    }
+
+    const productos = await Producto.find(filtro);
+
+    if (!productos.length) {
+      return res.status(404).json({ error: 'No hay productos con descuento de oferta en los criterios indicados.' });
+    }
+
+    await Producto.updateMany(
+      { id: { $in: productos.map((producto) => producto.id) } },
+      { $set: { precioOferta: null } }
+    );
+
+    const productosActualizados = await Producto.find(
+      { id: { $in: productos.map((producto) => producto.id) } }
+    );
+
+    res.json({
+      ok: true,
+      actualizados: productosActualizados.length,
+      productos: productosActualizados.map(formatearProducto),
+    });
+  } catch (error) {
+    console.error('Error al quitar ofertas masivamente:', error);
+    res.status(500).json({ error: 'Error interno del servidor.' });
+  }
+});
+
+app.patch('/api/productos/:id/activo', verificarAdminJWT, async (req, res) => {
+  try {
+    const activo = req.body?.activo;
+
+    if (typeof activo !== 'boolean') {
+      return res.status(400).json({ error: 'El campo activo debe ser true o false.' });
+    }
+
+    const actualizado = await buscarProductoParaActualizar(req.params.id, { activo });
+
+    if (!actualizado) {
+      return res.status(404).json({ error: 'Producto no encontrado.' });
+    }
+
+    res.json(formatearProducto(actualizado));
+  } catch (error) {
+    console.error('Error al cambiar estado activo del producto:', error);
+    res.status(500).json({ error: 'Error interno del servidor.' });
+  }
+});
+
+app.post('/api/productos', verificarAdminJWT, async (req, res) => {
   try {
     const stock = parseInt(req.body.stock, 10) || 0;
     const talles = parsearTallesDesdeBody(req.body.talles);
     const { nombre, precio, precioOferta, categoria, genero, descripcion } = req.body;
-    const imagen = resolverImagenProducto(req);
+    const { imagenFrente, imagenEspalda } = resolverImagenesProducto(req.body);
     const categoriaNombre = await resolverCategoriaProducto(categoria);
 
-    if (!nombre || !categoriaNombre || !imagen || !precio || Number(precio) <= 0) {
+    if (!nombre || !categoriaNombre || !imagenFrente || !precio || Number(precio) <= 0) {
       return res.status(400).json({ error: 'Datos de producto incompletos o inválidos.' });
     }
 
@@ -420,7 +1438,8 @@ app.post('/api/productos', (req, res, next) => {
       precioOferta: normalizarPrecioOferta(precioOferta, precioNumerico),
       categoria: categoriaNombre,
       genero: normalizarGenero(genero),
-      img: imagen,
+      imagenFrente,
+      imagenEspalda,
       stock: normalizarStock(stock ?? 10),
       talles: normalizarTalles(talles),
       descripcion: String(descripcion || '').trim(),
@@ -433,23 +1452,16 @@ app.post('/api/productos', (req, res, next) => {
   }
 });
 
-app.put('/api/productos/:id', (req, res, next) => {
-  upload.single('imagen')(req, res, (error) => {
-    if (error) {
-      console.error('Error detallado:', error);
-      return res.status(400).json({ error: 'No se pudo procesar la imagen del producto.' });
-    }
-    next();
-  });
-}, async (req, res) => {
+app.put('/api/productos/:id', verificarAdminJWT, async (req, res) => {
   try {
     const stock = parseInt(req.body.stock, 10) || 0;
     const talles = parsearTallesDesdeBody(req.body.talles);
     const { nombre, precio, precioOferta, categoria, genero, descripcion } = req.body;
-    const imagen = resolverImagenProducto(req);
+    const productoExistente = await buscarProductoPorId(req.params.id);
+    const { imagenFrente, imagenEspalda } = resolverImagenesProducto(req.body, productoExistente);
     const categoriaNombre = await resolverCategoriaProducto(categoria);
 
-    if (!nombre || !categoriaNombre || !imagen || !precio || Number(precio) <= 0) {
+    if (!nombre || !categoriaNombre || !imagenFrente || !precio || Number(precio) <= 0) {
       return res.status(400).json({ error: 'Datos de producto incompletos o inválidos.' });
     }
 
@@ -461,7 +1473,8 @@ app.put('/api/productos/:id', (req, res, next) => {
       precioOferta: normalizarPrecioOferta(precioOferta, precioNumerico),
       categoria: categoriaNombre,
       genero: normalizarGenero(genero),
-      img: imagen,
+      imagenFrente,
+      imagenEspalda,
       stock: normalizarStock(stock),
       talles: normalizarTalles(talles),
       descripcion: String(descripcion || '').trim(),
@@ -478,7 +1491,7 @@ app.put('/api/productos/:id', (req, res, next) => {
   }
 });
 
-app.delete('/api/productos/:id', async (req, res) => {
+app.delete('/api/productos/:id', verificarAdminJWT, async (req, res) => {
   try {
     const eliminado = await buscarProductoParaEliminar(req.params.id);
 
@@ -495,7 +1508,7 @@ app.delete('/api/productos/:id', async (req, res) => {
 
 // ── Pedidos ──
 
-app.get('/api/pedidos', async (_req, res) => {
+app.get('/api/pedidos', verificarAdminJWT, async (_req, res) => {
   try {
     const pedidos = await Pedido.find().sort({ fecha: -1 });
     res.json(pedidos.map(formatearPedido));
@@ -505,59 +1518,63 @@ app.get('/api/pedidos', async (_req, res) => {
   }
 });
 
-app.post('/api/pedidos', async (req, res) => {
+app.get('/api/pedidos/mios', verificarClienteJWT, async (req, res) => {
   try {
-    const { cliente, productos: items, total, metodoPago } = req.body;
+    const email = normalizarEmail(req.usuario.email);
 
-    if (!cliente?.nombre || !cliente?.telefono || !items?.length) {
+    const usuario = await obtenerUsuarioVerificado(email);
+    if (!usuario) {
+      return res.status(403).json({ error: 'Cuenta no válida o no verificada.' });
+    }
+
+    const pedidos = await Pedido.find({ emailUsuario: email }).sort({ fecha: -1 });
+    res.json(pedidos.map(formatearPedido));
+  } catch (error) {
+    console.error('Error al obtener pedidos del usuario:', error);
+    res.status(500).json({ error: 'Error interno del servidor.' });
+  }
+});
+
+app.post('/api/pedidos', verificarClienteJWT, async (req, res) => {
+  try {
+    const { cliente, items, metodoPago } = req.body;
+    const email = normalizarEmail(req.usuario.email);
+
+    const usuario = await obtenerUsuarioVerificado(email);
+    if (!usuario) {
+      return res.status(403).json({ error: 'Tu cuenta no está verificada. Iniciá sesión para comprar.' });
+    }
+
+    if (!cliente?.nombre || !cliente?.telefono) {
       return res.status(400).json({ error: 'Datos del pedido incompletos.' });
     }
 
-    const cantidadesPorProducto = items.reduce((acumulado, item) => {
-      const productoId = Number(item.id);
-      if (!Number.isFinite(productoId)) return acumulado;
-      acumulado[productoId] = (acumulado[productoId] || 0) + Number(item.cantidad || 0);
-      return acumulado;
-    }, {});
-
-    for (const [productoId, cantidad] of Object.entries(cantidadesPorProducto)) {
-      const producto = await Producto.findOne({ id: Number(productoId) });
-
-      if (!producto) {
-        return res.status(400).json({ error: 'Uno de los productos del pedido ya no existe.' });
-      }
-
-      if (producto.stock < cantidad) {
-        return res.status(400).json({
-          error: `Stock insuficiente para «${producto.nombre}». Disponible: ${producto.stock}.`,
-        });
-      }
+    const resultadoItems = await validarItemsYReservarStock(items);
+    if (resultadoItems.error) {
+      return res.status(resultadoItems.status).json({ error: resultadoItems.error });
     }
 
-    const nuevoPedido = await new Pedido({
-      id: generarIdPedido(),
-      cliente: String(cliente.nombre).trim(),
-      telefono: String(cliente.telefono).trim(),
-      direccion: String(cliente.direccion || '').trim(),
-      pago: metodoPago || 'Efectivo',
-      productos: items.map((item) => ({
-        producto: item,
-        cantidad: item.cantidad,
-        precio: item.precio,
-      })),
-      total: Number(total) || 0,
-      estado: 'Pendiente',
-      fecha: new Date(),
-    }).save();
+    const { productosPedido, totalPedido, decrementosRealizados } = resultadoItems;
 
-    await Promise.all(
-      Object.entries(cantidadesPorProducto).map(([productoId, cantidad]) =>
-        Producto.findOneAndUpdate(
-          { id: Number(productoId) },
-          { $inc: { stock: -cantidad } }
-        )
-      )
-    );
+    let nuevoPedido;
+
+    try {
+      nuevoPedido = await new Pedido({
+        id: generarIdPedido(),
+        emailUsuario: email,
+        cliente: String(cliente.nombre).trim(),
+        telefono: String(cliente.telefono).trim(),
+        direccion: String(cliente.direccion || '').trim(),
+        pago: metodoPago || 'Efectivo',
+        productos: productosPedido,
+        total: totalPedido,
+        estado: ESTADO_PEDIDO_INICIAL,
+        fecha: new Date(),
+      }).save();
+    } catch (saveError) {
+      await revertirDecrementosStock(decrementosRealizados);
+      throw saveError;
+    }
 
     res.status(201).json(formatearPedido(nuevoPedido));
   } catch (error) {
@@ -566,7 +1583,255 @@ app.post('/api/pedidos', async (req, res) => {
   }
 });
 
-app.post('/api/pedidos/cambiar-estado', async (req, res) => {
+app.post('/api/pagar', verificarClienteJWT, async (req, res) => {
+  try {
+    if (!MP_ACCESS_TOKEN) {
+      return res.status(503).json({ error: 'Mercado Pago no está configurado. Contactá a la tienda.' });
+    }
+
+    const { cliente, items } = req.body;
+    const email = normalizarEmail(req.usuario.email);
+
+    const usuario = await obtenerUsuarioVerificado(email);
+    if (!usuario) {
+      return res.status(403).json({ error: 'Tu cuenta no está verificada. Iniciá sesión para comprar.' });
+    }
+
+    if (!cliente?.nombre || !cliente?.telefono) {
+      return res.status(400).json({ error: 'Datos del pedido incompletos.' });
+    }
+
+    const resultadoItems = await validarItemsYReservarStock(items);
+    if (resultadoItems.error) {
+      return res.status(resultadoItems.status).json({ error: resultadoItems.error });
+    }
+
+    const { productosPedido, totalPedido, decrementosRealizados } = resultadoItems;
+    const pedidoId = generarIdPedido();
+    const nombreCliente = String(cliente.nombre).trim();
+    const partesNombre = nombreCliente.split(/\s+/).filter(Boolean);
+    const payerName = partesNombre[0] || nombreCliente;
+    const payerSurname = partesNombre.slice(1).join(' ') || 'Cliente';
+
+    const itemsMercadoPago = productosPedido.map((item) => ({
+      title: item.producto.talle
+        ? `${item.producto.nombre} — Talle ${item.producto.talle}`
+        : item.producto.nombre,
+      quantity: item.cantidad,
+      unit_price: item.precio,
+      currency_id: 'ARS',
+    }));
+
+    const preferenceBody = {
+      items: itemsMercadoPago,
+      payer: {
+        email,
+        name: payerName,
+        surname: payerSurname,
+      },
+      back_urls: {
+        success: `${APP_BASE_URL}/pago-exitoso.html`,
+        failure: `${APP_BASE_URL}/pago-fallido.html`,
+        pending: `${APP_BASE_URL}/pago-pendiente.html`,
+      },
+      external_reference: pedidoId,
+    };
+
+    // auto_return en sandbox/ngrok suele provocar bucles de redirección (ERR_TOO_MANY_REDIRECTS).
+    // Solo habilitarlo en producción con dominio propio estable.
+    const puedeUsarAutoReturn = !esUrlLocal(APP_BASE_URL) && !MP_SANDBOX;
+    if (puedeUsarAutoReturn) {
+      preferenceBody.auto_return = 'approved';
+    }
+
+    // En local, Mercado Pago no puede alcanzar localhost: exponé el backend con ngrok
+    // (ej. ngrok http 3000) y definí WEBHOOK_BASE_URL en .env.
+    if (!esUrlLocal(WEBHOOK_BASE_URL)) {
+      preferenceBody.notification_url = `${WEBHOOK_BASE_URL}/api/webhooks/mercadopago`;
+    }
+
+    let preferenceResponse;
+
+    try {
+      preferenceResponse = await preferenceClient.create({ body: preferenceBody });
+    } catch (mpError) {
+      await revertirDecrementosStock(decrementosRealizados);
+      console.error('Error al crear preferencia de Mercado Pago:', mpError);
+      return res.status(502).json({ error: 'No se pudo iniciar el pago con Mercado Pago. Intentá nuevamente.' });
+    }
+
+    const initPoint = obtenerInitPointMercadoPago(preferenceResponse);
+
+    if (!initPoint || !preferenceResponse.id) {
+      await revertirDecrementosStock(decrementosRealizados);
+      return res.status(502).json({ error: 'Mercado Pago no devolvió una URL de pago válida.' });
+    }
+
+    try {
+      await new Pedido({
+        id: pedidoId,
+        emailUsuario: email,
+        cliente: nombreCliente,
+        telefono: String(cliente.telefono).trim(),
+        direccion: String(cliente.direccion || '').trim(),
+        pago: 'Mercado Pago',
+        productos: productosPedido,
+        total: totalPedido,
+        estado: ESTADO_PEDIDO_MP_PENDIENTE,
+        mercadopagoPreferenceId: String(preferenceResponse.id),
+        expiraEn: new Date(Date.now() + 30 * 60 * 1000),
+        fecha: new Date(),
+      }).save();
+    } catch (saveError) {
+      await revertirDecrementosStock(decrementosRealizados);
+      throw saveError;
+    }
+
+    res.status(201).json({
+      ok: true,
+      pedidoId,
+      preferenceId: preferenceResponse.id,
+      init_point: initPoint,
+    });
+  } catch (error) {
+    console.error('Error al iniciar pago con Mercado Pago:', error);
+    res.status(500).json({ error: 'Error interno del servidor.' });
+  }
+});
+
+app.post('/api/webhooks/mercadopago', manejarWebhookMercadoPago);
+app.get('/api/webhooks/mercadopago', manejarWebhookMercadoPago);
+
+async function manejarWebhookMercadoPago(req, res) {
+  try {
+    const paymentId = obtenerPaymentIdDesdeNotificacion(req);
+
+    if (!paymentId) {
+      return res.sendStatus(200);
+    }
+
+    if (!MP_ACCESS_TOKEN) {
+      console.warn('Webhook de Mercado Pago recibido sin MP_ACCESS_TOKEN configurado.');
+      return res.sendStatus(200);
+    }
+
+    let paymentData;
+
+    try {
+      paymentData = await paymentClient.get({ id: paymentId });
+    } catch (mpError) {
+      console.error('Error al consultar pago en Mercado Pago:', mpError);
+      return res.sendStatus(200);
+    }
+
+    const estadoPago = String(paymentData?.status || '').toLowerCase();
+    const preferenceId = paymentData?.preference_id
+      ? String(paymentData.preference_id)
+      : null;
+    const externalReference = paymentData?.external_reference
+      ? String(paymentData.external_reference)
+      : null;
+
+    let pedido = null;
+
+    if (preferenceId) {
+      pedido = await Pedido.findOne({ mercadopagoPreferenceId: preferenceId });
+    }
+
+    if (!pedido && externalReference) {
+      pedido = await Pedido.findOne({ id: externalReference });
+    }
+
+    if (!pedido) {
+      console.warn(`Webhook MP: pedido no encontrado (payment ${paymentId}).`);
+      return res.sendStatus(200);
+    }
+
+    if (pedido.estado === 'Aprobado' || pedido.estado === 'cancelado') {
+      return res.sendStatus(200);
+    }
+
+    if (estadoPago === 'approved') {
+      const montoPagado = Number(paymentData.transaction_amount);
+      const montoPedido = Number(pedido.total);
+
+      if (!Number.isFinite(montoPagado) || Math.abs(montoPagado - montoPedido) > 0.01) {
+        console.error(
+          `[FRAUDE] Monto de Mercado Pago (${montoPagado}) difiere del pedido ${pedido.id} (${montoPedido}). Payment ID: ${paymentId}`
+        );
+        return res.sendStatus(200);
+      }
+
+      pedido.estado = 'Aprobado';
+      pedido.mercadopagoPaymentId = paymentId;
+      await pedido.save();
+      return res.sendStatus(200);
+    }
+
+    if (['rejected', 'cancelled', 'refunded', 'charged_back'].includes(estadoPago)) {
+      await restaurarStockDesdePedido(pedido);
+      pedido.estado = 'cancelado';
+      pedido.mercadopagoPaymentId = paymentId;
+      await pedido.save();
+      return res.sendStatus(200);
+    }
+
+    return res.sendStatus(200);
+  } catch (error) {
+    console.error('Error en webhook de Mercado Pago:', error);
+    return res.sendStatus(200);
+  }
+}
+
+// ── Estadísticas del administrador ──
+
+app.get('/api/admin/stats', verificarAdminJWT, async (_req, res) => {
+  try {
+    const inicioSemana = new Date();
+    inicioSemana.setHours(0, 0, 0, 0);
+    inicioSemana.setDate(inicioSemana.getDate() - 6);
+
+    const [facturacionHistorica, pedidosActivos, ventasPorDia] = await Promise.all([
+      Pedido.aggregate([
+        { $match: { estado: { $in: ESTADOS_VENTA_VALIDA } } },
+        { $group: { _id: null, total: { $sum: '$total' } } },
+      ]),
+      Pedido.countDocuments({ estado: { $in: ESTADOS_PEDIDO_ACTIVO } }),
+      Pedido.aggregate([
+        {
+          $match: {
+            fecha: { $gte: inicioSemana },
+            estado: { $in: ESTADOS_VENTA_VALIDA },
+          },
+        },
+        {
+          $group: {
+            _id: {
+              $dateToString: {
+                format: '%Y-%m-%d',
+                date: '$fecha',
+                timezone: ZONA_HORARIA_TIENDA,
+              },
+            },
+            total: { $sum: '$total' },
+          },
+        },
+        { $sort: { _id: 1 } },
+      ]),
+    ]);
+
+    res.json({
+      totalFacturado: facturacionHistorica[0]?.total || 0,
+      pedidosActivos,
+      ventasUltimos7Dias: construirVentasUltimos7Dias(ventasPorDia),
+    });
+  } catch (error) {
+    console.error('Error al obtener estadísticas del administrador:', error);
+    res.status(500).json({ error: 'Error interno del servidor.' });
+  }
+});
+
+app.post('/api/pedidos/cambiar-estado', verificarAdminJWT, async (req, res) => {
   try {
     const { id, nuevoEstado } = req.body;
 
@@ -574,7 +1839,16 @@ app.post('/api/pedidos/cambiar-estado', async (req, res) => {
       return res.status(400).json({ error: 'ID y nuevo estado son requeridos.' });
     }
 
-    const pedido = await buscarPedidoParaActualizar(id, { estado: nuevoEstado });
+    const estadoEntrada = String(nuevoEstado).trim();
+    const estadoNormalizado = normalizarEstadoPedido(estadoEntrada);
+
+    if (!ESTADOS_PEDIDO.includes(estadoEntrada) && !ESTADOS_PEDIDO_LEGACY[estadoEntrada]) {
+      return res.status(400).json({
+        error: `Estado inválido. Usá uno de: ${ESTADOS_PEDIDO.join(', ')}.`,
+      });
+    }
+
+    const pedido = await buscarPedidoParaActualizar(id, { estado: estadoNormalizado });
 
     if (!pedido) {
       return res.status(404).json({ error: 'Pedido no encontrado.' });
@@ -584,6 +1858,61 @@ app.post('/api/pedidos/cambiar-estado', async (req, res) => {
   } catch (error) {
     console.error('Error al cambiar estado del pedido:', error);
     res.status(500).json({ error: 'Error interno del servidor.' });
+  }
+});
+
+// ── Contacto ──
+
+app.post('/api/contacto', async (req, res) => {
+  try {
+    const nombre = String(req.body?.nombre || '').trim();
+    const email = normalizarEmail(req.body?.email);
+    const mensaje = String(req.body?.mensaje || '').trim();
+
+    if (!nombre || !email || !mensaje) {
+      return res.status(400).json({ error: 'Nombre, email y mensaje son obligatorios.' });
+    }
+
+    const adminEmail = normalizarEmail(process.env.ADMIN_INICIAL_EMAIL);
+
+    if (!adminEmail) {
+      return res.status(503).json({ error: 'El formulario de contacto no está disponible en este momento.' });
+    }
+
+    const asunto = '📩 Nuevo mensaje de contacto - Jerseys Store';
+    const cuerpoTexto = [
+      'Nuevo mensaje de contacto desde la tienda.',
+      '',
+      `Nombre: ${nombre}`,
+      `Correo: ${email}`,
+      '',
+      'Mensaje:',
+      mensaje,
+    ].join('\n');
+
+    const cuerpoHtml = `
+      <div style="font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;line-height:1.6;">
+        <h2 style="margin:0 0 16px;color:#111827;">Nuevo mensaje de contacto</h2>
+        <p style="margin:0 0 8px;"><strong>Nombre:</strong> ${nombre}</p>
+        <p style="margin:0 0 8px;"><strong>Correo:</strong> <a href="mailto:${email}">${email}</a></p>
+        <p style="margin:16px 0 8px;"><strong>Mensaje:</strong></p>
+        <p style="margin:0;padding:12px 16px;background:#f3f4f6;border-radius:8px;white-space:pre-wrap;">${mensaje.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>
+      </div>
+    `;
+
+    await mailTransport.sendMail({
+      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      to: adminEmail,
+      replyTo: email,
+      subject: asunto,
+      text: cuerpoTexto,
+      html: cuerpoHtml,
+    });
+
+    res.json({ ok: true, mensaje: 'Mensaje enviado correctamente.' });
+  } catch (error) {
+    console.error('Error al enviar mensaje de contacto:', error);
+    res.status(503).json({ error: 'No se pudo enviar el mensaje. Intentá nuevamente más tarde.' });
   }
 });
 
@@ -605,18 +1934,30 @@ app.post('/api/auth/registro', async (req, res) => {
     }
 
     const codigoVerificacion = generarCodigoVerificacion();
+    const codigoVerificacionExpira = generarExpiracionCodigo(10);
+    const passwordHasheada = await bcrypt.hash(password, 10);
 
     const nuevoUsuario = await new Usuario({
       email,
-      password,
+      password: passwordHasheada,
       rol: 'cliente',
       verificado: false,
       codigoVerificacion,
+      codigoVerificacionExpira,
     }).save();
 
+    try {
+      await enviarCodigoVerificacion(email, codigoVerificacion);
+    } catch (mailError) {
+      await Usuario.findByIdAndDelete(nuevoUsuario._id);
+      console.error('Error al enviar email de verificación:', mailError);
+      return res.status(503).json({ error: 'No se pudo enviar el código de verificación. Intentá nuevamente.' });
+    }
+
     res.status(201).json({
+      ok: true,
+      mensaje: 'Registro iniciado. Revisá tu correo para obtener el código de verificación.',
       usuario: sanitizarUsuario(nuevoUsuario),
-      codigoVerificacion,
     });
   } catch (error) {
     console.error('Error en registro:', error);
@@ -627,18 +1968,53 @@ app.post('/api/auth/registro', async (req, res) => {
 app.post('/api/auth/confirmar', async (req, res) => {
   try {
     const email = normalizarEmail(req.body.email);
+    const codigo = String(req.body.codigo || '').trim();
+
+    if (!email || !codigo) {
+      return res.status(400).json({ error: 'Email y código son requeridos.' });
+    }
+
     const usuario = await Usuario.findOne({ email });
 
     if (!usuario) {
-      return res.status(404).json({ error: 'Usuario no encontrado.' });
+      return res.status(401).json({ error: 'Código inválido o expirado.' });
+    }
+
+    if (usuario.verificado) {
+      if (usuario.rol === 'admin') {
+        const token = generarTokenAdmin(usuario);
+        return res.json({ token, usuario: sanitizarUsuario(usuario) });
+      }
+
+      const token = generarTokenCliente(usuario);
+      return res.json({ token, usuario: sanitizarUsuario(usuario) });
+    }
+
+    const codigoValido = usuario.codigoVerificacion === codigo;
+    const noExpirado = usuario.codigoVerificacionExpira && usuario.codigoVerificacionExpira > new Date();
+
+    if (!codigoValido || !noExpirado) {
+      return res.status(401).json({ error: 'Código inválido o expirado.' });
     }
 
     usuario.verificado = true;
-    usuario.rol = email === normalizarEmail(ADMIN_EMAIL) ? 'admin' : usuario.rol;
     usuario.codigoVerificacion = undefined;
+    usuario.codigoVerificacionExpira = undefined;
     await usuario.save();
 
-    res.json({ usuario: sanitizarUsuario(usuario) });
+    if (usuario.rol === 'admin') {
+      const token = generarTokenAdmin(usuario);
+      return res.json({
+        token,
+        usuario: sanitizarUsuario(usuario),
+      });
+    }
+
+    const token = generarTokenCliente(usuario);
+    return res.json({
+      token,
+      usuario: sanitizarUsuario(usuario),
+    });
   } catch (error) {
     console.error('Error al confirmar usuario:', error);
     res.status(500).json({ error: 'Error interno del servidor.' });
@@ -650,9 +2026,9 @@ app.post('/api/auth/login', async (req, res) => {
     const email = normalizarEmail(req.body.email);
     const password = String(req.body.password || '');
 
-    const usuario = await Usuario.findOne({ email, password });
+    const usuario = await Usuario.findOne({ email });
 
-    if (!usuario) {
+    if (!usuario || !(await verificarPassword(password, usuario.password))) {
       return res.status(401).json({ error: 'Credenciales incorrectas.' });
     }
 
@@ -660,9 +2036,99 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(403).json({ error: 'Cuenta no verificada. Completá el registro primero.' });
     }
 
-    res.json({ usuario: sanitizarUsuario(usuario) });
+    if (usuario.rol === 'admin') {
+      const token = generarTokenAdmin(usuario);
+      return res.json({
+        token,
+        usuario: sanitizarUsuario(usuario),
+      });
+    }
+
+    const token = generarTokenCliente(usuario);
+    res.json({ token, usuario: sanitizarUsuario(usuario) });
   } catch (error) {
     console.error('Error en login:', error);
+    res.status(500).json({ error: 'Error interno del servidor.' });
+  }
+});
+
+app.get('/api/auth/perfil', verificarClienteJWT, async (req, res) => {
+  try {
+    const usuario = await obtenerUsuarioVerificado(req.usuario.email);
+    if (!usuario) {
+      return res.status(403).json({ error: 'Cuenta no válida o no verificada.' });
+    }
+
+    res.json({ usuario: sanitizarUsuario(usuario) });
+  } catch (error) {
+    console.error('Error al obtener perfil:', error);
+    res.status(500).json({ error: 'Error interno del servidor.' });
+  }
+});
+
+app.put('/api/auth/perfil', verificarClienteJWT, async (req, res) => {
+  try {
+    const usuario = await obtenerUsuarioVerificado(req.usuario.email);
+
+    if (!usuario) {
+      return res.status(403).json({ error: 'Cuenta no válida o no verificada.' });
+    }
+
+    if (req.body.nombre !== undefined) {
+      usuario.nombre = String(req.body.nombre || '').trim().slice(0, 120);
+    }
+
+    if (req.body.telefono !== undefined) {
+      usuario.telefono = String(req.body.telefono || '').trim().slice(0, 30);
+    }
+
+    if (req.body.direccion !== undefined) {
+      usuario.direccion = String(req.body.direccion || '').trim().slice(0, 300);
+    }
+
+    if (req.body.preferencias && typeof req.body.preferencias === 'object') {
+      if (typeof req.body.preferencias.emailsPromos === 'boolean') {
+        usuario.preferencias = usuario.preferencias || {};
+        usuario.preferencias.emailsPromos = req.body.preferencias.emailsPromos;
+      }
+      if (typeof req.body.preferencias.emailsPedidos === 'boolean') {
+        usuario.preferencias = usuario.preferencias || {};
+        usuario.preferencias.emailsPedidos = req.body.preferencias.emailsPedidos;
+      }
+    }
+
+    await usuario.save();
+    res.json({ usuario: sanitizarUsuario(usuario) });
+  } catch (error) {
+    console.error('Error al actualizar perfil:', error);
+    res.status(500).json({ error: 'Error interno del servidor.' });
+  }
+});
+
+app.put('/api/auth/password', verificarClienteJWT, async (req, res) => {
+  try {
+    const passwordActual = String(req.body.passwordActual || '');
+    const passwordNueva = String(req.body.passwordNueva || '');
+
+    if (passwordNueva.length < 6) {
+      return res.status(400).json({ error: 'La nueva contraseña debe tener al menos 6 caracteres.' });
+    }
+
+    const usuario = await obtenerUsuarioCliente(req.usuario.email);
+    if (!usuario) {
+      return res.status(403).json({ error: 'Cuenta no válida o no verificada.' });
+    }
+
+    if (!(await verificarPassword(passwordActual, usuario.password))) {
+      return res.status(401).json({ error: 'La contraseña actual no es correcta.' });
+    }
+
+    usuario.password = await bcrypt.hash(passwordNueva, 10);
+    await usuario.save();
+
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Error al cambiar contraseña:', error);
     res.status(500).json({ error: 'Error interno del servidor.' });
   }
 });
@@ -670,13 +2136,42 @@ app.post('/api/auth/login', async (req, res) => {
 async function iniciarServidor() {
   try {
     await mongoose.connect(process.env.MONGO_URI);
-    console.log('Conexión a MongoDB exitosa');
+    console.log('  ✓ MongoDB conectado');
 
-    await asegurarAdminInicial();
+    await inicializarAdministrador();
+    await inicializarConfiguracion();
+    await limpiarPedidosExpirados();
 
-    app.listen(PORT, () => {
-      console.log(`Servidor Atelier corriendo en http://localhost:${PORT}`);
+    setInterval(() => {
+      limpiarPedidosExpirados().catch((error) => {
+        console.error('Error al limpiar pedidos expirados:', error);
+      });
+    }, 5 * 60 * 1000);
+
+    await new Promise((resolve) => {
+      app.listen(PORT, resolve);
     });
+
+    if (USE_NGROK) {
+      try {
+        const urlPublica = await iniciarTunelNgrok(PORT);
+        APP_BASE_URL = urlPublica;
+        WEBHOOK_BASE_URL = urlPublica;
+        console.log(`  ✓ Túnel ngrok     →  ${urlPublica}`);
+      } catch (ngrokError) {
+        console.warn(`  ⚠ ngrok no disponible: ${ngrokError.message}`);
+        console.warn('    Mercado Pago usará localhost (sin auto_return ni webhooks).');
+      }
+    }
+
+    console.log('');
+    console.log('  Jerseys Store');
+    console.log('  ─────────────────────────────────');
+    console.log(`  Servidor activo  →  http://localhost:${PORT}`);
+    if (!esUrlLocal(APP_BASE_URL)) {
+      console.log(`  Tienda pública   →  ${APP_BASE_URL}`);
+    }
+    console.log('');
   } catch (error) {
     console.error('Error al conectar con MongoDB:', error);
     process.exit(1);

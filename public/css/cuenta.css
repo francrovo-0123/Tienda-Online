@@ -1,0 +1,294 @@
+/* ── Área Mi cuenta ── */
+.cuenta-layout {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--space-lg) var(--space-md) var(--space-2xl);
+}
+
+.cuenta-content--full {
+  width: 100%;
+}
+
+.cuenta-content {
+  min-width: 0;
+}
+
+.cuenta-content:not(.cuenta-content--full) {
+  padding-left: var(--space-xl);
+}
+
+.cuenta-panel {
+  display: block;
+}
+
+.cuenta-panel[hidden] {
+  display: none !important;
+}
+
+.cuenta-panel__header {
+  margin-bottom: var(--space-lg);
+}
+
+.cuenta-panel__title {
+  margin-bottom: 0.375rem;
+  font-size: clamp(1.5rem, 2.5vw, 1.875rem);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.01em;
+  color: var(--color-accent);
+}
+
+.cuenta-panel__subtitle {
+  font-size: 0.9375rem;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.cuenta-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-md);
+  margin-bottom: var(--space-xl);
+}
+
+.cuenta-card {
+  padding: 1.125rem 1.25rem;
+  background: #ffffff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--box-shadow);
+}
+
+.cuenta-card__label {
+  display: block;
+  margin-bottom: 0.375rem;
+  font-size: 0.6875rem;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.cuenta-card__value {
+  font-size: 1.375rem;
+  font-weight: var(--font-weight-bold);
+  color: var(--color-accent);
+}
+
+.cuenta-card__hint {
+  margin-top: 0.25rem;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+.cuenta-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  max-width: 520px;
+}
+
+.cuenta-form__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.cuenta-form__label {
+  font-size: 0.75rem;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.cuenta-form__input,
+.cuenta-form__textarea {
+  padding: 0.8125rem 1rem;
+  font-size: 0.9375rem;
+  color: var(--color-text);
+  background-color: var(--color-bg-alt);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  transition:
+    border-color var(--transition-fast),
+    background-color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+.cuenta-form__textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.cuenta-form__input:focus,
+.cuenta-form__textarea:focus {
+  outline: none;
+  background-color: #ffffff;
+  border-color: var(--grass-mid);
+  box-shadow: 0 0 0 3px rgba(45, 138, 78, 0.12);
+}
+
+.cuenta-form__input:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.cuenta-form__hint {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+.cuenta-form__error {
+  font-size: 0.8125rem;
+  color: #b42318;
+}
+
+.cuenta-form__error[hidden] {
+  display: none;
+}
+
+.cuenta-form__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.cuenta-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem 1.5rem;
+  font-size: 0.8125rem;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: var(--radius-pill);
+  border: none;
+  cursor: pointer;
+  transition:
+    color var(--transition-fast),
+    background-color var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.cuenta-btn--primary {
+  color: #ffffff;
+  background-color: var(--grass-mid);
+}
+
+.cuenta-btn--primary:hover:not(:disabled) {
+  background-color: var(--grass-dark);
+}
+
+.cuenta-btn--secondary {
+  color: var(--color-text);
+  background-color: var(--color-bg-alt);
+  border: 1px solid var(--color-border);
+}
+
+.cuenta-btn--secondary:hover:not(:disabled) {
+  background-color: #ebebeb;
+}
+
+.cuenta-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.cuenta-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  max-width: 520px;
+}
+
+.cuenta-settings__group {
+  padding: 1.25rem;
+  background: #ffffff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.cuenta-settings__group-title {
+  margin-bottom: 0.25rem;
+  font-size: 1rem;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-accent);
+}
+
+.cuenta-settings__group-desc {
+  margin-bottom: var(--space-md);
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+.cuenta-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.cuenta-toggle:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.cuenta-toggle__info strong {
+  display: block;
+  font-size: 0.9375rem;
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text);
+}
+
+.cuenta-toggle__info span {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+.cuenta-toggle input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--grass-mid);
+  cursor: pointer;
+}
+
+.cuenta-login-prompt {
+  max-width: 480px;
+  margin: var(--space-2xl) auto;
+  padding: var(--space-xl);
+  text-align: center;
+  background: #ffffff;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--box-shadow);
+}
+
+.cuenta-login-prompt__title {
+  margin-bottom: 0.5rem;
+  font-size: 1.5rem;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-accent);
+}
+
+.cuenta-login-prompt__text {
+  margin-bottom: var(--space-lg);
+  font-size: 0.9375rem;
+  color: var(--color-text-muted);
+  line-height: 1.55;
+}
+
+.cuenta-pedidos .tracking-results {
+  max-width: none;
+}
+
+@media (max-width: 900px) {
+  .cuenta-layout {
+    padding-top: var(--space-md);
+  }
+}

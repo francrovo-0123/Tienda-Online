@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Jerseys Store — información sobre nosotros, envíos y contacto.">
+  <title>Jerseys Store - Información</title>
+  <link rel="stylesheet" href="css/global.css?v=3.13">
+  <link rel="stylesheet" href="css/header.css?v=5.2">
+  <link rel="stylesheet" href="css/footer.css?v=3.0">
+  <link rel="stylesheet" href="css/info.css?v=1.0">
+</head>
+<body data-page="info">
+
+  <header class="main-header main-header--simple">
+    <div class="header-inner">
+      <a href="index.html#inicio" class="logo" aria-label="Jerseys Store — Inicio">
+        <svg class="logo-shield" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 60" aria-hidden="true">
+          <defs>
+            <linearGradient id="shield-body" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#1a1a1a"/>
+              <stop offset="100%" stop-color="#0a0a0a"/>
+            </linearGradient>
+            <linearGradient id="shield-accent" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stop-color="#f5c842"/>
+              <stop offset="100%" stop-color="#d4a017"/>
+            </linearGradient>
+          </defs>
+          <path d="M26 2 L48 10 V28 C48 42 38 54 26 58 C14 54 4 42 4 28 V10 Z" fill="url(#shield-body)" stroke="url(#shield-accent)" stroke-width="2"/>
+          <path d="M26 8 L42 14 V27 C42 38 35 47 26 51 C17 47 10 38 10 27 V14 Z" fill="none" stroke="rgba(245,200,66,0.35)" stroke-width="1"/>
+          <text x="26" y="34" text-anchor="middle" fill="url(#shield-accent)" font-family="Plus Jakarta Sans, sans-serif" font-size="11" font-weight="700" letter-spacing="1">JS</text>
+        </svg>
+        <span class="logo-text">
+          <span class="logo-text__brand">Jerseys</span>
+          <span class="logo-text__store">Store</span>
+        </span>
+      </a>
+
+      <div class="header-search" aria-label="Buscar productos">
+        <div class="search-bar">
+          <input
+            type="search"
+            id="input-busqueda"
+            class="search-bar__input"
+            placeholder="Buscar productos, marcas y más..."
+            autocomplete="off"
+            aria-label="Buscar en la tienda"
+          >
+          <svg class="search-bar__icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/>
+          </svg>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <div class="header-cuenta-menu" id="header-cuenta-menu">
+          <button type="button" class="header-ingresa-btn" id="admin-access-btn" aria-label="Iniciar sesión" aria-haspopup="true" aria-expanded="false" aria-controls="header-cuenta-dropdown">
+            <svg class="header-ingresa-btn__icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"/>
+            </svg>
+            <span class="header-ingresa-btn__text">Ingresá</span>
+            <svg class="header-cuenta-menu__chevron hidden" id="header-cuenta-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <div class="header-cuenta-dropdown hidden" id="header-cuenta-dropdown" role="menu" aria-label="Menú de cuenta">
+            <p class="header-cuenta-dropdown__email" id="header-cuenta-email"></p>
+            <button type="button" class="header-cuenta-dropdown__item" data-cuenta-panel="resumen" role="menuitem">Resumen</button>
+            <button type="button" class="header-cuenta-dropdown__item" data-cuenta-panel="perfil" role="menuitem">Mi perfil</button>
+            <button type="button" class="header-cuenta-dropdown__item" data-cuenta-panel="pedidos" role="menuitem">Mis pedidos</button>
+            <button type="button" class="header-cuenta-dropdown__item" data-cuenta-panel="configuracion" role="menuitem">Configuración</button>
+            <div class="header-cuenta-dropdown__divider" role="separator"></div>
+            <button type="button" class="header-cuenta-dropdown__item header-cuenta-dropdown__item--logout" id="header-cuenta-logout" role="menuitem">Cerrar sesión</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="info-layout">
+      <aside class="info-sidebar" aria-label="Menú de información">
+        <p class="info-sidebar__title">Información</p>
+
+        <nav class="info-nav" id="info-nav">
+          <button type="button" class="info-nav__link is-active" data-info-panel="nosotros">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25zM12.75 6a.75.75 0 00-1.5 0v6c0 .414.336.75.75.75h4.5a.75.75 0 000-1.5h-3.75V6z"/></svg>
+            Nosotros
+          </button>
+          <button type="button" class="info-nav__link" data-info-panel="envios">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 00-3.213-9.193 2.056 2.056 0 00-1.58-.86H14.25M16.5 18.75h-2.25m0-11.177v-.958c0-.568-.422-1.048-.987-1.106a48.554 48.554 0 00-10.026 0 1.106 1.106 0 00-.987 1.106v7.635m12-6.677v6.677m0 4.5v-4.5m0 0h-12"/></svg>
+            Envíos
+          </button>
+          <button type="button" class="info-nav__link" data-info-panel="contacto">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75"/></svg>
+            Contacto
+          </button>
+          <a href="cuenta.html" class="info-nav__link info-nav__link--secondary">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"/></svg>
+            Mi cuenta
+          </a>
+          <a href="index.html#coleccion" class="info-nav__link info-nav__link--store">
+            ← Volver a la tienda
+          </a>
+        </nav>
+      </aside>
+
+      <div class="info-content">
+        <section class="info-panel" id="info-panel-nosotros" data-info-panel="nosotros">
+          <header class="info-panel__header">
+            <h1 class="info-panel__title">Nosotros</h1>
+          </header>
+          <div class="info-panel__content">
+            <p>En <strong>Jerseys Store</strong> vivimos el fútbol con la misma pasión que vos. Nos especializamos en camisetas <strong>G5 y Thai</strong>: réplicas de altísima calidad que replican fielmente los detalles, telas y acabados de las piezas originales.</p>
+            <p>Cada prenda que ofrecemos pasa por un control riguroso de calidad. Trabajamos con proveedores de confianza para garantizar costuras resistentes, estampados duraderos y una experiencia de uso que se siente premium desde el primer día.</p>
+            <p>Nuestra misión es simple: que puedas lucir la camiseta de tu club o selección con orgullo, sin comprometer la calidad ni el estilo.</p>
+          </div>
+        </section>
+
+        <section class="info-panel" id="info-panel-envios" data-info-panel="envios" hidden>
+          <header class="info-panel__header">
+            <h1 class="info-panel__title">Envíos</h1>
+            <p class="info-panel__subtitle">Opciones de entrega según tu ubicación</p>
+          </header>
+          <div class="info-panel__content">
+            <p>Realizamos envíos a todo el país con distintas opciones según tu ubicación y preferencia:</p>
+            <ul class="info-panel__lista">
+              <li><strong>Envío local:</strong> entrega a domicilio en zona CABA y GBA. Coordinamos día y horario por WhatsApp.</li>
+              <li><strong>Puntos de retiro:</strong> podés retirar tu pedido en puntos habilitados sin costo adicional de envío.</li>
+              <li><strong>Despacho por correo:</strong> para el interior del país enviamos por correo o mensajería, con seguimiento del paquete.</li>
+            </ul>
+            <p>Una vez confirmado tu pedido, te contactamos para coordinar el método de entrega más conveniente. Los tiempos varían según la modalidad elegida y tu localidad.</p>
+          </div>
+        </section>
+
+        <section class="info-panel" id="info-panel-contacto" data-info-panel="contacto" hidden>
+          <header class="info-panel__header">
+            <h1 class="info-panel__title">Contacto</h1>
+            <p class="info-panel__subtitle">Escribinos y te respondemos a la brevedad</p>
+          </header>
+          <form class="contacto-form" id="contacto-form" novalidate>
+            <div class="contacto-form__field">
+              <label for="contacto-nombre" class="contacto-form__label">Nombre</label>
+              <input type="text" id="contacto-nombre" name="nombre" class="contacto-form__input" required placeholder="Tu nombre" autocomplete="name">
+            </div>
+            <div class="contacto-form__field">
+              <label for="contacto-email" class="contacto-form__label">Correo Electrónico</label>
+              <input type="email" id="contacto-email" name="email" class="contacto-form__input" required placeholder="tu@email.com" autocomplete="email">
+            </div>
+            <div class="contacto-form__field">
+              <label for="contacto-mensaje" class="contacto-form__label">Mensaje</label>
+              <textarea id="contacto-mensaje" name="mensaje" class="contacto-form__textarea" required placeholder="Escribí tu consulta..." rows="5"></textarea>
+            </div>
+            <button type="submit" class="contacto-form__submit" id="contacto-submit-btn">Enviar Mensaje</button>
+          </form>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <footer class="main-footer">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <span class="footer-logo">Jerseys Store</span>
+        <p class="footer-tagline">Tu tienda de camisetas de fútbol.</p>
+        <div class="footer-social">
+          <a href="#" class="social-link" aria-label="Instagram" target="_blank" rel="noopener noreferrer">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="22" height="22" aria-hidden="true">
+              <rect x="2" y="2" width="20" height="20" rx="5"/>
+              <circle cx="12" cy="12" r="4"/>
+              <circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/>
+            </svg>
+          </a>
+        </div>
+      </div>
+
+      <div class="footer-col">
+        <h3 class="footer-col__title">Explorar</h3>
+        <ul class="footer-links">
+          <li><a href="index.html#inicio">Inicio</a></li>
+          <li><a href="index.html#coleccion">Productos</a></li>
+          <li><a href="info.html#nosotros">Quiénes Somos</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col">
+        <h3 class="footer-col__title">Legales</h3>
+        <ul class="footer-links">
+          <li><a href="info.html#terminos">Términos y Condiciones</a></li>
+          <li><a href="info.html#privacidad">Privacidad</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col">
+        <h3 class="footer-col__title">Contacto</h3>
+        <ul class="footer-contact">
+          <li class="footer-contact__item">
+            <svg class="footer-contact__icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z"/>
+            </svg>
+            <span>Marconi 1599, Tandil</span>
+          </li>
+          <li class="footer-contact__item">
+            <svg class="footer-contact__icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.435 9.884-9.882 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+            </svg>
+            <a href="#" id="footer-whatsapp" class="footer-contact__link" target="_blank" rel="noopener noreferrer">+54 249 4XX-XXXX</a>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="footer-bottom">
+      <div class="footer-bottom__inner">
+        <p class="footer-copyright">
+          &copy; 2026 <span class="footer-copyright__company">Jerseys Store</span>. Todos los derechos reservados.
+          <span class="footer-copyright__sep">|</span>
+          Desarrollado por <strong>Francisco Crovo</strong>
+        </p>
+        <a href="#" class="footer-datafiscal" aria-label="Data Fiscal AFIP" target="_blank" rel="noopener noreferrer">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 48" aria-hidden="true">
+            <rect x="1" y="1" width="38" height="38" rx="2" fill="none" stroke="#ffffff" stroke-width="1.5"/>
+            <rect x="5" y="5" width="6" height="6" fill="#ffffff"/>
+            <rect x="13" y="5" width="4" height="4" fill="#ffffff"/>
+            <rect x="19" y="5" width="6" height="6" fill="#ffffff"/>
+            <rect x="27" y="5" width="4" height="4" fill="#ffffff"/>
+            <rect x="5" y="13" width="4" height="4" fill="#ffffff"/>
+            <rect x="11" y="13" width="6" height="6" fill="#ffffff"/>
+            <rect x="19" y="13" width="4" height="4" fill="#ffffff"/>
+            <rect x="25" y="13" width="6" height="6" fill="#ffffff"/>
+            <rect x="5" y="21" width="6" height="6" fill="#ffffff"/>
+            <rect x="13" y="21" width="4" height="4" fill="#ffffff"/>
+            <rect x="19" y="21" width="6" height="6" fill="#ffffff"/>
+            <rect x="27" y="21" width="4" height="4" fill="#ffffff"/>
+            <rect x="5" y="29" width="4" height="4" fill="#ffffff"/>
+            <rect x="11" y="29" width="6" height="6" fill="#ffffff"/>
+            <rect x="19" y="29" width="4" height="4" fill="#ffffff"/>
+            <rect x="25" y="29" width="6" height="6" fill="#ffffff"/>
+            <text x="20" y="46" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-size="5" font-weight="bold">DATA FISCAL</text>
+          </svg>
+        </a>
+      </div>
+    </div>
+  </footer>
+
+  <div class="auth-modal" id="auth-modal" aria-hidden="true">
+    <div class="auth-modal__overlay" id="auth-modal-overlay"></div>
+    <div class="auth-modal__card" role="dialog" aria-labelledby="auth-modal-title" aria-modal="true">
+      <div class="auth-modal__header">
+        <h2 class="auth-modal__title" id="auth-modal-title">Tu cuenta</h2>
+        <button class="auth-modal__close" id="auth-modal-close" type="button" aria-label="Cerrar">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="auth-modal__body">
+        <div class="auth-view" id="auth-view-login">
+          <form class="auth-form" id="auth-login-form">
+            <div class="auth-form__field">
+              <label for="auth-login-email" class="auth-form__label">Email</label>
+              <input type="email" id="auth-login-email" class="auth-form__input" required autocomplete="email" placeholder="tu@email.com">
+            </div>
+            <div class="auth-form__field">
+              <label for="auth-login-password" class="auth-form__label">Contraseña</label>
+              <input type="password" id="auth-login-password" class="auth-form__input" required autocomplete="current-password" placeholder="••••••••">
+            </div>
+            <p class="auth-form__error hidden" id="auth-login-error">Email o contraseña incorrectos.</p>
+            <button type="submit" class="auth-form__submit">Ingresar</button>
+            <button type="button" class="auth-form__link" id="btn-ir-registro">¿No tenés cuenta? Registrate</button>
+          </form>
+        </div>
+
+        <div class="auth-view hidden" id="auth-view-registro">
+          <form class="auth-form" id="auth-registro-form">
+            <div class="auth-form__field">
+              <label for="auth-registro-email" class="auth-form__label">Email</label>
+              <input type="email" id="auth-registro-email" class="auth-form__input" required autocomplete="email" placeholder="tu@email.com">
+            </div>
+            <div class="auth-form__field">
+              <label for="auth-registro-password" class="auth-form__label">Nueva contraseña</label>
+              <input type="password" id="auth-registro-password" class="auth-form__input" required autocomplete="new-password" placeholder="Mínimo 6 caracteres" minlength="6">
+            </div>
+            <p class="auth-form__error hidden" id="auth-registro-error">Este email ya está registrado.</p>
+            <button type="submit" class="auth-form__submit">Continuar</button>
+            <button type="button" class="auth-form__link" id="btn-volver-login-registro">¿Ya tenés cuenta? Iniciá sesión</button>
+          </form>
+        </div>
+
+        <div class="auth-view hidden" id="auth-view-verificacion">
+          <p class="auth-verificacion__text">Ingresá el código de 6 dígitos enviado a tu mail</p>
+          <p class="auth-verificacion__email" id="auth-verificacion-email"></p>
+          <div class="auth-form__field">
+            <label for="verification-code-input" class="auth-form__label">Código de verificación</label>
+            <input
+              type="text"
+              id="verification-code-input"
+              class="auth-form__input auth-form__input--code"
+              maxlength="6"
+              inputmode="numeric"
+              pattern="[0-9]{6}"
+              placeholder="000000"
+              autocomplete="one-time-code"
+            >
+          </div>
+          <p class="auth-form__error hidden" id="auth-verificacion-error">El código ingresado no es válido.</p>
+          <button type="button" class="auth-form__submit" id="btn-confirmar-registro">Verificar y Activar</button>
+          <button type="button" class="auth-form__link" id="btn-volver-login-verificacion">Volver al login</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script src="js/app.js?v=9.3"></script>
+</body>
+</html>

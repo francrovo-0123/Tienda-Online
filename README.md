@@ -1,6 +1,6 @@
-# Atelier — Boutique Premium
+# Jerseys Store
 
-Tienda online de ropa con catálogo, carrito de compras, seguimiento de pedidos y panel de administración.
+Tienda online de camisetas de fútbol con catálogo, carrito de compras, seguimiento de pedidos y panel de administración.
 
 ## Características
 
@@ -45,16 +45,18 @@ Tienda online de ropa con catálogo, carrito de compras, seguimiento de pedidos 
    npm install
    ```
 
-3. Configurar variables de entorno:
-
-   ```bash
-   cp .env.example .env
-   ```
-
-   Editar `.env` y agregar tu cadena de conexión de MongoDB:
+3. Crear el archivo `server/.env` con las variables necesarias:
 
    ```
-   MONGO_URI=mongodb+srv://usuario:contraseña@cluster.mongodb.net/atelier
+   MONGO_URI=mongodb+srv://usuario:contraseña@cluster.mongodb.net/jerseys_store_db
+   JWT_SECRET=tu_secreto_jwt_seguro
+   ADMIN_INICIAL_EMAIL=admin@tudominio.com
+   ADMIN_INICIAL_PASS=tu_contraseña_segura
+   SMTP_HOST=sandbox.smtp.mailtrap.io
+   SMTP_PORT=587
+   SMTP_USER=tu_usuario_smtp
+   SMTP_PASS=tu_password_smtp
+   SMTP_FROM=Jerseys Store <noreply@jerseysstore.com>
    ```
 
 4. Iniciar el servidor:
@@ -67,14 +69,9 @@ Tienda online de ropa con catálogo, carrito de compras, seguimiento de pedidos 
 
 ## Credenciales de administrador
 
-Al iniciar por primera vez se crea un usuario administrador:
+Al iniciar por primera vez, si no existe ningún admin, se crea uno con los valores de `ADMIN_INICIAL_EMAIL` y `ADMIN_INICIAL_PASS` definidos en `server/.env`.
 
-| Campo      | Valor               |
-|------------|---------------------|
-| Email      | `admin@comercio.com` |
-| Contraseña | `admin`             |
-
-> Cambiá la contraseña del administrador en producción.
+> Cambiá esas credenciales y `JWT_SECRET` antes de desplegar en producción.
 
 ## API
 
