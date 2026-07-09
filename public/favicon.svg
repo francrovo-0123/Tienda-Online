@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 60">
+  <defs>
+    <linearGradient id="favicon-shield-body" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1a1a1a"/>
+      <stop offset="100%" stop-color="#0a0a0a"/>
+    </linearGradient>
+    <linearGradient id="favicon-shield-accent" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#f5c842"/>
+      <stop offset="100%" stop-color="#d4a017"/>
+    </linearGradient>
+  </defs>
+  <path d="M26 2 L48 10 V28 C48 42 38 54 26 58 C14 54 4 42 4 28 V10 Z" fill="url(#favicon-shield-body)" stroke="url(#favicon-shield-accent)" stroke-width="2"/>
+  <path d="M26 8 L42 14 V27 C42 38 35 47 26 51 C17 47 10 38 10 27 V14 Z" fill="none" stroke="rgba(245,200,66,0.35)" stroke-width="1"/>
+  <text x="26" y="34" text-anchor="middle" fill="url(#favicon-shield-accent)" font-family="system-ui, sans-serif" font-size="11" font-weight="700" letter-spacing="1">JS</text>
+</svg>

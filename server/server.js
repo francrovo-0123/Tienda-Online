@@ -64,7 +64,13 @@ const ESTADOS_PEDIDO_ACTIVO = ['Pendiente de pago', 'pendiente_pago', 'Aprobado'
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
-app.use(express.static(path.join(__dirname, '..', 'public')));
+
+const PUBLIC_DIR = path.join(__dirname, '..', 'public');
+app.get('/favicon.ico', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'favicon.ico')));
+app.get('/favicon.svg', (_req, res) => res.type('image/svg+xml').sendFile(path.join(PUBLIC_DIR, 'favicon.svg')));
+app.get('/favicon.png', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'favicon.png')));
+
+app.use(express.static(PUBLIC_DIR));
 
 const productoItemPedidoSchema = new mongoose.Schema(
   {
@@ -1043,6 +1049,26 @@ function construirVentasUltimos7Dias(ventasAgregadas) {
   return resultado;
 }
 
+async function asegurarConexionDB() {
+  if (mongoose.connection.readyState === 1) {
+    return;
+  }
+
+  await mongoose.connect(process.env.MONGO_URI);
+  await inicializarAdministrador();
+  await inicializarConfiguracion();
+}
+
+app.use('/api', async (req, res, next) => {
+  try {
+    await asegurarConexionDB();
+    next();
+  } catch (error) {
+    console.error('Error al conectar con MongoDB:', error);
+    res.status(503).json({ error: 'Servicio no disponible.' });
+  }
+});
+
 // ── Configuración pública ──
 
 app.get('/api/config', async (_req, res) => {
@@ -1783,6 +1809,30 @@ async function manejarWebhookMercadoPago(req, res) {
   }
 }
 
+// ── Cron externo (cron-job.org) ──
+
+app.get('/api/cron/limpiar-stock', async (req, res) => {
+  const cronSecret = process.env.CRON_SECRET;
+  const authHeader = req.headers.authorization;
+
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+    return res.status(401).json({ error: 'No autorizado.' });
+  }
+
+  try {
+    const pedidosLimpiados = await limpiarPedidosExpirados();
+
+    return res.status(200).json({
+      ok: true,
+      mensaje: 'Limpieza de stock completada correctamente.',
+      pedidosLimpiados,
+    });
+  } catch (error) {
+    console.error('Error en cron limpiar-stock:', error);
+    return res.status(500).json({ error: 'Error al ejecutar la limpieza de pedidos expirados.' });
+  }
+});
+
 // ── Estadísticas del administrador ──
 
 app.get('/api/admin/stats', verificarAdminJWT, async (_req, res) => {
@@ -2135,18 +2185,8 @@ app.put('/api/auth/password', verificarClienteJWT, async (req, res) => {
 
 async function iniciarServidor() {
   try {
-    await mongoose.connect(process.env.MONGO_URI);
+    await asegurarConexionDB();
     console.log('  ✓ MongoDB conectado');
-
-    await inicializarAdministrador();
-    await inicializarConfiguracion();
-    await limpiarPedidosExpirados();
-
-    setInterval(() => {
-      limpiarPedidosExpirados().catch((error) => {
-        console.error('Error al limpiar pedidos expirados:', error);
-      });
-    }, 5 * 60 * 1000);
 
     await new Promise((resolve) => {
       app.listen(PORT, resolve);
@@ -2178,4 +2218,8 @@ async function iniciarServidor() {
   }
 }
 
-iniciarServidor();
+if (process.env.VERCEL) {
+  module.exports = app;
+} else {
+  iniciarServidor();
+}
