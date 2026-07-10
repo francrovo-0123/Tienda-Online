@@ -14,6 +14,7 @@
   will-change: transform;
   -webkit-backface-visibility: hidden;
   backface-visibility: hidden;
+  isolation: isolate;
 }
 
 .main-header--hidden {
@@ -46,15 +47,22 @@
 
 /* ── Fila superior: logo | búsqueda | acciones ── */
 .header-inner {
-  display: grid;
-  grid-template-columns: minmax(0, auto) minmax(0, 1fr) minmax(0, auto);
+  display: flex;
   align-items: center;
-  gap: 1rem 2.5rem;
+  justify-content: space-between;
+  gap: 1rem 2rem;
   max-width: var(--max-width);
-  min-height: 64px;
+  height: 70px;
+  min-height: 70px;
   margin: 0 auto;
-  padding: 0.75rem var(--space-lg);
+  padding: 0 2rem;
   background-color: #ffffff;
+}
+
+.header-inner .header-search {
+  flex: 1 1 auto;
+  max-width: 42rem;
+  margin-inline: 1.5rem;
 }
 
 /* ── Logo escudo ── */
@@ -522,11 +530,20 @@
   background-color: #ebebeb;
 }
 
-/* ── Fila inferior: carrusel de secciones (nav de categorías) ── */
+/* ── Carrusel de secciones (ligas/equipos) — bloque propio en el flujo ── */
 .club-nav {
   --club-nav-escudo-size: 60px;
-  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  position: relative;
+  display: block;
+  clear: both;
+  z-index: 1;
+  width: 100%;
+  margin-top: 20px;
+  margin-bottom: 30px;
+  border-top: none;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
   background-color: #ffffff;
+  overflow: visible;
 }
 
 .club-nav__carousel {
@@ -535,7 +552,7 @@
   gap: 0.875rem;
   max-width: var(--max-width);
   margin: 0 auto;
-  padding: 0.5rem var(--space-lg) 0.625rem;
+  padding: 0.75rem 2rem 1rem;
 }
 
 .club-nav__viewport {
@@ -944,7 +961,7 @@ body.mobile-nav-open {
     z-index: 1000;
     background-color: #ffffff;
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
-    border-bottom: none;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
   }
 
   .header-inner {
@@ -957,6 +974,11 @@ body.mobile-nav-open {
     min-height: 56px;
     max-height: 56px;
     padding: 0 0.75rem;
+  }
+
+  .header-inner .header-search {
+    margin-inline: 0;
+    max-width: none;
   }
 
   .header-brand {
@@ -1109,6 +1131,14 @@ body.mobile-nav-open {
     display: none;
   }
 
+  .club-nav {
+    position: relative;
+    display: block;
+    clear: both;
+    margin-top: 12px;
+    margin-bottom: 20px;
+  }
+
   .club-nav__viewport {
     overflow-x: auto;
     overflow-y: hidden;
@@ -1138,7 +1168,7 @@ body.mobile-nav-open {
   }
 
   .club-nav__carousel {
-    padding: 0.5rem var(--page-gutter) 0.625rem;
+    padding: 0.625rem var(--page-gutter) 0.875rem;
   }
 }
 
@@ -1193,6 +1223,8 @@ body.mobile-nav-open {
 
   .club-nav {
     --club-nav-escudo-size: 52px;
+    margin-top: 10px;
+    margin-bottom: 16px;
   }
 
   .club-nav__carousel {

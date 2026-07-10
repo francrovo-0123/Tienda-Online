@@ -31,6 +31,19 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+#store-view {
+  position: relative;
+  display: block;
+  width: 100%;
+  overflow-x: clip;
+}
+
+#store-view > main {
+  position: relative;
+  display: block;
+  clear: both;
+}
+
 img,
 picture,
 video,
@@ -123,9 +136,9 @@ button:active:not(:disabled) {
 
   /* Layout */
   --max-width: 1280px;
-  --header-height: 72px;
-  --club-nav-height: 112px;
-  --main-header-height: 0px;
+  --header-height: 70px;
+  --club-nav-height: 140px;
+  --main-header-height: 70px;
 
   /* Estadio / fútbol */
   --grass-dark: #1e6b32;
@@ -167,7 +180,7 @@ button:active:not(:disabled) {
 .stadium-section,
 .products-section,
 .tracking-section {
-  scroll-margin-top: var(--main-header-height, 5rem);
+  scroll-margin-top: calc(var(--main-header-height, 70px) + 1rem);
 }
 
 /* ── Admin view (pantalla completa) ── */
