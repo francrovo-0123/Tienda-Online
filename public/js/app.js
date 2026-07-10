@@ -218,6 +218,8 @@ let generoFiltroActivo = 'todos';
 let productos = [];
 let secciones = [];
 let categoriaFiltroActiva = 'todos';
+let ligaFiltroActiva = '';
+let filtroSoloOfertas = false;
 let criterioOrdenActivo = 'predeterminado';
 let busquedaActiva = '';
 let editandoProductoId = null;
@@ -229,6 +231,8 @@ let archivoPendienteEspalda = null;
 let previewPendienteFrente = null;
 let previewPendienteEspalda = null;
 let busquedaPredictivaTimer = null;
+let busquedaRenderTimer = null;
+let renderProductosToken = 0;
 let archivoEscudoPendiente = null;
 let previewEscudoPendiente = null;
 let archivoEscudoDetallePendiente = null;
@@ -485,12 +489,10 @@ function mostrarToast(mensaje, tipo = 'success', opciones = {}) {
 function crearHtmlSkeletonTarjeta() {
   return `
     <div class="skeleton-card" aria-hidden="true">
-      <div class="skeleton-card__image skeleton-shimmer"></div>
+      <div class="skeleton-card__image"></div>
       <div class="skeleton-card__body">
-        <div class="skeleton-card__line skeleton-card__line--title skeleton-shimmer"></div>
-        <div class="skeleton-card__line skeleton-card__line--price skeleton-shimmer"></div>
-        <div class="skeleton-card__line skeleton-card__line--meta skeleton-shimmer"></div>
-        <div class="skeleton-card__line skeleton-card__line--btn skeleton-shimmer"></div>
+        <div class="skeleton-card__line skeleton-card__line--title"></div>
+        <div class="skeleton-card__line skeleton-card__line--price"></div>
       </div>
     </div>
   `;
@@ -500,22 +502,72 @@ function obtenerCantidadSkeletons() {
   return window.matchMedia('(min-width: 768px)').matches ? 6 : 4;
 }
 
+function obtenerContenedorTienda() {
+  return document.getElementById('store-sections-container');
+}
+
+function debeMostrarSkeletonTienda() {
+  const container = obtenerContenedorTienda();
+  const storeView = document.getElementById('store-view');
+  return Boolean(container && (!storeView || storeView.style.display !== 'none'));
+}
+
 function renderizarSkeletonProductos(container) {
+  const destino = container || obtenerContenedorTienda();
+  if (!destino) return;
+
   const cantidad = obtenerCantidadSkeletons();
   const skeletons = Array.from({ length: cantidad }, () => crearHtmlSkeletonTarjeta()).join('');
 
-  container.innerHTML = `
+  destino.innerHTML = `
     <div class="products-grid products-grid--loading" aria-busy="true" aria-label="Cargando productos">
       ${skeletons}
     </div>
   `;
 }
 
+function solicitarRenderizadoProductos(opciones = {}) {
+  const { delay = 0, skeleton = true } = opciones;
+  const token = ++renderProductosToken;
+
+  if (skeleton && debeMostrarSkeletonTienda()) {
+    renderizarSkeletonProductos();
+  }
+
+  const ejecutar = () => {
+    if (token !== renderProductosToken) return;
+    renderizarStadiumCarousel();
+    renderizarProductos();
+  };
+
+  if (delay > 0) {
+    clearTimeout(busquedaRenderTimer);
+    busquedaRenderTimer = setTimeout(ejecutar, delay);
+    return;
+  }
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(ejecutar);
+  });
+}
+
+function obtenerScrollY() {
+  return Math.max(0, window.scrollY || document.documentElement.scrollTop || 0);
+}
+
 function animarEntradaProductos(container) {
   const tarjetas = container.querySelectorAll('.product-card');
   if (!tarjetas.length) return;
 
+  const esMobile = window.matchMedia('(max-width: 768px)').matches;
+  const limiteAnimacion = esMobile ? 12 : 24;
+
   tarjetas.forEach((tarjeta, indice) => {
+    if (indice >= limiteAnimacion) {
+      tarjeta.style.opacity = '1';
+      return;
+    }
+
     tarjeta.classList.add('product-card--fade-in');
     tarjeta.style.animationDelay = `${Math.min(indice * 55, 440)}ms`;
   });
@@ -1385,11 +1437,15 @@ function filtrarProductos(lista) {
   return lista.filter((producto) => {
     const coincideCategoria =
       categoriaFiltroActiva === 'todos' || producto.categoria === categoriaFiltroActiva;
+    const ligaProducto = String(producto.liga || '').trim().toLowerCase();
+    const coincideLiga =
+      !ligaFiltroActiva || ligaProducto === ligaFiltroActiva.trim().toLowerCase();
     const coincideBusqueda = productoCoincideBusqueda(producto, busquedaActiva);
     const generoProducto = producto.genero || 'hombre';
     const coincideGenero =
       generoFiltroActivo === 'todos' || generoProducto === generoFiltroActivo;
-    return coincideCategoria && coincideBusqueda && coincideGenero;
+    const coincideOferta = !filtroSoloOfertas || tieneOfertaValida(producto);
+    return coincideCategoria && coincideLiga && coincideBusqueda && coincideGenero && coincideOferta;
   });
 }
 
@@ -1589,8 +1645,8 @@ function crearHtmlTarjetaProducto(producto) {
     </div>
   `;
 
-  const imagenFrente = obtenerImagenFrente(producto);
-  const imagenEspalda = obtenerImagenEspalda(producto);
+  const imagenFrente = optimizarUrlImagenProducto(obtenerImagenFrente(producto));
+  const imagenEspalda = optimizarUrlImagenProducto(obtenerImagenEspalda(producto));
 
   return `
     <article class="product-card${sinStock ? ' product-card--sin-stock' : ''}" role="listitem" data-id="${producto.id}">
@@ -1702,6 +1758,20 @@ function optimizarUrlEscudo(url) {
   return `https://res.cloudinary.com/${cloudName}/image/upload/${transform}/${assetPath}`;
 }
 
+function optimizarUrlImagenProducto(url, opciones = {}) {
+  const limpia = String(url || '').trim();
+  if (!/^https?:\/\/.+/i.test(limpia)) return limpia;
+
+  const assetPath = extraerRutaAssetCloudinary(limpia);
+  if (!assetPath) return limpia;
+
+  const cloudName = extraerCloudNameCloudinary(limpia) || CLOUDINARY_CLOUD_NAME;
+  if (!cloudName) return limpia;
+
+  const transform = opciones.transform || 'c_scale,w_500,h_667,q_auto,f_auto';
+  return `https://res.cloudinary.com/${cloudName}/image/upload/${transform}/${assetPath}`;
+}
+
 function mostrarPlaceholderEscudo(img, placeholder, seccion) {
   if (img) {
     img.removeAttribute('src');
@@ -1742,6 +1812,151 @@ function formatearEtiquetaCategoria(categoria) {
     .join(' ');
 }
 
+function esFiltroSeccionValido(nombre) {
+  return nombre === 'todos' || secciones.some((seccion) => seccion.nombre === nombre);
+}
+
+function obtenerLigaRepresentativaSeccion(seccionNombre) {
+  const conteo = {};
+
+  productos.forEach((producto) => {
+    if (producto.categoria !== seccionNombre) return;
+    const liga = String(producto.liga || '').trim();
+    if (!liga) return;
+    conteo[liga] = (conteo[liga] || 0) + 1;
+  });
+
+  const ligasOrdenadas = Object.entries(conteo).sort((a, b) => b[1] - a[1]);
+  return ligasOrdenadas[0]?.[0] || '';
+}
+
+function obtenerFiltroDesdeItemCarousel(elemento) {
+  const item = elemento?.closest?.('.club-nav__item');
+  if (!item) return null;
+
+  const equipo = item.dataset.equipo || item.dataset.seccion || 'todos';
+  const liga = item.dataset.liga || '';
+  const seccionId = item.dataset.seccionId || '';
+
+  return { equipo, liga, seccionId };
+}
+
+function sincronizarFiltrosCategoriaUi() {
+  document.querySelectorAll('#dropdown-categorias-list .dropdown-item').forEach((btn) => {
+    const activo = !filtroSoloOfertas && btn.dataset.categoria === categoriaFiltroActiva;
+    btn.classList.toggle('active', activo);
+  });
+
+  sincronizarCarruselSeccionesActivo();
+  sincronizarMenuMobileActivo();
+}
+
+function actualizarUiFiltroColeccion() {
+  const titulo = document.querySelector('#coleccion .section-title');
+  const subtitulo = document.querySelector('#coleccion .section-subtitle');
+  const contenedorFiltros = document.querySelector('#coleccion .filtros-container');
+  const coleccion = document.getElementById('coleccion');
+  const ligaVisible =
+    ligaFiltroActiva ||
+    (categoriaFiltroActiva !== 'todos'
+      ? obtenerLigaRepresentativaSeccion(categoriaFiltroActiva)
+      : '');
+
+  if (filtroSoloOfertas) {
+    titulo && (titulo.textContent = 'Ofertas');
+    subtitulo && (subtitulo.textContent = 'Camisetas con descuento disponibles ahora');
+    coleccion?.classList.add('products-section--filtrada');
+  } else if (categoriaFiltroActiva !== 'todos') {
+    const nombreEquipo = formatearEtiquetaCategoria(categoriaFiltroActiva);
+    titulo && (titulo.textContent = nombreEquipo);
+    subtitulo &&
+      (subtitulo.textContent = ligaVisible
+        ? `Camisetas de ${nombreEquipo} — ${ligaVisible}`
+        : `Camisetas de ${nombreEquipo}`);
+    coleccion?.classList.add('products-section--filtrada');
+  } else if (ligaFiltroActiva) {
+    titulo && (titulo.textContent = ligaFiltroActiva);
+    subtitulo && (subtitulo.textContent = `Todas las camisetas de ${ligaFiltroActiva}`);
+    coleccion?.classList.add('products-section--filtrada');
+  } else {
+    titulo && (titulo.textContent = 'Colección destacada');
+    subtitulo &&
+      (subtitulo.textContent = 'Selección curada de nuestras piezas más exclusivas');
+    coleccion?.classList.remove('products-section--filtrada');
+  }
+
+  if (!contenedorFiltros) return;
+
+  const hayFiltroActivo =
+    filtroSoloOfertas || categoriaFiltroActiva !== 'todos' || Boolean(ligaFiltroActiva);
+  let chip = document.getElementById('coleccion-filtro-activo');
+
+  if (!hayFiltroActivo) {
+    chip?.remove();
+    contenedorFiltros.classList.remove('filtros-container--filtrado');
+    return;
+  }
+
+  if (!chip) {
+    chip = document.createElement('div');
+    chip.id = 'coleccion-filtro-activo';
+    chip.className = 'coleccion-filtro-activo';
+    chip.innerHTML = `
+      <span class="coleccion-filtro-activo__label" id="coleccion-filtro-activo-label"></span>
+      <button
+        type="button"
+        class="coleccion-filtro-activo__clear"
+        id="coleccion-filtro-activo-clear"
+        aria-label="Quitar filtro activo"
+      >×</button>
+    `;
+    contenedorFiltros.prepend(chip);
+    document.getElementById('coleccion-filtro-activo-clear')?.addEventListener('click', () => {
+      aplicarFiltroColeccion({ equipo: 'todos', liga: '', scroll: false });
+    });
+  }
+
+  contenedorFiltros.classList.add('filtros-container--filtrado');
+
+  const etiqueta = document.getElementById('coleccion-filtro-activo-label');
+  if (!etiqueta) return;
+
+  if (filtroSoloOfertas) {
+    etiqueta.textContent = 'Viendo: Ofertas';
+    return;
+  }
+
+  if (categoriaFiltroActiva !== 'todos') {
+    const nombreEquipo = formatearEtiquetaCategoria(categoriaFiltroActiva);
+    etiqueta.textContent = ligaVisible
+      ? `Viendo: ${nombreEquipo} (${ligaVisible})`
+      : `Viendo: ${nombreEquipo}`;
+    return;
+  }
+
+  if (ligaFiltroActiva) {
+    etiqueta.textContent = `Viendo: ${ligaFiltroActiva}`;
+  }
+}
+
+function aplicarFiltroColeccion(opciones = {}) {
+  const equipo = opciones.equipo ?? 'todos';
+  const liga = opciones.liga ?? '';
+  const scroll = opciones.scroll !== false;
+
+  filtroSoloOfertas = false;
+  categoriaFiltroActiva = equipo || 'todos';
+  ligaFiltroActiva = categoriaFiltroActiva === 'todos' ? liga : '';
+
+  sincronizarFiltrosCategoriaUi();
+  actualizarUiFiltroColeccion();
+  solicitarRenderizadoProductos({ skeleton: false });
+
+  if (scroll && (categoriaFiltroActiva !== 'todos' || ligaFiltroActiva)) {
+    document.getElementById('coleccion')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
 function crearHtmlIconoSeccion(seccion) {
   const escudo = optimizarUrlEscudo(obtenerEscudoSeccion(seccion));
   if (esUrlEscudoValida(escudo)) {
@@ -1753,14 +1968,19 @@ function crearHtmlIconoSeccion(seccion) {
 }
 
 function crearHtmlItemCarruselSeccion(seccion, activo) {
+  const liga = obtenerLigaRepresentativaSeccion(seccion.nombre);
+  const atributosLiga = liga ? ` data-liga="${escaparAtributoHtml(liga)}"` : '';
+
   return `
     <li>
       <button
         type="button"
         class="club-nav__item${activo ? ' active' : ''}"
-        data-seccion="${seccion.nombre}"
+        data-seccion="${escaparAtributoHtml(seccion.nombre)}"
+        data-equipo="${escaparAtributoHtml(seccion.nombre)}"
+        data-seccion-id="${seccion.id}"${atributosLiga}
         aria-pressed="${activo}"
-        aria-label="Filtrar por ${seccion.nombre}"
+        aria-label="Filtrar por ${escaparAtributoHtml(seccion.nombre)}"
       >
         <span class="club-nav__logo" aria-hidden="true">${crearHtmlIconoSeccion(seccion)}</span>
         <span class="club-nav__label">${seccion.nombre.toUpperCase()}</span>
@@ -1811,6 +2031,7 @@ function renderizarCarruselSecciones() {
           type="button"
           class="club-nav__item${verTodoActivo ? ' active' : ''}"
           data-seccion="todos"
+          data-equipo="todos"
           aria-pressed="${verTodoActivo}"
           aria-label="Ver todas las secciones"
         >
@@ -1852,20 +2073,35 @@ function renderizarCarruselSecciones() {
 }
 
 function filtrarPorSeccionCarousel(seccionNombre) {
-  categoriaFiltroActiva = seccionNombre;
+  aplicarFiltroColeccion({ equipo: seccionNombre });
+}
+
+function filtrarPorOfertas() {
+  filtroSoloOfertas = true;
+  categoriaFiltroActiva = 'todos';
+  ligaFiltroActiva = '';
 
   document.querySelectorAll('#dropdown-categorias-list .dropdown-item').forEach((btn) => {
-    const activo = btn.dataset.categoria === seccionNombre;
-    btn.classList.toggle('active', activo);
+    btn.classList.toggle('active', btn.dataset.categoria === 'todos');
   });
 
   sincronizarCarruselSeccionesActivo();
-  renderizarStadiumCarousel();
-  renderizarProductos();
+  sincronizarMenuMobileActivo();
+  actualizarUiFiltroColeccion();
+  solicitarRenderizadoProductos({ skeleton: false });
+  document.getElementById('coleccion')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
 
-  if (seccionNombre !== 'todos') {
-    document.getElementById('coleccion')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+function obtenerContenedorScrollClubNav() {
+  const lista = document.getElementById('club-nav-list');
+  if (!lista) return null;
+
+  const viewport = lista.closest('.club-nav__viewport');
+  if (window.matchMedia('(max-width: 768px)').matches && viewport) {
+    return viewport;
   }
+
+  return lista;
 }
 
 function inicializarCarruselClubNav() {
@@ -1875,23 +2111,53 @@ function inicializarCarruselClubNav() {
   if (!track) return;
 
   const desplazar = (direccion) => {
+    const scrollEl = obtenerContenedorScrollClubNav();
+    if (!scrollEl) return;
+
     const item = track.querySelector('.club-nav__item');
     const gap = parseFloat(getComputedStyle(track).gap) || 4;
     const paso = item ? item.closest('li').offsetWidth + gap : 76;
-    track.scrollBy({ left: direccion * paso * 2, behavior: 'smooth' });
+    const esMobile = window.matchMedia('(max-width: 768px)').matches;
+
+    scrollEl.scrollBy({
+      left: direccion * paso * 2,
+      behavior: esMobile ? 'auto' : 'smooth',
+    });
   };
 
   prev?.addEventListener('click', () => desplazar(-1));
   next?.addEventListener('click', () => desplazar(1));
 }
 
+function manejarInteraccionCarruselEquipos(event) {
+  const objetivoInteractivo = event.target.closest(
+    '.club-nav__item, .club-nav__logo, .club-nav__label, .club-nav__escudo, .club-nav__icon-placeholder'
+  );
+  if (!objetivoInteractivo) return;
+
+  const btn = event.target.closest('.club-nav__item');
+  if (!btn) return;
+
+  event.preventDefault();
+
+  const filtro = obtenerFiltroDesdeItemCarousel(btn);
+  if (!filtro) return;
+
+  const mismoFiltroActivo =
+    !filtroSoloOfertas &&
+    filtro.equipo === categoriaFiltroActiva &&
+    (filtro.equipo !== 'todos' || !ligaFiltroActiva);
+
+  aplicarFiltroColeccion({
+    equipo: filtro.equipo,
+    liga: filtro.equipo === 'todos' ? filtro.liga : '',
+    scroll: !mismoFiltroActivo && filtro.equipo !== 'todos',
+  });
+}
+
 function inicializarClubNav() {
   const lista = document.getElementById('club-nav-list');
-  lista?.addEventListener('click', (event) => {
-    const btn = event.target.closest('.club-nav__item');
-    if (!btn) return;
-    filtrarPorSeccionCarousel(btn.dataset.seccion);
-  });
+  lista?.addEventListener('click', manejarInteraccionCarruselEquipos);
 
   let resizeTimer;
   window.addEventListener('resize', () => {
@@ -1982,17 +2248,14 @@ function inicializarStadiumCarousel() {
 }
 
 function filtrarPorCategoria(categoria, elemento) {
-  categoriaFiltroActiva = categoria;
+  aplicarFiltroColeccion({ equipo: categoria, scroll: false });
 
   document.querySelectorAll('#dropdown-categorias-list .dropdown-item').forEach((btn) => {
     btn.classList.remove('active');
   });
   elemento?.classList.add('active');
 
-  sincronizarCarruselSeccionesActivo();
   cerrarDropdownCategorias();
-  renderizarStadiumCarousel();
-  renderizarProductos();
 }
 
 function cerrarDropdownCategorias() {
@@ -2118,7 +2381,7 @@ function filtrarPorGenero(genero, elemento) {
 
   actualizarEtiquetaDropdownGenero();
   cerrarDropdownGenero();
-  renderizarProductos();
+  solicitarRenderizadoProductos();
 }
 
 function inicializarDropdownGenero() {
@@ -2152,7 +2415,7 @@ function filtrarPorOrden(criterio, elemento) {
   elemento?.classList.add('active');
 
   cerrarDropdownOrden();
-  renderizarProductos();
+  solicitarRenderizadoProductos();
 }
 
 function ordenarListaProductos(lista) {
@@ -2184,9 +2447,15 @@ function renderizarFiltrosCategorias(listaProductos) {
     (a, b) => a.localeCompare(b, 'es')
   );
 
-  if (categoriaFiltroActiva !== 'todos' && !categorias.includes(categoriaFiltroActiva)) {
+  if (
+    categoriaFiltroActiva !== 'todos' &&
+    !categorias.includes(categoriaFiltroActiva) &&
+    !esFiltroSeccionValido(categoriaFiltroActiva)
+  ) {
     categoriaFiltroActiva = 'todos';
+    ligaFiltroActiva = '';
     sincronizarCarruselSeccionesActivo();
+    actualizarUiFiltroColeccion();
   }
 
   menu.innerHTML = '';
@@ -2260,7 +2529,7 @@ function obtenerContenedorResultadosPredictivos() {
 function crearHtmlSugerenciaBusqueda(producto) {
   const productoLocal = productos.find((item) => item.id === producto.id) || producto;
   const sinStock = !productoTieneStock(productoLocal);
-  const imagen = producto.imagenFrente || obtenerImagenPrincipal(productoLocal);
+  const imagen = optimizarUrlImagenProducto(producto.imagenFrente || obtenerImagenPrincipal(productoLocal));
   const enOferta = tieneOfertaValida(productoLocal);
   const precioHtml = enOferta
     ? `<span class="precio-tachado">${formatearPrecio(productoLocal.precio)}</span> ${formatearPrecio(productoLocal.precioOferta)}`
@@ -2347,87 +2616,259 @@ function ocultarSugerenciasBusqueda() {
   input?.setAttribute('aria-expanded', 'false');
 }
 
+function crearPanelMenuMobile() {
+  if (document.getElementById('mobile-nav')) return;
+
+  const nav = document.createElement('div');
+  nav.id = 'mobile-nav';
+  nav.className = 'mobile-nav';
+  nav.setAttribute('aria-hidden', 'true');
+  nav.innerHTML = `
+    <div class="mobile-nav__overlay" id="mobile-nav-overlay" aria-hidden="true"></div>
+    <aside
+      class="mobile-nav__panel"
+      id="mobile-nav-panel"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Accesos rápidos"
+    >
+      <div class="mobile-nav__header">
+        <h2 class="mobile-nav__title">Accesos rápidos</h2>
+        <button type="button" class="mobile-nav__close" id="mobile-nav-close" aria-label="Cerrar menú">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M6 6l12 12M18 6L6 18"/>
+          </svg>
+        </button>
+      </div>
+      <nav class="mobile-nav__links" id="mobile-nav-links" aria-label="Enlaces rápidos"></nav>
+    </aside>
+  `;
+  document.body.appendChild(nav);
+}
+
+function esPaginaTienda() {
+  const pagina = document.body?.dataset?.page || 'index';
+  return pagina === 'index';
+}
+
+function renderizarEnlacesMenuMobile() {
+  const lista = document.getElementById('mobile-nav-links');
+  if (!lista) return;
+
+  const partes = [];
+
+  if (esPaginaTienda()) {
+    partes.push(`
+      <button type="button" class="mobile-nav__link" data-mobile-nav="seccion" data-seccion="todos">
+        Ver todo
+      </button>
+    `);
+
+    secciones.forEach((seccion) => {
+      const liga = obtenerLigaRepresentativaSeccion(seccion.nombre);
+      const atributosLiga = liga ? ` data-liga="${escaparAtributoHtml(liga)}"` : '';
+
+      partes.push(`
+        <button
+          type="button"
+          class="mobile-nav__link"
+          data-mobile-nav="seccion"
+          data-seccion="${escaparAtributoHtml(seccion.nombre)}"
+          data-equipo="${escaparAtributoHtml(seccion.nombre)}"
+          data-seccion-id="${seccion.id}"${atributosLiga}
+        >${seccion.nombre}</button>
+      `);
+    });
+
+    partes.push(`
+      <button type="button" class="mobile-nav__link" data-mobile-nav="ofertas">
+        Ofertas
+      </button>
+    `);
+  } else {
+    partes.push(`
+      <a href="index.html#inicio" class="mobile-nav__link">Inicio</a>
+      <a href="index.html#coleccion" class="mobile-nav__link">Catálogo</a>
+    `);
+  }
+
+  partes.push('<div class="mobile-nav__divider" role="separator"></div>');
+  partes.push('<span class="mobile-nav__group-label">Mi cuenta</span>');
+  partes.push(`
+    <button type="button" class="mobile-nav__link" data-mobile-nav="cuenta" data-panel="perfil">
+      Mi perfil
+    </button>
+    <button type="button" class="mobile-nav__link" data-mobile-nav="cuenta" data-panel="pedidos">
+      Mis pedidos
+    </button>
+  `);
+
+  lista.innerHTML = partes.join('');
+  sincronizarMenuMobileActivo();
+}
+
+function sincronizarMenuMobileActivo() {
+  document.querySelectorAll('#mobile-nav-links [data-mobile-nav="seccion"]').forEach((btn) => {
+    const activo = !filtroSoloOfertas && btn.dataset.seccion === categoriaFiltroActiva;
+    btn.classList.toggle('is-active', activo);
+  });
+
+  document.querySelectorAll('#mobile-nav-links [data-mobile-nav="ofertas"]').forEach((btn) => {
+    btn.classList.toggle('is-active', filtroSoloOfertas);
+  });
+}
+
+function abrirMenuMobile() {
+  const menu = document.getElementById('mobile-nav');
+  const btn = document.getElementById('header-menu-btn');
+  if (!menu || !btn) return;
+
+  renderizarEnlacesMenuMobile();
+  menu.classList.add('is-open');
+  menu.setAttribute('aria-hidden', 'false');
+  btn.setAttribute('aria-expanded', 'true');
+  document.body.classList.add('mobile-nav-open');
+  document.getElementById('mobile-nav-close')?.focus();
+}
+
+function cerrarMenuMobile() {
+  const menu = document.getElementById('mobile-nav');
+  const btn = document.getElementById('header-menu-btn');
+  if (!menu) return;
+
+  menu.classList.remove('is-open');
+  menu.setAttribute('aria-hidden', 'true');
+  btn?.setAttribute('aria-expanded', 'false');
+  document.body.classList.remove('mobile-nav-open');
+
+  if (btn && document.activeElement?.closest('#mobile-nav')) {
+    btn.focus();
+  }
+}
+
+function manejarClickMenuMobile(event) {
+  const enlace = event.target.closest('[data-mobile-nav]');
+  if (!enlace) return;
+
+  const tipo = enlace.dataset.mobileNav;
+
+  if (tipo === 'seccion') {
+    filtrarPorSeccionCarousel(enlace.dataset.seccion || 'todos');
+    cerrarMenuMobile();
+    return;
+  }
+
+  if (tipo === 'ofertas') {
+    filtrarPorOfertas();
+    cerrarMenuMobile();
+    return;
+  }
+
+  if (tipo === 'cuenta') {
+    cerrarMenuMobile();
+    navegarPanelCuenta(enlace.dataset.panel || 'resumen');
+  }
+}
+
+function inicializarMenuMobile() {
+  const btn = document.getElementById('header-menu-btn');
+  if (!btn || btn.dataset.bound) return;
+  btn.dataset.bound = 'true';
+
+  crearPanelMenuMobile();
+  renderizarEnlacesMenuMobile();
+
+  btn.addEventListener('click', () => {
+    const menu = document.getElementById('mobile-nav');
+    if (menu?.classList.contains('is-open')) {
+      cerrarMenuMobile();
+    } else {
+      abrirMenuMobile();
+    }
+  });
+
+  document.getElementById('mobile-nav-close')?.addEventListener('click', cerrarMenuMobile);
+  document.getElementById('mobile-nav-overlay')?.addEventListener('click', cerrarMenuMobile);
+  document.getElementById('mobile-nav-links')?.addEventListener('click', manejarClickMenuMobile);
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && document.getElementById('mobile-nav')?.classList.contains('is-open')) {
+      cerrarMenuMobile();
+    }
+  });
+}
+
 function inicializarHeaderScroll() {
   const header = document.querySelector('.main-header');
   if (!header) return;
 
-  let spacer = document.getElementById('main-header-spacer');
-  if (!spacer) {
-    spacer = document.createElement('div');
-    spacer.id = 'main-header-spacer';
-    spacer.className = 'main-header-spacer';
-    spacer.setAttribute('aria-hidden', 'true');
-    header.after(spacer);
-  }
-
-  let lastY = window.scrollY;
+  let lastY = obtenerScrollY();
   let ticking = false;
-  const UMBRAL = 6;
-  const ZONA_SUPERIOR = 8;
+  const UMBRAL_SCROLL = 15;
 
   const obtenerAltura = () => {
-    const pinned = header.classList.contains('main-header--pinned');
-    const hidden = header.classList.contains('main-header--hidden');
-
-    if (pinned) {
-      header.classList.remove('main-header--pinned', 'main-header--hidden');
-      spacer.style.height = '0';
-    }
-
     const alto = header.offsetHeight;
     document.documentElement.style.setProperty('--main-header-height', `${alto}px`);
-
-    if (pinned) {
-      header.classList.add('main-header--pinned');
-      if (hidden) header.classList.add('main-header--hidden');
-      spacer.style.height = `${alto}px`;
-    }
-
     return alto;
   };
 
-  const desanclar = () => {
-    header.classList.remove('main-header--pinned', 'main-header--hidden');
-    spacer.style.height = '0';
-  };
-
-  const anclar = (alto) => {
-    header.classList.add('main-header--pinned');
-    spacer.style.height = `${alto}px`;
-  };
+  const mostrar = () => header.classList.remove('main-header--hidden');
+  const ocultar = () => header.classList.add('main-header--hidden');
 
   const actualizar = () => {
-    const y = window.scrollY;
+    const y = obtenerScrollY();
     const delta = y - lastY;
     const alto = parseInt(
       getComputedStyle(document.documentElement).getPropertyValue('--main-header-height'),
       10
     ) || obtenerAltura();
 
-    if (y <= ZONA_SUPERIOR || y < alto) {
-      desanclar();
-    } else {
-      if (!header.classList.contains('main-header--pinned')) {
-        anclar(alto);
-      }
-
-      if (delta > UMBRAL) {
-        header.classList.add('main-header--hidden');
-      } else if (delta < -UMBRAL) {
-        header.classList.remove('main-header--hidden');
-      }
+    if (y <= 0) {
+      mostrar();
+      lastY = 0;
+      ticking = false;
+      return;
     }
 
-    lastY = y;
+    if (y < alto) {
+      mostrar();
+
+      if (Math.abs(delta) >= UMBRAL_SCROLL) {
+        lastY = y;
+      }
+
+      ticking = false;
+      return;
+    }
+
+    if (Math.abs(delta) >= UMBRAL_SCROLL) {
+      if (delta > 0) {
+        ocultar();
+      } else {
+        mostrar();
+      }
+      lastY = y;
+    }
+
     ticking = false;
   };
 
-  window.addEventListener('scroll', () => {
+  const programarActualizacion = () => {
     if (!ticking) {
       requestAnimationFrame(actualizar);
       ticking = true;
     }
-  }, { passive: true });
+  };
+
+  window.addEventListener('scroll', programarActualizacion, { passive: true });
+
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', () => {
+      obtenerAltura();
+      programarActualizacion();
+    }, { passive: true });
+    window.visualViewport.addEventListener('scroll', programarActualizacion, { passive: true });
+  }
 
   window.addEventListener('resize', obtenerAltura);
   window.addEventListener('header:remeasure', obtenerAltura);
@@ -2448,8 +2889,7 @@ function inicializarBuscador() {
   input?.addEventListener('input', (e) => {
     const valor = e.target.value;
     busquedaActiva = valor.toLowerCase().trim();
-    renderizarStadiumCarousel();
-    renderizarProductos();
+    solicitarRenderizadoProductos({ delay: 150 });
 
     clearTimeout(busquedaPredictivaTimer);
     busquedaPredictivaTimer = setTimeout(() => {
@@ -2529,12 +2969,11 @@ function inicializarBuscadorPedidos() {
 
 async function cargarProductos(opciones = {}) {
   const incluirInactivos = Boolean(opciones.todos);
-  const container = document.getElementById('store-sections-container');
-  const storeView = document.getElementById('store-view');
-  const mostrarSkeleton =
-    !incluirInactivos && container && (!storeView || storeView.style.display !== 'none');
+  const container = obtenerContenedorTienda();
+  const mostrarSkeleton = !incluirInactivos && debeMostrarSkeletonTienda();
 
   if (mostrarSkeleton) {
+    ++renderProductosToken;
     renderizarSkeletonProductos(container);
   }
 
@@ -2543,12 +2982,14 @@ async function cargarProductos(opciones = {}) {
     productos = await apiFetch(ruta);
     if (!incluirInactivos) {
       renderizarFiltrosCategorias(productos);
+      renderizarCarruselSecciones();
     }
     return true;
   } catch {
     productos = [];
     if (!incluirInactivos) {
       renderizarFiltrosCategorias(productos);
+      renderizarCarruselSecciones();
     }
     if (!incluirInactivos) {
       mostrarToast('Error de conexión con el servidor', 'error');
@@ -2957,6 +3398,37 @@ function renderizarProductos() {
       <p class="store-section__empty">Todavía no hay productos disponibles en la tienda.</p>
     `;
     renderizarStadiumCarousel();
+    actualizarUiFiltroColeccion();
+    return;
+  }
+
+  const filtroEquipoOLigaActivo =
+    filtroSoloOfertas || categoriaFiltroActiva !== 'todos' || Boolean(ligaFiltroActiva);
+
+  if (filtroEquipoOLigaActivo) {
+    const productosFiltrados = ordenarListaProductos(filtrarProductos(productos));
+
+    if (!productosFiltrados.length) {
+      const mensajeVacio = filtroSoloOfertas
+        ? 'No hay ofertas disponibles por ahora.'
+        : categoriaFiltroActiva !== 'todos'
+          ? 'No hay productos en esta colección por ahora.'
+          : `No hay productos de ${ligaFiltroActiva} por ahora.`;
+
+      container.innerHTML = `<p class="store-section__empty">${mensajeVacio}</p>`;
+      renderizarStadiumCarousel();
+      actualizarUiFiltroColeccion();
+      return;
+    }
+
+    container.innerHTML = `
+      <div class="products-grid products-grid--filtrada" role="list">
+        ${productosFiltrados.map(crearHtmlTarjetaProducto).join('')}
+      </div>
+    `;
+    animarEntradaProductos(container);
+    renderizarStadiumCarousel();
+    actualizarUiFiltroColeccion();
     return;
   }
 
@@ -3002,12 +3474,14 @@ function renderizarProductos() {
 
     container.innerHTML = `<p class="store-section__empty">${mensajeVacio}</p>`;
     renderizarStadiumCarousel();
+    actualizarUiFiltroColeccion();
     return;
   }
 
   container.innerHTML = bloques.join('');
   animarEntradaProductos(container);
   renderizarStadiumCarousel();
+  actualizarUiFiltroColeccion();
 }
 
 function obtenerClaveCarritoUsuario(email) {
@@ -5296,6 +5770,7 @@ function inicializarAutenticacion() {
 document.addEventListener('DOMContentLoaded', async () => {
   inicializarToastContainer();
   inicializarHeaderScroll();
+  inicializarMenuMobile();
   await cargarConfiguracionTienda();
   const pagina = document.body?.dataset?.page || 'index';
 
@@ -5328,6 +5803,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   inicializarBuscador();
   await cargarSecciones();
   renderizarCarruselSecciones();
+  renderizarEnlacesMenuMobile();
   const productosCargados = await cargarProductos();
   renderizarSelectCategorias();
   if (productosCargados) {

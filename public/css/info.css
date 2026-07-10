@@ -3,7 +3,7 @@
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr);
   gap: 0;
-  min-height: calc(100vh - 140px);
+  min-height: calc(100dvh - 140px);
   max-width: var(--max-width);
   margin: 0 auto;
   padding: var(--space-lg) var(--space-md) var(--space-2xl);

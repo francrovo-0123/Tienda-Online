@@ -22,6 +22,28 @@ if (!JWT_SECRET || JWT_SECRET.length < 32) {
   console.error('FATAL: JWT_SECRET no está definido o tiene menos de 32 caracteres. El servidor no puede iniciarse de forma segura.');
   process.exit(1);
 }
+
+function logError(contexto, error, meta = {}) {
+  const entrada = {
+    timestamp: new Date().toISOString(),
+    nivel: 'error',
+    contexto,
+    mensaje: error?.message || String(error),
+    stack: error?.stack,
+    ...meta,
+  };
+  console.error(JSON.stringify(entrada));
+}
+
+const MONGO_OPTIONS = {
+  maxPoolSize: 5,
+  minPoolSize: 1,
+  serverSelectionTimeoutMS: 5000,
+  bufferCommands: false,
+};
+
+let conexionDBPromise = null;
+let inicializacionLocalCompleta = false;
 const NOMBRE_TIENDA_DEFECTO = String(process.env.NOMBRE_TIENDA || 'Jerseys Store').trim();
 const WHATSAPP_NUMERO = String(process.env.WHATSAPP_NUMERO || '').trim();
 const CLOUDINARY_CLOUD_NAME = String(process.env.CLOUDINARY_CLOUD_NAME || '').trim();
@@ -131,6 +153,13 @@ productoSchema.pre('save', function () {
   }
 });
 
+productoSchema.index({ activo: 1, categoria: 1 });
+productoSchema.index({ activo: 1, genero: 1 });
+productoSchema.index(
+  { nombre: 'text', descripcion: 'text', liga: 'text' },
+  { weights: { nombre: 10, descripcion: 1, liga: 5 } }
+);
+
 const pedidoSchema = new mongoose.Schema({
   id: { type: String, unique: true, required: true },
   emailUsuario: { type: String, required: true, lowercase: true, trim: true, index: true },
@@ -146,6 +175,10 @@ const pedidoSchema = new mongoose.Schema({
   expiraEn: { type: Date, default: null },
   fecha: { type: Date, default: Date.now },
 });
+
+pedidoSchema.index({ estado: 1, expiraEn: 1 });
+pedidoSchema.index({ mercadopagoPreferenceId: 1 }, { sparse: true });
+pedidoSchema.index({ emailUsuario: 1, fecha: -1 });
 
 const usuarioSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true, lowercase: true, trim: true },
@@ -368,7 +401,8 @@ function verificarJWT(req, res, next) {
   try {
     req.usuario = jwt.verify(token, JWT_SECRET);
     next();
-  } catch {
+  } catch (error) {
+    logError('JWT_VERIFICACION', error, { ruta: req.path, metodo: req.method });
     return res.status(403).json({ error: 'Token inválido.' });
   }
 }
@@ -392,7 +426,8 @@ function verificarClienteJWT(req, res, next) {
 
     req.usuario = payload;
     next();
-  } catch {
+  } catch (error) {
+    logError('JWT_CLIENTE', error, { ruta: req.path, metodo: req.method });
     return res.status(403).json({ error: 'Token inválido.' });
   }
 }
@@ -795,12 +830,86 @@ async function limpiarPedidosExpirados() {
   const pedidosExpirados = await Pedido.find({
     estado: ESTADO_PEDIDO_MP_PENDIENTE,
     expiraEn: { $ne: null, $lt: ahora },
-  });
+  }).lean();
+
+  if (!pedidosExpirados.length) {
+    return 0;
+  }
+
+  const idsProducto = new Set();
+  for (const pedido of pedidosExpirados) {
+    for (const item of pedido.productos || []) {
+      const productoId = item.producto?.id ?? item.producto;
+      if (productoId != null) {
+        idsProducto.add(String(productoId));
+      }
+    }
+  }
+
+  const objectIds = [];
+  const numericIds = [];
+
+  for (const id of idsProducto) {
+    if (mongoose.isValidObjectId(id)) {
+      objectIds.push(id);
+    } else {
+      const num = Number(id);
+      if (Number.isFinite(num)) {
+        numericIds.push(num);
+      }
+    }
+  }
+
+  const condiciones = [];
+  if (objectIds.length) condiciones.push({ _id: { $in: objectIds } });
+  if (numericIds.length) condiciones.push({ id: { $in: numericIds } });
+
+  const productosEncontrados = condiciones.length
+    ? await Producto.find({ $or: condiciones }).lean()
+    : [];
+
+  const productoPorClave = new Map();
+  for (const producto of productosEncontrados) {
+    productoPorClave.set(String(producto._id), producto);
+    productoPorClave.set(String(producto.id), producto);
+  }
+
+  const incrementos = new Map();
 
   for (const pedido of pedidosExpirados) {
-    await restaurarStockDesdePedido(pedido);
-    pedido.estado = 'cancelado';
-    await pedido.save();
+    for (const item of pedido.productos || []) {
+      const productoId = item.producto?.id ?? item.producto;
+      const producto = productoPorClave.get(String(productoId));
+      if (!producto) continue;
+
+      const clave = String(producto._id);
+      incrementos.set(clave, (incrementos.get(clave) || 0) + Number(item.cantidad || 0));
+    }
+  }
+
+  const operacionesProducto = [...incrementos.entries()].map(([productoId, cantidad]) => ({
+    updateOne: {
+      filter: { _id: productoId },
+      update: { $inc: { stock: cantidad } },
+    },
+  }));
+
+  const operacionesPedido = pedidosExpirados.map((pedido) => ({
+    updateOne: {
+      filter: { _id: pedido._id },
+      update: { $set: { estado: 'cancelado' } },
+    },
+  }));
+
+  if (operacionesProducto.length) {
+    await Producto.bulkWrite(operacionesProducto);
+  }
+
+  if (operacionesPedido.length) {
+    await Pedido.bulkWrite(operacionesPedido);
+  }
+
+  for (const pedido of pedidosExpirados) {
     console.log(`=> Pedido ${pedido.id} cancelado por expiración de pago (stock restaurado).`);
   }
 
@@ -1049,14 +1158,36 @@ function construirVentasUltimos7Dias(ventasAgregadas) {
   return resultado;
 }
 
+async function ejecutarInicializacionLocal() {
+  if (inicializacionLocalCompleta || process.env.VERCEL) {
+    return;
+  }
+
+  inicializacionLocalCompleta = true;
+  await inicializarAdministrador();
+  await inicializarConfiguracion();
+}
+
 async function asegurarConexionDB() {
   if (mongoose.connection.readyState === 1) {
     return;
   }
 
-  await mongoose.connect(process.env.MONGO_URI);
-  await inicializarAdministrador();
-  await inicializarConfiguracion();
+  if (!conexionDBPromise) {
+    conexionDBPromise = mongoose
+      .connect(process.env.MONGO_URI, MONGO_OPTIONS)
+      .then(async () => {
+        if (!process.env.VERCEL) {
+          await ejecutarInicializacionLocal();
+        }
+      })
+      .catch((error) => {
+        conexionDBPromise = null;
+        throw error;
+      });
+  }
+
+  return conexionDBPromise;
 }
 
 app.use('/api', async (req, res, next) => {
@@ -1064,7 +1195,7 @@ app.use('/api', async (req, res, next) => {
     await asegurarConexionDB();
     next();
   } catch (error) {
-    console.error('Error al conectar con MongoDB:', error);
+    logError('MONGODB_CONEXION', error, { ruta: req.path, metodo: req.method });
     res.status(503).json({ error: 'Servicio no disponible.' });
   }
 });
@@ -1292,13 +1423,13 @@ app.get('/api/productos/buscar', async (req, res) => {
       return res.json([]);
     }
 
-    const regex = new RegExp(consulta.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
     const productos = await Producto.find({
       activo: { $ne: false },
-      $or: [{ nombre: regex }, { descripcion: regex }, { liga: regex }],
+      $text: { $search: consulta },
     })
-      .limit(5)
-      .select('id nombre precio precioOferta imagenFrente imagenEspalda img');
+      .select('id nombre precio precioOferta imagenFrente imagenEspalda img')
+      .sort({ score: { $meta: 'textScore' } })
+      .limit(5);
 
     res.json(
       productos.map((producto) => {
@@ -1604,7 +1735,9 @@ app.post('/api/pedidos', verificarClienteJWT, async (req, res) => {
 
     res.status(201).json(formatearPedido(nuevoPedido));
   } catch (error) {
-    console.error('Error al crear pedido:', error);
+    logError('CREAR_PEDIDO', error, {
+      emailUsuario: normalizarEmail(req.usuario?.email),
+    });
     res.status(500).json({ error: 'Error interno del servidor.' });
   }
 });
@@ -1682,7 +1815,10 @@ app.post('/api/pagar', verificarClienteJWT, async (req, res) => {
       preferenceResponse = await preferenceClient.create({ body: preferenceBody });
     } catch (mpError) {
       await revertirDecrementosStock(decrementosRealizados);
-      console.error('Error al crear preferencia de Mercado Pago:', mpError);
+      logError('CREAR_PEDIDO_MP_PREFERENCE', mpError, {
+        emailUsuario: email,
+        pedidoId,
+      });
       return res.status(502).json({ error: 'No se pudo iniciar el pago con Mercado Pago. Intentá nuevamente.' });
     }
 
@@ -1720,7 +1856,9 @@ app.post('/api/pagar', verificarClienteJWT, async (req, res) => {
       init_point: initPoint,
     });
   } catch (error) {
-    console.error('Error al iniciar pago con Mercado Pago:', error);
+    logError('CREAR_PEDIDO_MP', error, {
+      emailUsuario: normalizarEmail(req.usuario?.email),
+    });
     res.status(500).json({ error: 'Error interno del servidor.' });
   }
 });
@@ -1746,7 +1884,7 @@ async function manejarWebhookMercadoPago(req, res) {
     try {
       paymentData = await paymentClient.get({ id: paymentId });
     } catch (mpError) {
-      console.error('Error al consultar pago en Mercado Pago:', mpError);
+      logError('WEBHOOK_MP_CONSULTA', mpError, { paymentId });
       return res.sendStatus(200);
     }
 
@@ -1782,9 +1920,13 @@ async function manejarWebhookMercadoPago(req, res) {
       const montoPedido = Number(pedido.total);
 
       if (!Number.isFinite(montoPagado) || Math.abs(montoPagado - montoPedido) > 0.01) {
-        console.error(
-          `[FRAUDE] Monto de Mercado Pago (${montoPagado}) difiere del pedido ${pedido.id} (${montoPedido}). Payment ID: ${paymentId}`
-        );
+        logError('WEBHOOK_MP_FRAUDE_MONTO', new Error('Monto de pago no coincide con el pedido'), {
+          pedidoId: pedido.id,
+          paymentId,
+          montoPagado,
+          montoPedido,
+          emailUsuario: pedido.emailUsuario,
+        });
         return res.sendStatus(200);
       }
 
@@ -1804,7 +1946,9 @@ async function manejarWebhookMercadoPago(req, res) {
 
     return res.sendStatus(200);
   } catch (error) {
-    console.error('Error en webhook de Mercado Pago:', error);
+    logError('WEBHOOK_MP', error, {
+      paymentId: obtenerPaymentIdDesdeNotificacion(req),
+    });
     return res.sendStatus(200);
   }
 }
@@ -2097,7 +2241,9 @@ app.post('/api/auth/login', async (req, res) => {
     const token = generarTokenCliente(usuario);
     res.json({ token, usuario: sanitizarUsuario(usuario) });
   } catch (error) {
-    console.error('Error en login:', error);
+    logError('LOGIN', error, {
+      emailUsuario: normalizarEmail(req.body?.email),
+    });
     res.status(500).json({ error: 'Error interno del servidor.' });
   }
 });
@@ -2213,7 +2359,7 @@ async function iniciarServidor() {
     }
     console.log('');
   } catch (error) {
-    console.error('Error al conectar con MongoDB:', error);
+    logError('MONGODB_INICIO', error);
     process.exit(1);
   }
 }
