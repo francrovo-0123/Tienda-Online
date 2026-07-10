@@ -13,7 +13,7 @@
 }
 
 .stadium-section__title {
-  margin-bottom: var(--space-lg);
+  margin-bottom: var(--space-xl);
   font-size: clamp(1.125rem, 2.5vw, 1.5rem);
   font-weight: var(--font-weight-bold);
   letter-spacing: 0.12em;
@@ -32,7 +32,7 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.75rem;
 }
 
 .stadium-carousel__viewport {
@@ -45,8 +45,8 @@
 
 .stadium-carousel__track {
   display: flex;
-  gap: var(--space-sm);
-  padding: 0.5rem 0.25rem 1rem;
+  gap: 1.25rem;
+  padding: 0.75rem 0.5rem 1.25rem;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   scroll-behavior: smooth;
@@ -62,13 +62,23 @@
 }
 
 .stadium-carousel__track .product-card {
-  flex: 0 0 220px;
+  flex: 0 0 240px;
   scroll-snap-align: start;
 }
 
 @media (min-width: 640px) {
   .stadium-carousel__track .product-card {
-    flex: 0 0 240px;
+    flex: 0 0 268px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .stadium-carousel__track {
+    gap: 1.5rem;
+  }
+
+  .stadium-carousel__track .product-card {
+    flex: 0 0 280px;
   }
 }
 
@@ -335,8 +345,8 @@
 /* ── Grilla responsive ── */
 .products-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: var(--space-md);
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: 1.75rem;
   max-width: var(--max-width);
   margin: 0 auto;
 }
@@ -521,7 +531,7 @@
 
 .product-card__genero-badge {
   display: block;
-  margin: -0.125rem 0 0.375rem;
+  margin: 0 0 0.5rem;
   font-size: 0.6875rem;
   font-weight: var(--font-weight-medium);
   letter-spacing: 0.04em;
@@ -536,14 +546,14 @@
 .selector-talles {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.375rem;
-  margin-top: 0.625rem;
-  margin-bottom: 0.75rem;
+  gap: 0.5rem;
+  margin-top: 0.875rem;
+  margin-bottom: 0.875rem;
 }
 
 .selector-talles__label {
   flex: 1 1 100%;
-  margin-bottom: 0.125rem;
+  margin-bottom: 0.25rem;
   font-size: 0.6875rem;
   font-weight: var(--font-weight-semibold);
   letter-spacing: 0.1em;
@@ -555,8 +565,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 2.125rem;
-  height: 2.125rem;
+  min-width: 2.25rem;
+  height: 2.25rem;
   padding: 0 0.5rem;
   font-size: 0.6875rem;
   font-weight: var(--font-weight-semibold);
@@ -618,8 +628,8 @@
 
 .product-card__add-btn {
   width: 100%;
-  margin-top: 0.5rem;
-  padding: 0.6875rem 0.75rem;
+  margin-top: 0.75rem;
+  padding: 0.8125rem 0.875rem;
   font-size: 0.625rem;
   font-weight: var(--font-weight-bold);
   letter-spacing: 0.1em;
@@ -684,19 +694,19 @@
   display: flex;
   flex-direction: column;
   flex: 1;
-  padding: 0.625rem 0.75rem 0.75rem;
+  padding: 1rem 1rem 1.125rem;
 }
 
 .product-card__name {
-  margin-bottom: 0.375rem;
-  font-size: 0.8125rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.875rem;
   font-weight: var(--font-weight-bold);
   line-height: var(--line-height-relaxed);
   color: #111;
 }
 
 .product-card__price {
-  font-size: 0.9375rem;
+  font-size: 1rem;
   font-weight: var(--font-weight-bold);
   color: #111;
 }
@@ -725,9 +735,9 @@
 .product-card__tech {
   display: flex;
   align-items: center;
-  gap: 0.375rem;
+  gap: 0.5rem;
   margin-top: auto;
-  padding-top: 0.5rem;
+  padding-top: 0.75rem;
   border-top: 1px solid rgba(0, 0, 0, 0.08);
 }
 
@@ -812,8 +822,8 @@
 .skeleton-card__body {
   display: flex;
   flex-direction: column;
-  gap: 0.375rem;
-  padding: 0.625rem 0.75rem 0.75rem;
+  gap: 0.5rem;
+  padding: 1rem 1rem 1.125rem;
 }
 
 .skeleton-card__line {
@@ -1009,7 +1019,19 @@
   }
 
   .products-grid {
-    gap: var(--space-sm);
+    gap: 1.125rem;
+  }
+
+  .product-card__info {
+    padding: 0.875rem 0.875rem 1rem;
+  }
+
+  .stadium-carousel__track {
+    gap: 1rem;
+  }
+
+  .stadium-carousel__track .product-card {
+    flex: 0 0 220px;
   }
 
   .product-detail-modal__dialog {
