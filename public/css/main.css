@@ -431,9 +431,9 @@
 
 .product-card__image-wrapper {
   position: relative;
-  aspect-ratio: 3 / 4;
+  aspect-ratio: 4 / 5;
   overflow: hidden;
-  background-color: var(--color-bg-alt);
+  background-color: #f3f4f6;
   border-bottom: 1px solid rgba(0, 0, 0, 0.05);
   cursor: pointer;
   touch-action: manipulation;
@@ -444,6 +444,7 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: center center;
 }
 
 .product-card__image.img-frente,
@@ -814,7 +815,7 @@
 }
 
 .skeleton-card__image {
-  aspect-ratio: 3 / 4;
+  aspect-ratio: 4 / 5;
   width: 100%;
   border-bottom: 1px solid rgba(0, 0, 0, 0.05);
 }
@@ -940,8 +941,9 @@
 
 .product-detail-modal__main-image {
   width: 100%;
-  aspect-ratio: 3 / 4;
+  aspect-ratio: 4 / 5;
   object-fit: cover;
+  object-position: center center;
   border-radius: 0.75rem;
   background: #f0f0f0;
 }

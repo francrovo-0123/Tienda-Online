@@ -1664,7 +1664,7 @@ function crearHtmlTarjetaProducto(producto) {
           alt="${producto.nombre} — frente"
           loading="lazy"
           width="600"
-          height="800"
+          height="750"
         >
         <img
           class="product-card__image img-espalda"
@@ -1672,7 +1672,7 @@ function crearHtmlTarjetaProducto(producto) {
           alt="${producto.nombre} — espalda"
           loading="lazy"
           width="600"
-          height="800"
+          height="750"
         >
         ${badgesFila}
         ${sinStock ? '<span class="product-card__stock-badge">SIN STOCK</span>' : ''}
@@ -1768,7 +1768,8 @@ function optimizarUrlImagenProducto(url, opciones = {}) {
   const cloudName = extraerCloudNameCloudinary(limpia) || CLOUDINARY_CLOUD_NAME;
   if (!cloudName) return limpia;
 
-  const transform = opciones.transform || 'c_scale,w_500,h_667,q_auto,f_auto';
+  // c_fill recorta sin deformar; c_scale con w+h estiraba las camisetas.
+  const transform = opciones.transform || 'c_fill,g_center,w_600,h_750,q_auto,f_auto';
   return `https://res.cloudinary.com/${cloudName}/image/upload/${transform}/${assetPath}`;
 }
 
