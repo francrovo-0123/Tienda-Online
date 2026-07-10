@@ -2695,6 +2695,9 @@ function renderizarEnlacesMenuMobile() {
   partes.push('<div class="mobile-nav__divider" role="separator"></div>');
   partes.push('<span class="mobile-nav__group-label">Mi cuenta</span>');
   partes.push(`
+    <button type="button" class="mobile-nav__link" data-mobile-nav="cuenta" data-panel="ingresar">
+      Ingresá / Mi cuenta
+    </button>
     <button type="button" class="mobile-nav__link" data-mobile-nav="cuenta" data-panel="perfil">
       Mi perfil
     </button>
@@ -2702,6 +2705,15 @@ function renderizarEnlacesMenuMobile() {
       Mis pedidos
     </button>
   `);
+
+  if (document.getElementById('header-favoritos-btn')) {
+    partes.push('<div class="mobile-nav__divider" role="separator"></div>');
+    partes.push(`
+      <button type="button" class="mobile-nav__link" data-mobile-nav="favoritos">
+        Favoritos
+      </button>
+    `);
+  }
 
   lista.innerHTML = partes.join('');
   sincronizarMenuMobileActivo();
@@ -2723,6 +2735,7 @@ function abrirMenuMobile() {
   const btn = document.getElementById('header-menu-btn');
   if (!menu || !btn) return;
 
+  cerrarBuscadorMobile();
   renderizarEnlacesMenuMobile();
   menu.classList.add('is-open');
   menu.setAttribute('aria-hidden', 'false');
@@ -2766,8 +2779,105 @@ function manejarClickMenuMobile(event) {
 
   if (tipo === 'cuenta') {
     cerrarMenuMobile();
-    navegarPanelCuenta(enlace.dataset.panel || 'resumen');
+    const panel = enlace.dataset.panel || 'resumen';
+    if (panel === 'ingresar') {
+      document.getElementById('admin-access-btn')?.click();
+      return;
+    }
+    navegarPanelCuenta(panel);
+    return;
   }
+
+  if (tipo === 'favoritos') {
+    cerrarMenuMobile();
+    document.getElementById('header-favoritos-btn')?.click();
+  }
+}
+
+function esVistaMobile() {
+  return window.matchMedia('(max-width: 768px)').matches;
+}
+
+function abrirBuscadorMobile() {
+  const header = document.querySelector('.main-header');
+  const toggle = document.getElementById('header-search-toggle');
+  const input = document.getElementById('input-busqueda');
+  if (!header || !toggle || !esVistaMobile()) return;
+
+  cerrarMenuMobile();
+  header.classList.add('is-search-open');
+  toggle.setAttribute('aria-expanded', 'true');
+  window.dispatchEvent(new Event('header:remeasure'));
+
+  requestAnimationFrame(() => {
+    input?.focus({ preventScroll: true });
+  });
+}
+
+function cerrarBuscadorMobile() {
+  const header = document.querySelector('.main-header');
+  const toggle = document.getElementById('header-search-toggle');
+  const input = document.getElementById('input-busqueda');
+  if (!header?.classList.contains('is-search-open')) return;
+
+  header.classList.remove('is-search-open');
+  toggle?.setAttribute('aria-expanded', 'false');
+  ocultarSugerenciasBusqueda();
+  window.dispatchEvent(new Event('header:remeasure'));
+
+  if (document.activeElement === input) {
+    input.blur();
+  }
+}
+
+function alternarBuscadorMobile() {
+  const header = document.querySelector('.main-header');
+  if (!header || !esVistaMobile()) return;
+
+  if (header.classList.contains('is-search-open')) {
+    cerrarBuscadorMobile();
+  } else {
+    abrirBuscadorMobile();
+  }
+}
+
+function inicializarBuscadorMobile() {
+  const toggle = document.getElementById('header-search-toggle');
+  const input = document.getElementById('input-busqueda');
+  const header = document.querySelector('.main-header');
+  if (!toggle || !input || !header || toggle.dataset.bound) return;
+  toggle.dataset.bound = 'true';
+
+  toggle.addEventListener('click', (event) => {
+    event.stopPropagation();
+    alternarBuscadorMobile();
+  });
+
+  document.addEventListener('click', (event) => {
+    if (!esVistaMobile() || !header.classList.contains('is-search-open')) return;
+    if (event.target.closest('.header-search') || event.target.closest('#header-search-toggle')) return;
+    cerrarBuscadorMobile();
+  });
+
+  let scrollTimer;
+  window.addEventListener('scroll', () => {
+    if (!esVistaMobile() || !header.classList.contains('is-search-open')) return;
+    clearTimeout(scrollTimer);
+    scrollTimer = setTimeout(cerrarBuscadorMobile, 80);
+  }, { passive: true });
+
+  window.addEventListener('resize', () => {
+    if (!esVistaMobile()) {
+      cerrarBuscadorMobile();
+    }
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && header.classList.contains('is-search-open')) {
+      cerrarBuscadorMobile();
+      toggle.focus();
+    }
+  });
 }
 
 function inicializarMenuMobile() {
@@ -2906,7 +3016,12 @@ function inicializarBuscador() {
   input?.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
       ocultarSugerenciasBusqueda();
-      input.blur();
+      if (esVistaMobile() && document.querySelector('.main-header')?.classList.contains('is-search-open')) {
+        cerrarBuscadorMobile();
+        document.getElementById('header-search-toggle')?.focus();
+      } else {
+        input.blur();
+      }
     }
   });
 
@@ -5771,6 +5886,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   inicializarToastContainer();
   inicializarHeaderScroll();
   inicializarMenuMobile();
+  inicializarBuscadorMobile();
   await cargarConfiguracionTienda();
   const pagina = document.body?.dataset?.page || 'index';
 
