@@ -1,10 +1,10 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="description" content="Jerseys Store — camisetas de fútbol oficiales y de colección.">
-  <title>Jerseys Store</title>
+  <meta name="description" content="Jersey Store — camisetas de fútbol oficiales y de colección.">
+  <title>Jersey Store</title>
   <link rel="icon" href="/favicon.ico" sizes="32x32">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/favicon.png">
@@ -53,7 +53,7 @@
           <span class="header-menu-btn__label">MENÚ</span>
         </button>
 
-        <a href="/" class="logo" aria-label="Jerseys Store — Inicio">
+        <a href="/" class="logo" aria-label="Jersey Store — Inicio">
           <svg class="logo-shield" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 60" aria-hidden="true">
             <defs>
               <linearGradient id="shield-body" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -65,7 +65,7 @@
             <text x="26" y="34" text-anchor="middle" fill="#fff" font-family="Oswald, sans-serif" font-size="12" font-weight="700" letter-spacing="1">JS</text>
           </svg>
           <span class="logo-text">
-            <span class="logo-text__brand">Jerseys</span>
+            <span class="logo-text__brand">Jersey</span>
             <span class="logo-text__store">Store</span>
           </span>
         </a>
@@ -387,7 +387,7 @@
 
       <div class="footer-inner">
         <div class="footer-brand">
-          <span class="footer-logo">Jerseys Store</span>
+          <span class="footer-logo">Jersey Store</span>
           <p class="footer-tagline">Camisetas de fútbol para hinchas de verdad.</p>
           <div class="footer-social">
             <a href="#" class="social-link" aria-label="Instagram" target="_blank" rel="noopener noreferrer">
@@ -444,7 +444,7 @@
       <div class="footer-bottom">
         <div class="footer-bottom__inner">
           <p class="footer-copyright">
-            &copy; 2026 <span class="footer-copyright__company">Jerseys Store</span>. Todos los derechos reservados.
+            &copy; 2026 <span class="footer-copyright__company">Jersey Store</span>. Todos los derechos reservados.
             <span class="footer-copyright__sep">|</span>
             Desarrollado por <strong>Francisco Crovo</strong>
           </p>
@@ -583,7 +583,7 @@
     <div class="admin-layout">
       <aside class="admin-sidebar">
         <div class="admin-sidebar__brand">
-          <span class="admin-sidebar__logo">Jerseys Store</span>
+          <span class="admin-sidebar__logo">Jersey Store</span>
           <span class="admin-sidebar__badge">Admin</span>
         </div>
 
@@ -627,7 +627,7 @@
               <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"/>
               <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
             </svg>
-            <span>Ver Tienda</span>
+            <span>Volver a la Tienda</span>
           </button>
           <button type="button" class="admin-sidebar__logout" id="btn-logout">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
@@ -809,7 +809,9 @@
               <p class="admin-portada__count" id="portada-count"></p>
             </div>
             <p class="admin-portada__hint">
-              Marcá qué productos aparecen en <strong>Productos Destacados</strong> y en <strong>En Oferta</strong> en la página de inicio. Los cambios se reflejan al instante en la tienda.
+              Marcá qué productos aparecen en <strong>Productos Destacados</strong> y en <strong>En Oferta</strong> en la página de inicio.
+              Para «En Oferta» el producto debe tener un <strong>precio de oferta</strong> definido en el formulario de edición.
+              Los cambios se reflejan al instante en la tienda.
             </p>
             <div class="admin-portada__toolbar">
               <input
@@ -842,7 +844,7 @@
                   class="admin-config__input"
                   required
                   maxlength="80"
-                  placeholder="Ej: Jerseys Store"
+                  placeholder="Ej: Jersey Store"
                   autocomplete="organization"
                 >
               </div>
@@ -930,14 +932,40 @@
           </div>
 
           <div class="product-form__field">
-            <label for="producto-precio-oferta" class="product-form__label">Precio de Oferta <span class="product-form__optional">(opcional)</span></label>
-            <div class="product-form__descuento-row">
-              <input type="number" id="producto-precio-oferta" class="product-form__input" min="1" step="1" placeholder="Ej: 7500" name="precioOferta">
-              <button type="button" class="product-form__quitar-descuento hidden" id="btn-quitar-descuento-producto">
-                Quitar oferta
-              </button>
+            <label class="product-form__switch-row" for="producto-en-oferta">
+              <span class="product-form__label">En Oferta</span>
+              <span class="admin-toggle" title="Activar precio de oferta">
+                <input
+                  type="checkbox"
+                  id="producto-en-oferta"
+                  class="admin-toggle__input"
+                  name="enOferta"
+                  aria-controls="producto-precio-oferta-wrap"
+                >
+                <span class="admin-toggle__track" aria-hidden="true"></span>
+              </span>
+            </label>
+            <div class="product-form__oferta-wrap is-disabled" id="producto-precio-oferta-wrap">
+              <label for="producto-precio-oferta" class="product-form__label">
+                Precio de Oferta <span class="product-form__optional" id="producto-precio-oferta-optional">(opcional)</span>
+              </label>
+              <div class="product-form__descuento-row">
+                <input
+                  type="number"
+                  id="producto-precio-oferta"
+                  class="product-form__input"
+                  min="1"
+                  step="1"
+                  placeholder="Ej: 39900"
+                  name="precioOferta"
+                  disabled
+                >
+                <button type="button" class="product-form__quitar-descuento hidden" id="btn-quitar-descuento-producto">
+                  Quitar oferta
+                </button>
+              </div>
+              <p class="product-form__hint">Obligatorio si «En Oferta» está activo. Debe ser menor al precio regular. Se muestra tachando el precio original en la tienda.</p>
             </div>
-            <p class="product-form__hint">Debe ser menor al precio regular. También podés marcar el producto en «Gestión de Portada».</p>
           </div>
 
           <div class="product-form__field">

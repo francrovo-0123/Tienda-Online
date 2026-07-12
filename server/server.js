@@ -1,4 +1,4 @@
-require('dotenv').config();
+﻿require('dotenv').config();
 
 // Base de datos recomendada para MONGO_URI en .env: jerseys_store_db
 // Ejemplo: mongodb+srv://usuario:contraseña@cluster.mongodb.net/jerseys_store_db
@@ -47,7 +47,7 @@ const MONGO_OPTIONS = {
 
 let conexionDBPromise = null;
 let inicializacionLocalCompleta = false;
-const NOMBRE_TIENDA_DEFECTO = String(process.env.NOMBRE_TIENDA || 'Jerseys Store').trim();
+const NOMBRE_TIENDA_DEFECTO = String(process.env.NOMBRE_TIENDA || 'Jersey Store').trim();
 const WHATSAPP_NUMERO = String(process.env.WHATSAPP_NUMERO || '').trim();
 const CLOUDINARY_CLOUD_NAME = String(process.env.CLOUDINARY_CLOUD_NAME || '').trim();
 const CLOUDINARY_UPLOAD_PRESET = String(process.env.CLOUDINARY_UPLOAD_PRESET || '').trim();
@@ -243,7 +243,7 @@ seccionSchema.pre('save', function () {
 const Seccion = mongoose.model('Seccion', seccionSchema);
 
 const configuracionSchema = new mongoose.Schema({
-  nombreTienda: { type: String, default: 'Jerseys Store' },
+  nombreTienda: { type: String, default: 'Jersey Store' },
   whatsappNumero: { type: String, default: '' },
   cloudinaryCloudName: { type: String, default: '' },
   cloudinaryUploadPreset: { type: String, default: '' },
@@ -332,7 +332,7 @@ async function verificarPassword(password, passwordAlmacenada) {
 }
 
 function plantillaEmailVerificacion(codigo, nombreTienda) {
-  const tienda = String(nombreTienda || NOMBRE_TIENDA_DEFECTO || 'Jerseys Store').trim();
+  const tienda = String(nombreTienda || NOMBRE_TIENDA_DEFECTO || 'Jersey Store').trim();
 
   return `
 <!DOCTYPE html>
@@ -418,7 +418,13 @@ function verificarJWT(req, res, next) {
   const token = authHeader.slice(7);
 
   try {
-    req.usuario = jwt.verify(token, JWT_SECRET);
+    const payload = jwt.verify(token, JWT_SECRET);
+
+    if (!payload || typeof payload !== 'object' || !payload.email || !payload.rol) {
+      return res.status(403).json({ error: 'Token inválido.' });
+    }
+
+    req.usuario = payload;
     next();
   } catch (error) {
     logError('JWT_VERIFICACION', error, { ruta: req.path, metodo: req.method });
@@ -457,9 +463,12 @@ function verificarClienteJWT(req, res, next) {
   }
 }
 
+// Auditoría: rol debe ser estrictamente 'admin' (403 a clientes con JWT válido).
 function esAdmin(req, res, next) {
   if (req.usuario?.rol !== 'admin') {
-    return res.status(403).json({ error: 'Acceso denegado. Se requiere rol de administrador.' });
+    return res.status(403).json({
+      error: 'Acceso denegado. Se requiere rol de administrador.',
+    });
   }
 
   next();
@@ -795,7 +804,7 @@ function formatearPedido(pedido) {
 
 function obtenerConfiguracionDesdeEnv() {
   return {
-    nombreTienda: NOMBRE_TIENDA_DEFECTO || 'Jerseys Store',
+    nombreTienda: NOMBRE_TIENDA_DEFECTO || 'Jersey Store',
     whatsappNumero: WHATSAPP_NUMERO.replace(/^\+/, ''),
     cloudinaryCloudName: CLOUDINARY_CLOUD_NAME,
     cloudinaryUploadPreset: CLOUDINARY_UPLOAD_PRESET,
@@ -806,7 +815,7 @@ function formatearConfiguracion(config) {
   const datos = config?.toObject ? config.toObject() : config || {};
 
   return {
-    nombreTienda: String(datos.nombreTienda || NOMBRE_TIENDA_DEFECTO || 'Jerseys Store').trim(),
+    nombreTienda: String(datos.nombreTienda || NOMBRE_TIENDA_DEFECTO || 'Jersey Store').trim(),
     whatsappNumero: String(datos.whatsappNumero || '').replace(/^\+/, '').trim(),
     cloudinaryCloudName: String(datos.cloudinaryCloudName || '').trim(),
     cloudinaryUploadPreset: String(datos.cloudinaryUploadPreset || '').trim(),
@@ -828,12 +837,22 @@ async function obtenerConfiguracionUnica() {
 async function inicializarConfiguracion() {
   const total = await Configuracion.countDocuments();
 
-  if (total > 0) {
+  if (total === 0) {
+    await Configuracion.create(obtenerConfiguracionDesdeEnv());
+    console.log('=> Éxito: Configuración inicial de la tienda creada desde .env.');
     return;
   }
 
-  await Configuracion.create(obtenerConfiguracionDesdeEnv());
-  console.log('=> Éxito: Configuración inicial de la tienda creada desde .env.');
+  const config = await Configuracion.findOne();
+  const nombreActual = String(config?.nombreTienda || '').trim();
+  const nombreNuevo = NOMBRE_TIENDA_DEFECTO || 'Jersey Store';
+  const nombresViejos = new Set(["sam's house", 'sams house', 'jersey house', 'jerseys store']);
+
+  if (config && nombresViejos.has(nombreActual.toLowerCase())) {
+    config.nombreTienda = nombreNuevo;
+    await config.save();
+    console.log(`=> Nombre de tienda actualizado a ${nombreNuevo}.`);
+  }
 }
 
 async function inicializarAdministrador() {
@@ -1567,9 +1586,35 @@ app.delete('/api/secciones/:id', verificarAdminJWT, async (req, res) => {
 
 // ── Productos ──
 
+// Catálogo público. ?todos=true expone inactivos → solo admin JWT (antes era público).
 app.get('/api/productos', async (req, res) => {
   try {
     const incluirInactivos = req.query.todos === 'true';
+
+    if (incluirInactivos) {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({
+          error: 'Acceso denegado. Se requiere autenticación de administrador.',
+        });
+      }
+
+      try {
+        const payload = jwt.verify(authHeader.slice(7), JWT_SECRET);
+        if (payload?.rol !== 'admin') {
+          return res.status(403).json({
+            error: 'Acceso denegado. Se requiere rol de administrador.',
+          });
+        }
+        req.usuario = payload;
+      } catch (error) {
+        if (error?.name === 'TokenExpiredError') {
+          return res.status(401).json({ error: 'Tu sesión expiró. Volvé a iniciar sesión.' });
+        }
+        return res.status(403).json({ error: 'Token inválido.' });
+      }
+    }
+
     const filtro = incluirInactivos ? {} : { activo: { $ne: false } };
 
     if (parsearBooleano(req.query.destacado, null) === true) {
@@ -1725,9 +1770,10 @@ app.put('/api/productos/quitar-ofertas-masivo', verificarAdminJWT, async (req, r
       return res.status(404).json({ error: 'No hay productos con descuento de oferta en los criterios indicados.' });
     }
 
+    // Sin precio de oferta, el flag de portada también debe limpiarse.
     await Producto.updateMany(
       { id: { $in: productos.map((producto) => producto.id) } },
-      { $set: { precioOferta: null } }
+      { $set: { precioOferta: null, enOferta: false } }
     );
 
     const productosActualizados = await Producto.find(
@@ -1769,15 +1815,36 @@ app.patch('/api/productos/:id/activo', verificarAdminJWT, async (req, res) => {
 app.patch('/api/productos/:id/portada', verificarAdminJWT, async (req, res) => {
   try {
     const actualizacion = {};
+    const productoExistente = await buscarProductoPorId(req.params.id);
+
+    if (!productoExistente) {
+      return res.status(404).json({ error: 'Producto no encontrado.' });
+    }
 
     if (req.body?.destacado !== undefined) {
       actualizacion.destacado = parsearBooleano(req.body.destacado);
     }
 
     if (req.body?.enOferta !== undefined || req.body?.en_oferta !== undefined) {
-      actualizacion.enOferta = parsearBooleano(
+      const marcarEnOferta = parsearBooleano(
         req.body.enOferta !== undefined ? req.body.enOferta : req.body.en_oferta
       );
+
+      // No permitir flag de portada sin precio_oferta válido (evita desync).
+      if (marcarEnOferta) {
+        const ofertaValida = normalizarPrecioOferta(
+          productoExistente.precioOferta,
+          productoExistente.precio
+        );
+        if (ofertaValida === null) {
+          return res.status(400).json({
+            error:
+              'Para marcar «En Oferta» primero definí un precio_oferta menor al precio regular en el formulario del producto.',
+          });
+        }
+      }
+
+      actualizacion.enOferta = marcarEnOferta;
     }
 
     if (!Object.keys(actualizacion).length) {
@@ -1812,15 +1879,27 @@ app.post('/api/productos', verificarAdminJWT, async (req, res) => {
 
     const precioNumerico = Number(precio);
     const ofertaRaw = precioOferta !== undefined ? precioOferta : precio_oferta;
+    const precioOfertaNormalizado = normalizarPrecioOferta(ofertaRaw, precioNumerico);
+
+    // Si no hay oferta válida, forzar enOferta=false y precioOferta=null.
+    let enOferta = parsearBooleano(
+      req.body.enOferta !== undefined ? req.body.enOferta : req.body.en_oferta
+    );
+    if (precioOfertaNormalizado === null) {
+      enOferta = false;
+    } else if (
+      req.body.enOferta === undefined
+      && req.body.en_oferta === undefined
+    ) {
+      enOferta = true;
+    }
 
     const nuevoProducto = await new Producto({
       nombre: String(nombre).trim(),
       precio: precioNumerico,
-      precioOferta: normalizarPrecioOferta(ofertaRaw, precioNumerico),
+      precioOferta: precioOfertaNormalizado,
       destacado: parsearBooleano(req.body.destacado),
-      enOferta: parsearBooleano(
-        req.body.enOferta !== undefined ? req.body.enOferta : req.body.en_oferta
-      ),
+      enOferta,
       categoria: categoriaNombre,
       genero: normalizarGenero(genero),
       imagenFrente,
@@ -1852,10 +1931,12 @@ app.put('/api/productos/:id', verificarAdminJWT, async (req, res) => {
 
     const precioNumerico = Number(precio);
     const ofertaRaw = precioOferta !== undefined ? precioOferta : precio_oferta;
+    const precioOfertaNormalizado = normalizarPrecioOferta(ofertaRaw, precioNumerico);
+
     const actualizacion = {
       nombre: String(nombre).trim(),
       precio: precioNumerico,
-      precioOferta: normalizarPrecioOferta(ofertaRaw, precioNumerico),
+      precioOferta: precioOfertaNormalizado,
       categoria: categoriaNombre,
       genero: normalizarGenero(genero),
       imagenFrente,
@@ -1870,10 +1951,15 @@ app.put('/api/productos/:id', verificarAdminJWT, async (req, res) => {
       actualizacion.destacado = parsearBooleano(req.body.destacado);
     }
 
-    if (req.body.enOferta !== undefined || req.body.en_oferta !== undefined) {
+    // Sin precio_oferta → null + enOferta false (antes el flag quedaba huérfano).
+    if (precioOfertaNormalizado === null) {
+      actualizacion.enOferta = false;
+    } else if (req.body.enOferta !== undefined || req.body.en_oferta !== undefined) {
       actualizacion.enOferta = parsearBooleano(
         req.body.enOferta !== undefined ? req.body.enOferta : req.body.en_oferta
       );
+    } else {
+      actualizacion.enOferta = true;
     }
 
     const actualizado = await buscarProductoParaActualizar(req.params.id, actualizacion);
@@ -2314,7 +2400,7 @@ app.post('/api/contacto', async (req, res) => {
       return res.status(503).json({ error: 'El formulario de contacto no está disponible en este momento.' });
     }
 
-    const asunto = '📩 Nuevo mensaje de contacto - Jerseys Store';
+    const asunto = '📩 Nuevo mensaje de contacto - Jersey Store';
     const cuerpoTexto = [
       'Nuevo mensaje de contacto desde la tienda.',
       '',
@@ -2592,7 +2678,7 @@ async function iniciarServidor() {
     }
 
     console.log('');
-    console.log('  Jerseys Store');
+    console.log('  Jersey Store');
     console.log('  ─────────────────────────────────');
     console.log(`  Servidor activo  →  http://localhost:${PORT}`);
     if (!esUrlLocal(APP_BASE_URL)) {

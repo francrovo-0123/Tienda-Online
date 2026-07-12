@@ -984,7 +984,7 @@
 .product-card__price-actual {
   font-size: 1rem;
   font-weight: var(--font-weight-bold);
-  color: #111;
+  color: #c2410c;
 }
 
 .product-card__tech {

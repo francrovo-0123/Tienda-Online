@@ -2296,6 +2296,26 @@ body.auth-open {
   gap: 0.5rem;
 }
 
+#product-modal .product-form__switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  cursor: pointer;
+}
+
+#product-modal .product-form__oferta-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+  transition: opacity 0.2s ease;
+}
+
+#product-modal .product-form__oferta-wrap.is-disabled {
+  opacity: 0.55;
+}
+
 #product-modal .product-form__descuento-row {
   display: flex;
   flex-wrap: wrap;

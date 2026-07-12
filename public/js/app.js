@@ -1,4 +1,4 @@
-function formatearPrecio(valor) {
+﻿function formatearPrecio(valor) {
   const numero = Number(valor);
   if (!Number.isFinite(numero)) {
     return '$ 0';
@@ -60,31 +60,58 @@ function actualizarControlesPreciosMasivo() {
 function actualizarBotonQuitarDescuentoProducto() {
   const btn = document.getElementById('btn-quitar-descuento-producto');
   const input = document.getElementById('producto-precio-oferta');
+  const switchOferta = document.getElementById('producto-en-oferta');
   if (!btn) return;
 
   const producto =
     editandoProductoId !== null ? productos.find((p) => p.id === editandoProductoId) : null;
   const tieneDescuentoGuardado = Boolean(producto && tieneOfertaValida(producto));
   const tieneValorEnInput = Boolean(input?.value?.trim());
+  const ofertaActiva = Boolean(switchOferta?.checked);
 
-  btn.classList.toggle('hidden', !(tieneDescuentoGuardado || tieneValorEnInput));
+  btn.classList.toggle('hidden', !(ofertaActiva && (tieneDescuentoGuardado || tieneValorEnInput)));
+}
+
+function actualizarControlesOfertaFormulario() {
+  const switchOferta = document.getElementById('producto-en-oferta');
+  const wrap = document.getElementById('producto-precio-oferta-wrap');
+  const input = document.getElementById('producto-precio-oferta');
+  const optional = document.getElementById('producto-precio-oferta-optional');
+  const activo = Boolean(switchOferta?.checked);
+
+  wrap?.classList.toggle('is-disabled', !activo);
+
+  if (input) {
+    input.disabled = !activo;
+    input.required = activo;
+    if (!activo) {
+      input.value = '';
+    }
+  }
+
+  if (optional) {
+    optional.textContent = activo ? '(obligatorio)' : '(activá «En Oferta»)';
+  }
+
+  actualizarBotonQuitarDescuentoProducto();
 }
 
 async function quitarDescuentoProducto() {
+  const switchOferta = document.getElementById('producto-en-oferta');
   const input = document.getElementById('producto-precio-oferta');
+  if (switchOferta) switchOferta.checked = false;
   if (input) input.value = '';
+  actualizarControlesOfertaFormulario();
 
   if (editandoProductoId === null) {
-    actualizarBotonQuitarDescuentoProducto();
-    mostrarToast('Descuento quitado del formulario.');
+    mostrarToast('Oferta quitada del formulario.');
     return;
   }
 
   const producto = productos.find((p) => p.id === editandoProductoId);
   if (!producto) return;
 
-  if (!tieneOfertaValida(producto)) {
-    actualizarBotonQuitarDescuentoProducto();
+  if (!tieneOfertaValida(producto) && !(producto.enOferta || producto.en_oferta)) {
     return;
   }
 
@@ -92,15 +119,18 @@ async function quitarDescuentoProducto() {
   btn?.setAttribute('disabled', 'true');
 
   try {
+    // Fix: antes solo limpiaba precioOferta y dejaba enOferta=true (oferta huérfana en portada).
     const actualizado = await apiFetch(`/api/productos/${producto.id}`, {
       method: 'PUT',
       body: JSON.stringify({
         nombre: producto.nombre,
         precio: producto.precio,
-        precioOferta: '',
+        precioOferta: null,
+        enOferta: false,
         categoria: producto.categoria,
         genero: producto.genero || 'hombre',
         stock: producto.stock ?? 0,
+        stockTalles: producto.stockTalles,
         descripcion: producto.descripcion || '',
         imagenFrente: obtenerImagenFrente(producto),
         imagenEspalda: obtenerImagenEspalda(producto),
@@ -111,10 +141,11 @@ async function quitarDescuentoProducto() {
     const indice = productos.findIndex((p) => p.id === producto.id);
     if (indice !== -1) productos[indice] = actualizado;
 
-    actualizarBotonQuitarDescuentoProducto();
+    actualizarControlesOfertaFormulario();
     actualizarVistaCatalogoAdmin();
-    sincronizarVistaTiendaTrasCambioCatalogo();
-    mostrarToast(`Descuento quitado de «${actualizado.nombre}».`);
+    renderizarGestionPortada();
+    await refrescarCatalogoTrasCambioAdmin();
+    mostrarToast(`Oferta quitada de «${actualizado.nombre}».`);
   } catch (error) {
     mostrarToast(error?.message || 'No se pudo quitar el descuento.', 'error');
   } finally {
@@ -177,7 +208,7 @@ function obtenerImagenPrincipal(producto) {
 }
 
 const API_BASE = window.location.origin;
-let NOMBRE_TIENDA = 'Jerseys Store';
+let NOMBRE_TIENDA = 'Jersey Store';
 let WHATSAPP_NUMERO = '';
 let CLOUDINARY_CLOUD_NAME = '';
 let CLOUDINARY_UPLOAD_PRESET = '';
@@ -253,7 +284,7 @@ async function cargarConfiguracionTienda() {
     }
 
     const config = await respuesta.json();
-    NOMBRE_TIENDA = String(config.nombreTienda || 'Jerseys Store').trim() || 'Jerseys Store';
+    NOMBRE_TIENDA = String(config.nombreTienda || 'Jersey Store').trim() || 'Jersey Store';
     WHATSAPP_NUMERO = String(config.whatsappNumero || '').trim();
     CLOUDINARY_CLOUD_NAME = String(config.cloudinaryCloudName || '').trim();
     CLOUDINARY_UPLOAD_PRESET = String(config.cloudinaryUploadPreset || '').trim();
@@ -266,9 +297,9 @@ async function cargarConfiguracionTienda() {
 }
 
 function dividirNombreTienda(nombre) {
-  const partes = String(nombre || 'Jerseys Store').trim().split(/\s+/);
+  const partes = String(nombre || 'Jersey Store').trim().split(/\s+/);
   if (partes.length <= 1) {
-    return { marca: partes[0] || 'Jerseys', sufijo: 'Store' };
+    return { marca: partes[0] || 'Jersey', sufijo: 'Store' };
   }
 
   return {
@@ -278,7 +309,7 @@ function dividirNombreTienda(nombre) {
 }
 
 function aplicarMarcaTienda() {
-  const nombre = NOMBRE_TIENDA || 'Jerseys Store';
+  const nombre = NOMBRE_TIENDA || 'Jersey Store';
   const { marca, sufijo } = dividirNombreTienda(nombre);
   const enAdmin = document.body.classList.contains('admin-active');
 
@@ -851,6 +882,22 @@ function sincronizarVistaTiendaTrasCambioCatalogo() {
   renderizarStadiumCarousel();
 }
 
+/**
+ * Tras un 200 del API admin: re-pide el catálogo completo y refresca UI
+ * para evitar caché local desactualizada (sin hard refresh).
+ */
+async function refrescarCatalogoTrasCambioAdmin() {
+  const ok = await cargarProductos({ todos: true });
+  if (!ok) return false;
+
+  actualizarContadorProductosAdmin();
+  actualizarVistaCatalogoAdmin();
+  renderizarSeccionesAdmin();
+  renderizarGestionPortada();
+  sincronizarVistaTiendaTrasCambioCatalogo();
+  return true;
+}
+
 function crearFilaProductoAdminHtml(producto) {
   const stockValor = Number(producto.stock ?? 0);
   const estaActivo = producto.activo !== false;
@@ -1229,10 +1276,12 @@ async function asignarProductoASeccion(productoId) {
     const payload = {
       nombre: producto.nombre,
       precio: producto.precio,
-      precioOferta: producto.precioOferta ?? '',
+      precioOferta: tieneOfertaValida(producto) ? producto.precioOferta : null,
+      enOferta: Boolean(producto.enOferta || producto.en_oferta) && tieneOfertaValida(producto),
       categoria: seccion.nombre,
       genero: producto.genero || 'hombre',
       stock: producto.stock ?? 0,
+      stockTalles: producto.stockTalles,
       descripcion: producto.descripcion || '',
       imagenFrente: obtenerImagenFrente(producto),
       imagenEspalda: obtenerImagenEspalda(producto),
@@ -1362,16 +1411,11 @@ async function eliminarProducto(id, opciones = {}) {
   try {
     await apiFetch(`/api/productos/${id}`, { method: 'DELETE' });
 
-    productos = productos.filter((item) => item.id !== Number(id));
     carrito = carrito.filter((item) => item.id !== Number(id));
     guardarCarritoEnLocalStorage();
-    actualizarContadorProductosAdmin();
-    renderizarSeccionesAdmin();
-    actualizarVistaCatalogoAdmin();
     actualizarCarritoUI();
-    renderizarFiltrosCategorias(productos);
-    renderizarProductos();
-    renderizarStadiumCarousel();
+
+    await refrescarCatalogoTrasCambioAdmin();
 
     if (desdeSeccion) {
       const seccion = obtenerSeccionActiva();
@@ -1481,17 +1525,19 @@ function establecerTallesEnFormulario(talles = TALLES_DISPONIBLES) {
 function restablecerFormularioProducto() {
   const descripcionInput = document.getElementById('producto-descripcion');
   const precioOfertaInput = document.getElementById('producto-precio-oferta');
+  const enOfertaSwitch = document.getElementById('producto-en-oferta');
   const generoSelect = document.getElementById('producto-genero');
   const urlFrente = document.getElementById('producto-imagen-frente-url');
   const urlEspalda = document.getElementById('producto-imagen-espalda-url');
 
   if (descripcionInput) descripcionInput.value = '';
   if (precioOfertaInput) precioOfertaInput.value = '';
+  if (enOfertaSwitch) enOfertaSwitch.checked = false;
   if (generoSelect) generoSelect.value = 'hombre';
   if (urlFrente) urlFrente.value = '';
   if (urlEspalda) urlEspalda.value = '';
   establecerStockTallesEnFormulario(null);
-  actualizarBotonQuitarDescuentoProducto();
+  actualizarControlesOfertaFormulario();
 }
 
 function formatearStockAdmin(stock) {
@@ -1529,6 +1575,9 @@ function productoCoincideBusqueda(producto, busqueda) {
 
 function filtrarProductos(lista) {
   return lista.filter((producto) => {
+    // La tienda nunca muestra inactivos, aunque el admin tenga ?todos=true en memoria.
+    if (producto.activo === false) return false;
+
     const coincideCategoria =
       categoriaFiltroActiva === 'todos' || producto.categoria === categoriaFiltroActiva;
     const ligaProducto = String(producto.liga || '').trim().toLowerCase();
@@ -1655,7 +1704,7 @@ function abrirDetalleProducto(id) {
   imagenPrincipal.alt = producto.nombre;
   titulo.textContent = producto.nombre;
   precio.innerHTML = enOferta
-    ? `<span class="precio-tachado">${formatearPrecio(producto.precio)}</span> ${formatearPrecio(producto.precioOferta)}`
+    ? `<span class="precio-tachado">${formatearPrecio(producto.precio)}</span> <span class="product-card__price-actual">${formatearPrecio(producto.precioOferta)}</span>`
     : formatearPrecio(producto.precio);
   descripcion.textContent = producto.descripcion || 'Sin descripción disponible.';
 
@@ -2279,6 +2328,7 @@ function inicializarClubNav() {
 }
 
 function obtenerProductosDestacados() {
+  // Filtro limpio: solo productos con destacado === true (portada).
   return filtrarProductos(productos)
     .filter((producto) => producto.destacado === true)
     .sort((a, b) => Number(b.id) - Number(a.id));
@@ -2286,7 +2336,10 @@ function obtenerProductosDestacados() {
 
 function obtenerProductosEnOfertaPortada() {
   return filtrarProductos(productos)
-    .filter((producto) => producto.enOferta === true || producto.en_oferta === true)
+    .filter((producto) => {
+      const marcado = producto.enOferta === true || producto.en_oferta === true;
+      return marcado && tieneOfertaValida(producto);
+    })
     .sort((a, b) => Number(b.id) - Number(a.id));
 }
 
@@ -2742,7 +2795,7 @@ function crearHtmlSugerenciaBusqueda(producto) {
   const imagen = optimizarUrlImagenProducto(producto.imagenFrente || obtenerImagenPrincipal(productoLocal));
   const enOferta = tieneOfertaValida(productoLocal);
   const precioHtml = enOferta
-    ? `<span class="precio-tachado">${formatearPrecio(productoLocal.precio)}</span> ${formatearPrecio(productoLocal.precioOferta)}`
+    ? `<span class="precio-tachado">${formatearPrecio(productoLocal.precio)}</span> <span class="product-card__price-actual">${formatearPrecio(productoLocal.precioOferta)}</span>`
     : formatearPrecio(productoLocal.precio ?? producto.precio);
 
   return `
@@ -3453,7 +3506,7 @@ function abrirModalProducto(categoriaPreseleccionada = null) {
   modal.setAttribute('aria-hidden', 'false');
   document.body.classList.add('product-modal-open');
   document.getElementById('producto-nombre')?.focus();
-  actualizarBotonQuitarDescuentoProducto();
+  actualizarControlesOfertaFormulario();
 }
 
 function abrirModalEditar(id) {
@@ -3484,9 +3537,13 @@ function abrirModalEditar(id) {
 
   if (nombreInput) nombreInput.value = producto.nombre;
   if (precioInput) precioInput.value = producto.precio;
+  const enOfertaSwitch = document.getElementById('producto-en-oferta');
+  const tieneOferta = tieneOfertaValida(producto);
+  if (enOfertaSwitch) enOfertaSwitch.checked = tieneOferta;
   if (precioOfertaInput) {
     precioOfertaInput.value = obtenerDescuentoOfertaFormulario(producto);
   }
+  actualizarControlesOfertaFormulario();
   if (categoriaSelect) categoriaSelect.value = producto.categoria;
   const generoSelect = document.getElementById('producto-genero');
   if (generoSelect) generoSelect.value = producto.genero || 'hombre';
@@ -3505,7 +3562,7 @@ function abrirModalEditar(id) {
   modal.setAttribute('aria-hidden', 'false');
   document.body.classList.add('product-modal-open');
   nombreInput?.focus();
-  actualizarBotonQuitarDescuentoProducto();
+  actualizarControlesOfertaFormulario();
 }
 
 function cerrarModalProducto() {
@@ -3531,7 +3588,10 @@ async function guardarNuevoProducto(event) {
 
   const nombre = document.getElementById('producto-nombre')?.value.trim() ?? '';
   const precio = Number(document.getElementById('producto-precio')?.value);
-  const descuentoOfertaRaw = document.getElementById('producto-precio-oferta')?.value ?? '';
+  const enOfertaActiva = Boolean(document.getElementById('producto-en-oferta')?.checked);
+  const descuentoOfertaRaw = enOfertaActiva
+    ? (document.getElementById('producto-precio-oferta')?.value ?? '')
+    : '';
   const categoria = document.getElementById('producto-categoria')?.value?.trim() ?? '';
   const genero = document.getElementById('producto-genero')?.value ?? 'hombre';
   const descripcion = document.getElementById('producto-descripcion')?.value.trim() ?? '';
@@ -3552,15 +3612,18 @@ async function guardarNuevoProducto(event) {
     return;
   }
 
-  const precioOfertaIngresado = descuentoOfertaRaw === '' ? null : Number(descuentoOfertaRaw);
-  if (descuentoOfertaRaw !== '' && (!Number.isFinite(precioOfertaIngresado) || precioOfertaIngresado <= 0)) {
-    mostrarToast('Ingresá un precio de oferta válido, o dejá el campo vacío.', 'error');
-    return;
-  }
+  if (enOfertaActiva) {
+    const precioOfertaIngresado = descuentoOfertaRaw === '' ? null : Number(descuentoOfertaRaw);
+    if (descuentoOfertaRaw === '' || !Number.isFinite(precioOfertaIngresado) || precioOfertaIngresado <= 0) {
+      mostrarToast('Con «En Oferta» activo, el precio de oferta es obligatorio.', 'error');
+      document.getElementById('producto-precio-oferta')?.focus();
+      return;
+    }
 
-  if (precioOfertaIngresado !== null && precioOfertaIngresado >= precio) {
-    mostrarToast('El precio de oferta debe ser menor al precio regular.', 'error');
-    return;
+    if (precioOfertaIngresado >= precio) {
+      mostrarToast('El precio de oferta debe ser menor al precio regular.', 'error');
+      return;
+    }
   }
 
   if (!categoria) {
@@ -3612,12 +3675,15 @@ async function guardarNuevoProducto(event) {
       return;
     }
 
-    const precioOferta = normalizarPrecioOfertaFormulario(descuentoOfertaRaw, precio);
+    const precioOferta = enOfertaActiva
+      ? normalizarPrecioOfertaFormulario(descuentoOfertaRaw, precio)
+      : null;
 
     const payload = {
       nombre,
       precio,
-      precioOferta: precioOferta !== null ? precioOferta : '',
+      precioOferta: precioOferta !== null ? precioOferta : null,
+      precio_oferta: precioOferta !== null ? precioOferta : null,
       categoria,
       genero,
       stock,
@@ -3626,7 +3692,7 @@ async function guardarNuevoProducto(event) {
       imagenFrente,
       imagenEspalda,
       talles,
-      enOferta: precioOferta !== null ? true : undefined,
+      enOferta: precioOferta !== null,
     };
 
     if (esEdicion) {
@@ -3649,29 +3715,19 @@ async function guardarNuevoProducto(event) {
       guardarCarritoEnLocalStorage();
 
       cerrarModalProducto();
-      actualizarContadorProductosAdmin();
-      renderizarSeccionesAdmin();
-      actualizarVistaCatalogoAdmin();
-      renderizarFiltrosCategorias(productos);
-      renderizarProductos();
+      await refrescarCatalogoTrasCambioAdmin();
       actualizarCarritoUI();
       mostrarToast('Producto actualizado');
       return;
     }
 
-    const nuevoProducto = await apiFetch('/api/productos', {
+    await apiFetch('/api/productos', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
 
-    productos.push(nuevoProducto);
-    actualizarContadorProductosAdmin();
-    renderizarSeccionesAdmin();
-    actualizarVistaCatalogoAdmin();
-
     cerrarModalProducto();
-    renderizarFiltrosCategorias(productos);
-    renderizarProductos();
+    await refrescarCatalogoTrasCambioAdmin();
     mostrarToast('Producto agregado correctamente.');
   } catch (error) {
     mostrarToast(error?.message || 'No se pudo guardar el producto. Intentá de nuevo.', 'error');
@@ -5115,7 +5171,9 @@ function actualizarUIUsuario() {
   const ingresaText = accessBtn?.querySelector('.header-ingresa-btn__text');
 
   if (panelBtn) {
+    // Solo visible para admin fuera del panel; oculto para clientes y anónimos.
     panelBtn.classList.toggle('hidden', !esAdmin || enAdmin);
+    panelBtn.setAttribute('aria-hidden', (!esAdmin || enAdmin) ? 'true' : 'false');
   }
 
   if (esAdmin) {
@@ -5874,6 +5932,7 @@ async function cambiarAtributoPortadaProducto(id, campo, valor, input) {
     }
 
     actualizarContadorPortada();
+    sincronizarVistaTiendaTrasCambioCatalogo();
     mostrarToast(
       campo === 'destacado'
         ? (valor ? 'Producto marcado como destacado.' : 'Producto quitado de destacados.')
@@ -5925,6 +5984,7 @@ async function cambiarEstadoActivoProducto(id, activo, input) {
         ? `«${actualizado.nombre}» activado en la tienda.`
         : `«${actualizado.nombre}» oculto de la tienda.`
     );
+    sincronizarVistaTiendaTrasCambioCatalogo();
   } catch (error) {
     if (input) {
       input.checked = estadoAnterior;
@@ -6247,6 +6307,7 @@ function inicializarEventosAdmin() {
   document.getElementById('btn-aplicar-precios-masivo')?.addEventListener('click', aplicarActualizacionPreciosMasivo);
   document.getElementById('precios-masivo-tipo')?.addEventListener('change', actualizarControlesPreciosMasivo);
   document.getElementById('btn-quitar-descuento-producto')?.addEventListener('click', quitarDescuentoProducto);
+  document.getElementById('producto-en-oferta')?.addEventListener('change', actualizarControlesOfertaFormulario);
   document.getElementById('producto-precio-oferta')?.addEventListener('input', actualizarBotonQuitarDescuentoProducto);
   document.getElementById('form-configuracion')?.addEventListener('submit', guardarConfiguracion);
   document.getElementById('portada-buscar')?.addEventListener('input', () => {
