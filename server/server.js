@@ -823,6 +823,22 @@ function formatearConfiguracion(config) {
   };
 }
 
+async function migrarNombreTiendaSiCorresponde(config) {
+  if (!config) return;
+
+  const nombreNuevo = NOMBRE_TIENDA_DEFECTO || 'Jersey Store';
+  const nombreActual = String(config.nombreTienda || '').trim();
+
+  if (nombreActual === nombreNuevo) {
+    return;
+  }
+
+  // Forzar rebrand: el logo lee este valor desde /api/config
+  config.nombreTienda = nombreNuevo;
+  await config.save();
+  console.log(`=> Nombre de tienda actualizado a ${nombreNuevo} (antes: ${nombreActual || 'vacío'}).`);
+}
+
 async function obtenerConfiguracionUnica() {
   let config = await Configuracion.findOne();
 
@@ -831,6 +847,7 @@ async function obtenerConfiguracionUnica() {
     config = await Configuracion.findOne();
   }
 
+  await migrarNombreTiendaSiCorresponde(config);
   return config;
 }
 
@@ -844,15 +861,7 @@ async function inicializarConfiguracion() {
   }
 
   const config = await Configuracion.findOne();
-  const nombreActual = String(config?.nombreTienda || '').trim();
-  const nombreNuevo = NOMBRE_TIENDA_DEFECTO || 'Jersey Store';
-  const nombresViejos = new Set(["sam's house", 'sams house', 'jersey house', 'jerseys store']);
-
-  if (config && nombresViejos.has(nombreActual.toLowerCase())) {
-    config.nombreTienda = nombreNuevo;
-    await config.save();
-    console.log(`=> Nombre de tienda actualizado a ${nombreNuevo}.`);
-  }
+  await migrarNombreTiendaSiCorresponde(config);
 }
 
 async function inicializarAdministrador() {
