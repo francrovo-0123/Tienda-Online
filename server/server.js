@@ -20,7 +20,10 @@ const JWT_SECRET = process.env.JWT_SECRET;
 
 if (!JWT_SECRET || JWT_SECRET.length < 32) {
   console.error('FATAL: JWT_SECRET no está definido o tiene menos de 32 caracteres. El servidor no puede iniciarse de forma segura.');
-  process.exit(1);
+  // En local abortamos; en Vercel dejamos que el runtime reporte el error por request.
+  if (!process.env.VERCEL) {
+    process.exit(1);
+  }
 }
 
 function logError(contexto, error, meta = {}) {
