@@ -4885,9 +4885,16 @@ function obtenerSesionUsuario() {
 
 function decodificarPayloadJwt(token) {
   try {
-    const parte = String(token || '').split('.')[1];
+    let parte = String(token || '').split('.')[1];
     if (!parte) return null;
-    const json = atob(parte.replace(/-/g, '+').replace(/_/g, '/'));
+
+    parte = parte.replace(/-/g, '+').replace(/_/g, '/');
+    const resto = parte.length % 4;
+    if (resto) {
+      parte += '='.repeat(4 - resto);
+    }
+
+    const json = atob(parte);
     return JSON.parse(json);
   } catch {
     return null;
@@ -4895,9 +4902,14 @@ function decodificarPayloadJwt(token) {
 }
 
 function tokenJwtVigente(token) {
+  if (!token) return false;
+
   const payload = decodificarPayloadJwt(token);
-  if (!payload) return false;
+  // Si no se puede leer el payload, no invalidamos en el cliente:
+  // el servidor decide si el token es válido.
+  if (!payload) return true;
   if (!payload.exp) return true;
+
   return Number(payload.exp) * 1000 > Date.now() + 5000;
 }
 
@@ -4909,7 +4921,10 @@ function limpiarSesionLocal() {
 }
 
 function establecerSesion(usuario, token = null) {
-  const payload = JSON.stringify({ email: usuario.email, rol: usuario.rol });
+  const payload = JSON.stringify({
+    email: usuario.email,
+    rol: usuario.rol,
+  });
   sessionStorage.setItem(SESSION_USER_KEY, payload);
   localStorage.setItem(SESSION_USER_KEY, payload);
 
@@ -4925,7 +4940,26 @@ function establecerSesion(usuario, token = null) {
 function esSesionAdminActiva() {
   const sesion = obtenerSesionUsuario();
   const tokenAdmin = localStorage.getItem(ADMIN_TOKEN_KEY);
-  return sesion?.rol === 'admin' && Boolean(tokenAdmin) && tokenJwtVigente(tokenAdmin);
+
+  if (sesion?.rol === 'admin' && tokenAdmin && tokenJwtVigente(tokenAdmin)) {
+    return true;
+  }
+
+  // Fallback: token admin vigente aunque la sesión en storage esté incompleta
+  if (tokenAdmin && tokenJwtVigente(tokenAdmin)) {
+    const payload = decodificarPayloadJwt(tokenAdmin);
+    if (payload?.rol === 'admin') {
+      if (!sesion || sesion.rol !== 'admin') {
+        establecerSesion(
+          { email: payload.email || 'admin', rol: 'admin' },
+          tokenAdmin
+        );
+      }
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function esSesionClienteActiva() {
@@ -5078,25 +5112,26 @@ function actualizarUIUsuario() {
   const logueado = esSesionClienteActiva();
   const esAdmin = esSesionAdminActiva();
   const enAdmin = document.body.classList.contains('admin-active');
+  const ingresaText = accessBtn?.querySelector('.header-ingresa-btn__text');
 
   if (panelBtn) {
     panelBtn.classList.toggle('hidden', !esAdmin || enAdmin);
   }
 
   if (esAdmin) {
-    accessBtn?.classList.add('is-logged-in');
+    accessBtn?.classList.add('is-logged-in', 'is-admin');
     accessBtn?.setAttribute('aria-label', 'Abrir panel de control');
-    const ingresaText = accessBtn?.querySelector('.header-ingresa-btn__text');
     if (ingresaText) ingresaText.textContent = 'Admin';
     chevron?.classList.add('hidden');
     if (emailEl) emailEl.textContent = sesion?.email || '';
     return;
   }
 
+  accessBtn?.classList.remove('is-admin');
+
   if (logueado) {
     accessBtn?.classList.add('is-logged-in');
     accessBtn?.setAttribute('aria-label', 'Abrir menú de cuenta');
-    const ingresaText = accessBtn?.querySelector('.header-ingresa-btn__text');
     if (ingresaText) ingresaText.textContent = 'Mi cuenta';
     chevron?.classList.remove('hidden');
     if (emailEl) emailEl.textContent = sesion.email;
@@ -5106,7 +5141,6 @@ function actualizarUIUsuario() {
   cerrarMenuCuentaHeader();
   accessBtn?.classList.remove('is-logged-in');
   accessBtn?.setAttribute('aria-label', 'Iniciar sesión');
-  const ingresaText = accessBtn?.querySelector('.header-ingresa-btn__text');
   if (ingresaText) ingresaText.textContent = 'Ingresá';
   chevron?.classList.add('hidden');
   if (emailEl) emailEl.textContent = '';
@@ -5151,6 +5185,7 @@ function mostrarVistaTienda() {
 
 async function volverATiendaDesdeAdmin() {
   mostrarVistaTienda();
+  actualizarUIUsuario();
   await cargarSecciones();
   renderizarCarruselSecciones();
   const ok = await cargarProductos();
@@ -5158,6 +5193,7 @@ async function volverATiendaDesdeAdmin() {
     renderizarStadiumCarousel();
     renderizarProductos();
   }
+  actualizarUIUsuario();
 }
 
 function completarInicioSesion(usuario, token = null) {
