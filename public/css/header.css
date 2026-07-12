@@ -3,18 +3,26 @@
   top: 0;
   left: 0;
   right: 0;
-  z-index: 100;
+  z-index: 1000;
   width: 100%;
+  height: 70px;
+  min-height: 70px;
+  max-height: 70px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1.5rem;
   padding-top: env(safe-area-inset-top, 0px);
-  background-color: #f2f2f2;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-  box-shadow: none;
+  background: #ffffff;
+  border-bottom: none;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
   transform: none;
   transition: none;
   will-change: auto;
   -webkit-backface-visibility: hidden;
   backface-visibility: hidden;
   isolation: isolate;
+  /* Contenedor de posicionamiento para la barra de búsqueda flotante */
 }
 
 .main-header--hidden {
@@ -49,11 +57,11 @@
   gap: 0.75rem;
   max-width: none;
   width: 100%;
-  height: 64px;
-  min-height: 64px;
-  max-height: 64px;
+  height: 70px;
+  min-height: 70px;
+  max-height: 70px;
   margin: 0 auto;
-  padding: 0 1.25rem;
+  padding: 0;
   background-color: transparent;
 }
 
@@ -83,22 +91,23 @@
   flex-shrink: 0;
 }
 
-/* Panel de búsqueda debajo del header */
+/* Panel de búsqueda — flotante bajo el header (no empuja el layout) */
 .header-search {
   display: none;
+  position: absolute;
+  top: 70px;
+  left: 0;
   width: 100%;
-  padding: 0 1.25rem 0.85rem;
-  background: #f2f2f2;
+  z-index: 1001;
+  padding: 0.5rem 1.5rem;
+  background: #ffffff;
   border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
 }
 
 .main-header.is-search-open .header-search,
 .header-search:not([hidden]) {
   display: block;
-}
-
-.main-header.is-search-open .header-search {
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
 }
 
 .logo-shield {
@@ -149,14 +158,20 @@
   display: flex;
   align-items: center;
   width: 100%;
+  max-width: 500px;
+  height: 40px;
+  margin: 0 auto;
 }
 
 .search-bar__input {
   width: 100%;
-  padding: 0.6875rem 2.75rem 0.6875rem 1rem;
+  max-width: 500px;
+  height: 40px;
+  margin: 0 auto;
+  padding: 0 2.75rem 0 1rem;
   font-size: 0.9375rem;
   font-weight: var(--font-weight-regular);
-  line-height: var(--line-height-base);
+  line-height: 1;
   color: var(--color-text);
   background-color: #f7f7f7;
   border: 1px solid #e5e5e5;
@@ -569,7 +584,7 @@
   z-index: 1;
   width: 100%;
   margin-top: 0;
-  margin-bottom: 0;
+  margin-bottom: 40px;
   border-top: none;
   border-bottom: 1px solid rgba(0, 0, 0, 0.06);
   background-color: #ffffff;
@@ -1055,9 +1070,14 @@ body.mobile-nav-open {
     position: sticky;
     top: 0;
     z-index: 1000;
-    background-color: #f2f2f2;
-    box-shadow: none;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    height: 70px;
+    min-height: 70px;
+    max-height: 70px;
+    padding: 0 1rem;
+    padding-top: env(safe-area-inset-top, 0px);
+    background: #ffffff;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+    border-bottom: none;
   }
 
   .header-inner {
@@ -1066,10 +1086,10 @@ body.mobile-nav-open {
     grid-template-columns: 1fr auto 1fr;
     align-items: center;
     gap: 0.35rem;
-    height: 56px;
-    min-height: 56px;
-    max-height: 56px;
-    padding: 0 1rem;
+    height: 70px;
+    min-height: 70px;
+    max-height: 70px;
+    padding: 0;
   }
 
   .header-menu-btn {
@@ -1103,12 +1123,41 @@ body.mobile-nav-open {
     display: none;
   }
 
+  /* Mobile: barra de búsqueda oculta; solo lupa. Al abrir → flotante bajo el header */
   .header-search {
-    padding: 0 1rem 0.75rem;
+    display: none;
+    position: absolute;
+    top: 70px;
+    left: 0;
+    width: 100%;
+    height: 50px;
+    min-height: 50px;
+    max-height: 50px;
+    padding: 0 1rem;
+    background: #ffffff;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+    box-sizing: border-box;
+  }
+
+  .main-header.is-search-open .header-search,
+  .header-search:not([hidden]) {
+    display: flex;
+    align-items: center;
+  }
+
+  .header-search .search-bar {
+    max-width: none;
+    width: 100%;
+    height: 40px;
+    margin: 0;
   }
 
   .search-bar__input {
-    padding: 0.625rem 2.5rem 0.625rem 0.875rem;
+    max-width: none;
+    width: 100%;
+    height: 40px;
+    padding: 0 2.5rem 0 0.875rem;
     font-size: 0.875rem;
   }
 
@@ -1170,8 +1219,9 @@ body.mobile-nav-open {
     position: relative;
     display: block;
     clear: both;
+    width: 100%;
     margin-top: 0;
-    margin-bottom: 0;
+    margin-bottom: 40px;
     border-bottom: 1px solid rgba(0, 0, 0, 0.06);
   }
 
@@ -1209,11 +1259,19 @@ body.mobile-nav-open {
 }
 
 @media (max-width: 480px) {
-  .header-inner {
-    height: 52px;
-    min-height: 52px;
-    max-height: 52px;
+  .main-header {
+    height: 70px;
+    min-height: 70px;
+    max-height: 70px;
     padding: 0 0.875rem;
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  .header-inner {
+    height: 70px;
+    min-height: 70px;
+    max-height: 70px;
+    padding: 0;
   }
 
   .header-menu-btn {
@@ -1242,14 +1300,18 @@ body.mobile-nav-open {
     height: 18px;
   }
 
-  .main-header.is-search-open .header-search {
-    padding: 0.5rem 0.625rem 0.625rem;
+  .header-search {
+    top: 70px;
+    height: 50px;
+    min-height: 50px;
+    max-height: 50px;
+    padding: 0 0.875rem;
   }
 
   .club-nav {
     --club-nav-escudo-size: 52px;
     margin-top: 0;
-    margin-bottom: 0;
+    margin-bottom: 40px;
   }
 
   .club-nav__carousel {

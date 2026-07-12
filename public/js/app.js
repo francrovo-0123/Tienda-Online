@@ -3019,7 +3019,7 @@ function inicializarHeaderScroll() {
 
   const obtenerAltura = () => {
     const fila = header.querySelector('.header-inner');
-    const alto = fila?.offsetHeight || 64;
+    const alto = fila?.offsetHeight || 70;
     document.documentElement.style.setProperty('--main-header-height', `${alto}px`);
     header.classList.remove('main-header--hidden');
     return alto;

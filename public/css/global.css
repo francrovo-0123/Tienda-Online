@@ -137,9 +137,9 @@ button:active:not(:disabled) {
 
   /* Layout */
   --max-width: 1280px;
-  --header-height: 64px;
+  --header-height: 70px;
   --club-nav-height: 120px;
-  --main-header-height: 64px;
+  --main-header-height: 70px;
   --promo-ticker-height: 32px;
 
   /* Estadio / fútbol — acentos sutiles */
@@ -183,7 +183,7 @@ button:active:not(:disabled) {
 .stadium-section,
 .products-section,
 .tracking-section {
-  scroll-margin-top: calc(var(--main-header-height, 64px) + 1rem);
+  scroll-margin-top: calc(var(--main-header-height, 70px) + 1rem);
 }
 
 /* ── Admin view (pantalla completa) ── */
