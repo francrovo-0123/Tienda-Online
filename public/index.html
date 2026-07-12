@@ -84,6 +84,12 @@
             </svg>
           </button>
           <div class="header-cuenta-menu header-desktop-only" id="header-cuenta-menu">
+            <button type="button" class="header-panel-control-btn hidden" id="header-panel-control-btn" aria-label="Ir al Panel de Control">
+              <svg class="header-panel-control-btn__icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z"/>
+              </svg>
+              <span>Panel de Control</span>
+            </button>
             <button type="button" class="header-ingresa-btn" id="admin-access-btn" aria-label="Iniciar sesión" aria-haspopup="true" aria-expanded="false" aria-controls="header-cuenta-dropdown">
               <svg class="header-ingresa-btn__icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"/>
@@ -220,7 +226,7 @@
       <section class="stadium-section" id="nuevos-ingresos">
         <div class="stadium-section__inner">
           <div class="stadium-block">
-            <h2 class="stadium-section__title">NUEVOS INGRESOS</h2>
+            <h2 class="stadium-section__title">PRODUCTOS DESTACADOS</h2>
             <div class="stadium-carousel" id="destacados-carousel" aria-label="Productos destacados">
               <button type="button" class="stadium-carousel__arrow stadium-carousel__arrow--prev" id="destacados-carousel-prev" aria-label="Productos destacados anteriores">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5"/></svg>
@@ -229,6 +235,21 @@
                 <div class="stadium-carousel__track" id="destacados-carousel-track" role="list" aria-busy="true"></div>
               </div>
               <button type="button" class="stadium-carousel__arrow stadium-carousel__arrow--next" id="destacados-carousel-next" aria-label="Productos destacados siguientes">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="stadium-block">
+            <h2 class="stadium-section__title">EN OFERTA</h2>
+            <div class="stadium-carousel" id="ofertas-carousel" aria-label="Productos en oferta">
+              <button type="button" class="stadium-carousel__arrow stadium-carousel__arrow--prev" id="ofertas-carousel-prev" aria-label="Ofertas anteriores">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5"/></svg>
+              </button>
+              <div class="stadium-carousel__viewport">
+                <div class="stadium-carousel__track" id="ofertas-carousel-track" role="list" aria-busy="true"></div>
+              </div>
+              <button type="button" class="stadium-carousel__arrow stadium-carousel__arrow--next" id="ofertas-carousel-next" aria-label="Ofertas siguientes">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>
               </button>
             </div>
@@ -585,6 +606,12 @@
             </svg>
             <span>Productos</span>
           </a>
+          <a href="#" class="admin-sidebar__link" data-admin-panel="portada">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z"/>
+            </svg>
+            <span>Gestión de Portada</span>
+          </a>
           <a href="#" class="admin-sidebar__link" data-admin-panel="configuracion">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z"/>
@@ -775,6 +802,30 @@
         </section>
         </section>
 
+        <section class="admin-panel hidden" id="admin-panel-portada" data-admin-panel="portada">
+          <section class="admin-portada" id="portada">
+            <div class="admin-portada__header">
+              <h2 class="admin-portada__title">Gestión de Portada</h2>
+              <p class="admin-portada__count" id="portada-count"></p>
+            </div>
+            <p class="admin-portada__hint">
+              Marcá qué productos aparecen en <strong>Productos Destacados</strong> y en <strong>En Oferta</strong> en la página de inicio. Los cambios se reflejan al instante en la tienda.
+            </p>
+            <div class="admin-portada__toolbar">
+              <input
+                type="search"
+                id="portada-buscar"
+                class="admin-portada__search"
+                placeholder="Buscar producto..."
+                autocomplete="off"
+                aria-label="Buscar producto en portada"
+              >
+            </div>
+            <div class="admin-portada__grid" id="admin-portada-grid" aria-label="Productos de portada"></div>
+            <p class="admin-portada__empty hidden" id="admin-portada-empty">No hay productos en el catálogo.</p>
+          </section>
+        </section>
+
         <section class="admin-panel hidden" id="seccion-configuracion" data-admin-panel="configuracion">
           <div class="admin-config">
             <div class="admin-config__header">
@@ -867,37 +918,38 @@
           </button>
         </div>
 
-        <form class="product-form" id="product-form" onsubmit="guardarNuevoProducto(event)">
+        <form class="product-form" id="product-form" enctype="multipart/form-data" onsubmit="guardarNuevoProducto(event)">
           <div class="product-form__field">
-            <label for="producto-nombre" class="product-form__label">Nombre del Producto</label>
-            <input type="text" id="producto-nombre" class="product-form__input" required placeholder="Ej: Remera Oversize Algodón">
+            <label for="producto-nombre" class="product-form__label">Título del Producto</label>
+            <input type="text" id="producto-nombre" class="product-form__input" required placeholder="Ej: Remera Oversize Algodón" name="nombre">
           </div>
 
           <div class="product-form__field">
             <label for="producto-precio" class="product-form__label">Precio</label>
-            <input type="number" id="producto-precio" class="product-form__input" required min="1" step="1" placeholder="0">
+            <input type="number" id="producto-precio" class="product-form__input" required min="1" step="1" placeholder="0" name="precio">
           </div>
 
           <div class="product-form__field">
-            <label for="producto-precio-oferta" class="product-form__label">Descuento de oferta <span class="product-form__optional">(opcional, %)</span></label>
+            <label for="producto-precio-oferta" class="product-form__label">Precio de Oferta <span class="product-form__optional">(opcional)</span></label>
             <div class="product-form__descuento-row">
-              <input type="number" id="producto-precio-oferta" class="product-form__input" min="1" max="99" step="1" placeholder="Ej: 15 para 15% de descuento">
+              <input type="number" id="producto-precio-oferta" class="product-form__input" min="1" step="1" placeholder="Ej: 7500" name="precioOferta">
               <button type="button" class="product-form__quitar-descuento hidden" id="btn-quitar-descuento-producto">
-                Quitar descuento
+                Quitar oferta
               </button>
             </div>
+            <p class="product-form__hint">Debe ser menor al precio regular. También podés marcar el producto en «Gestión de Portada».</p>
           </div>
 
           <div class="product-form__field">
-            <label for="producto-categoria" class="product-form__label">Sección</label>
-            <select id="producto-categoria" class="product-form__input product-form__select" required>
+            <label for="producto-categoria" class="product-form__label">Categoría</label>
+            <select id="producto-categoria" class="product-form__input product-form__select" required name="categoria">
               <option value="" disabled selected>Seleccioná una sección</option>
             </select>
           </div>
 
           <div class="product-form__field">
             <label for="producto-genero" class="product-form__label">Género</label>
-            <select id="producto-genero" class="product-form__input product-form__select" required>
+            <select id="producto-genero" class="product-form__input product-form__select" required name="genero">
               <option value="hombre">Hombre</option>
               <option value="mujer">Mujer</option>
               <option value="ninos">Niños</option>
@@ -905,39 +957,35 @@
           </div>
 
           <div class="product-form__field">
-            <label for="producto-stock" class="product-form__label">Stock disponible</label>
-            <input type="number" id="producto-stock" class="product-form__input" required min="0" step="1" value="10" placeholder="0">
-          </div>
-
-          <div class="product-form__field">
-            <span class="product-form__label">Talles disponibles</span>
-            <div class="product-form__talles" id="producto-talles">
-              <label class="product-form__talle">
-                <input type="checkbox" name="producto-talle" value="S" checked>
+            <span class="product-form__label">Stock por talle</span>
+            <div class="product-form__stock-talles" id="producto-stock-talles">
+              <label class="product-form__stock-talle">
                 <span>S</span>
+                <input type="number" id="producto-stock-S" name="stock_S" class="product-form__input product-form__stock-input" min="0" step="1" value="2" data-talle="S">
               </label>
-              <label class="product-form__talle">
-                <input type="checkbox" name="producto-talle" value="M" checked>
+              <label class="product-form__stock-talle">
                 <span>M</span>
+                <input type="number" id="producto-stock-M" name="stock_M" class="product-form__input product-form__stock-input" min="0" step="1" value="2" data-talle="M">
               </label>
-              <label class="product-form__talle">
-                <input type="checkbox" name="producto-talle" value="L" checked>
+              <label class="product-form__stock-talle">
                 <span>L</span>
+                <input type="number" id="producto-stock-L" name="stock_L" class="product-form__input product-form__stock-input" min="0" step="1" value="2" data-talle="L">
               </label>
-              <label class="product-form__talle">
-                <input type="checkbox" name="producto-talle" value="XL" checked>
+              <label class="product-form__stock-talle">
                 <span>XL</span>
+                <input type="number" id="producto-stock-XL" name="stock_XL" class="product-form__input product-form__stock-input" min="0" step="1" value="2" data-talle="XL">
               </label>
-              <label class="product-form__talle">
-                <input type="checkbox" name="producto-talle" value="XXL" checked>
+              <label class="product-form__stock-talle">
                 <span>XXL</span>
+                <input type="number" id="producto-stock-XXL" name="stock_XXL" class="product-form__input product-form__stock-input" min="0" step="1" value="2" data-talle="XXL">
               </label>
             </div>
+            <p class="product-form__hint">Los talles con stock 0 no se ofrecen en la tienda. Total: <strong id="producto-stock-total">10</strong> u.</p>
           </div>
 
           <div class="product-form__field">
             <label for="producto-descripcion" class="product-form__label">Descripción (opcional)</label>
-            <textarea id="producto-descripcion" class="product-form__input product-form__textarea" rows="3" placeholder="Ej: Remera oficial, algodón premium, edición limitada..."></textarea>
+            <textarea id="producto-descripcion" class="product-form__input product-form__textarea" rows="3" placeholder="Ej: Remera oficial, algodón premium, edición limitada..." name="descripcion"></textarea>
           </div>
 
           <div class="product-form__field">
@@ -945,12 +993,21 @@
             <div class="product-form__imagenes-dobles">
               <div class="product-form__imagen-campo">
                 <span class="product-form__imagen-etiqueta">Frente</span>
+                <input
+                  type="url"
+                  id="producto-imagen-frente-url"
+                  class="product-form__input"
+                  name="imagenFrente"
+                  placeholder="https://... URL de imagen frente"
+                  autocomplete="off"
+                >
                 <div class="product-form__file">
                   <input
                     type="file"
                     id="producto-imagen-frente"
                     class="product-form__file-input"
                     accept="image/*"
+                    name="archivoFrente"
                   >
                   <label for="producto-imagen-frente" class="product-form__file-btn">Subir frente</label>
                   <span class="product-form__file-name" id="producto-imagen-frente-nombre">Sin imagen</span>
@@ -963,12 +1020,21 @@
 
               <div class="product-form__imagen-campo">
                 <span class="product-form__imagen-etiqueta">Espalda <span class="product-form__optional">(opcional)</span></span>
+                <input
+                  type="url"
+                  id="producto-imagen-espalda-url"
+                  class="product-form__input"
+                  name="imagenEspalda"
+                  placeholder="https://... URL de imagen espalda"
+                  autocomplete="off"
+                >
                 <div class="product-form__file">
                   <input
                     type="file"
                     id="producto-imagen-espalda"
                     class="product-form__file-input"
                     accept="image/*"
+                    name="archivoEspalda"
                   >
                   <label for="producto-imagen-espalda" class="product-form__file-btn">Subir espalda</label>
                   <span class="product-form__file-name" id="producto-imagen-espalda-nombre">Sin imagen</span>
@@ -979,7 +1045,7 @@
                 </div>
               </div>
             </div>
-            <p class="product-form__hint">Si no subís espalda, se usará la imagen del frente en el hover de la tarjeta.</p>
+            <p class="product-form__hint">Podés pegar una URL o subir un archivo a Cloudinary. Si no subís espalda, se usará la imagen del frente en el hover.</p>
           </div>
 
           <div class="product-form__actions">

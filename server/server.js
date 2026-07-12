@@ -126,11 +126,24 @@ const ESTADOS_PEDIDO_LEGACY = {
   confirmado: 'Aprobado',
 };
 
+const stockTallesSchema = new mongoose.Schema(
+  {
+    S: { type: Number, default: 0, min: 0 },
+    M: { type: Number, default: 0, min: 0 },
+    L: { type: Number, default: 0, min: 0 },
+    XL: { type: Number, default: 0, min: 0 },
+    XXL: { type: Number, default: 0, min: 0 },
+  },
+  { _id: false }
+);
+
 const productoSchema = new mongoose.Schema({
   id: { type: Number, unique: true },
   nombre: { type: String, required: true },
   precio: { type: Number, required: true },
   precioOferta: { type: Number, default: null },
+  destacado: { type: Boolean, default: false },
+  enOferta: { type: Boolean, default: false },
   categoria: { type: String, required: true },
   genero: {
     type: String,
@@ -142,6 +155,7 @@ const productoSchema = new mongoose.Schema({
   imagenEspalda: { type: String, default: '' },
   liga: { type: String, default: '' },
   stock: { type: Number, required: true, default: 10, min: 0 },
+  stockTalles: { type: stockTallesSchema, default: () => ({ S: 0, M: 0, L: 0, XL: 0, XXL: 0 }) },
   activo: { type: Boolean, default: true },
   talles: { type: [String], default: () => [...TALLES_DEFECTO] },
   descripcion: { type: String, default: '' },
@@ -155,6 +169,8 @@ productoSchema.pre('save', function () {
 
 productoSchema.index({ activo: 1, categoria: 1 });
 productoSchema.index({ activo: 1, genero: 1 });
+productoSchema.index({ activo: 1, destacado: 1 });
+productoSchema.index({ activo: 1, enOferta: 1 });
 productoSchema.index(
   { nombre: 'text', descripcion: 'text', liga: 'text' },
   { weights: { nombre: 10, descripcion: 1, liga: 5 } }
@@ -377,7 +393,7 @@ function generarTokenAdmin(usuario) {
   return jwt.sign(
     { email: usuario.email, rol: usuario.rol },
     JWT_SECRET,
-    { expiresIn: '8h' }
+    { expiresIn: '7d' }
   );
 }
 
@@ -403,6 +419,9 @@ function verificarJWT(req, res, next) {
     next();
   } catch (error) {
     logError('JWT_VERIFICACION', error, { ruta: req.path, metodo: req.method });
+    if (error?.name === 'TokenExpiredError') {
+      return res.status(401).json({ error: 'Tu sesión expiró. Volvé a iniciar sesión.' });
+    }
     return res.status(403).json({ error: 'Token inválido.' });
   }
 }
@@ -428,6 +447,9 @@ function verificarClienteJWT(req, res, next) {
     next();
   } catch (error) {
     logError('JWT_CLIENTE', error, { ruta: req.path, metodo: req.method });
+    if (error?.name === 'TokenExpiredError') {
+      return res.status(401).json({ error: 'Tu sesión expiró. Volvé a iniciar sesión.' });
+    }
     return res.status(403).json({ error: 'Token inválido.' });
   }
 }
@@ -485,6 +507,62 @@ function normalizarStock(stock) {
   return Math.floor(valor);
 }
 
+function obtenerObjetoStockTalles(stockTalles) {
+  if (!stockTalles) return null;
+  if (stockTalles instanceof Map) {
+    return Object.fromEntries(stockTalles.entries());
+  }
+  if (typeof stockTalles.toObject === 'function') {
+    return stockTalles.toObject();
+  }
+  if (typeof stockTalles === 'object') {
+    return stockTalles;
+  }
+  return null;
+}
+
+function normalizarStockTalles(stockTalles, stockTotal = null, talles = null) {
+  const base = { S: 0, M: 0, L: 0, XL: 0, XXL: 0 };
+  const origen = obtenerObjetoStockTalles(stockTalles);
+
+  if (origen) {
+    for (const talle of TALLES_DEFECTO) {
+      base[talle] = normalizarStock(origen[talle] ?? origen[talle.toLowerCase()]);
+    }
+  }
+
+  const sumaActual = TALLES_DEFECTO.reduce((acc, talle) => acc + base[talle], 0);
+  if (sumaActual > 0) return base;
+
+  if (stockTotal != null) {
+    const tallesActivos = normalizarTalles(talles);
+    const total = normalizarStock(stockTotal);
+    if (tallesActivos.length === 1) {
+      base[tallesActivos[0]] = total;
+    } else if (tallesActivos.length > 1 && total > 0) {
+      const porTalle = Math.floor(total / tallesActivos.length);
+      let resto = total - porTalle * tallesActivos.length;
+      for (const talle of tallesActivos) {
+        base[talle] = porTalle + (resto > 0 ? 1 : 0);
+        if (resto > 0) resto -= 1;
+      }
+    }
+  }
+
+  return base;
+}
+
+function sumarStockTalles(stockTalles) {
+  const normalizado = normalizarStockTalles(stockTalles);
+  return TALLES_DEFECTO.reduce((acc, talle) => acc + normalizarStock(normalizado[talle]), 0);
+}
+
+function tallesDesdeStockTalles(stockTalles) {
+  const normalizado = normalizarStockTalles(stockTalles);
+  const conStock = TALLES_DEFECTO.filter((talle) => normalizarStock(normalizado[talle]) > 0);
+  return conStock.length ? conStock : [...TALLES_DEFECTO];
+}
+
 function normalizarTalles(talles) {
   if (!Array.isArray(talles)) return [...TALLES_DEFECTO];
 
@@ -495,6 +573,65 @@ function normalizarTalles(talles) {
   )];
 
   return normalizados.length ? normalizados : [...TALLES_DEFECTO];
+}
+
+function parsearBooleano(valor, fallback = false) {
+  if (typeof valor === 'boolean') return valor;
+  if (valor === undefined || valor === null || valor === '') return fallback;
+  if (typeof valor === 'number') return valor !== 0;
+  const texto = String(valor).trim().toLowerCase();
+  if (['true', '1', 'si', 'sí', 'yes', 'on'].includes(texto)) return true;
+  if (['false', '0', 'no', 'off'].includes(texto)) return false;
+  return fallback;
+}
+
+function resolverStockYTallesDesdeBody(body = {}, productoExistente = null) {
+  const existente = productoExistente?.toObject
+    ? productoExistente.toObject()
+    : productoExistente || {};
+  const tieneStockTallesEnBody =
+    body.stockTalles !== undefined
+    || body.stock_talles !== undefined
+    || TALLES_DEFECTO.some((talle) => body[`stock_${talle}`] !== undefined || body[`stock${talle}`] !== undefined);
+
+  let stockTalles;
+
+  if (tieneStockTallesEnBody) {
+    const desdeBody = body.stockTalles || body.stock_talles || {};
+    const ensamblado = { ...normalizarStockTalles(existente.stockTalles) };
+
+    for (const talle of TALLES_DEFECTO) {
+      const valorDirecto =
+        desdeBody[talle]
+        ?? desdeBody[talle.toLowerCase()]
+        ?? body[`stock_${talle}`]
+        ?? body[`stock${talle}`];
+
+      if (valorDirecto !== undefined) {
+        ensamblado[talle] = normalizarStock(valorDirecto);
+      }
+    }
+
+    stockTalles = normalizarStockTalles(ensamblado);
+  } else if (body.stock !== undefined) {
+    const talles = body.talles !== undefined
+      ? normalizarTalles(parsearTallesDesdeBody(body.talles))
+      : normalizarTalles(existente.talles);
+    stockTalles = normalizarStockTalles(null, body.stock, talles);
+  } else {
+    stockTalles = normalizarStockTalles(
+      existente.stockTalles,
+      existente.stock,
+      existente.talles
+    );
+  }
+
+  const talles = body.talles !== undefined
+    ? normalizarTalles(parsearTallesDesdeBody(body.talles))
+    : tallesDesdeStockTalles(stockTalles);
+  const stock = sumarStockTalles(stockTalles);
+
+  return { stock, stockTalles, talles };
 }
 
 function normalizarGenero(genero) {
@@ -590,20 +727,29 @@ function formatearProducto(producto) {
   const imagen = imagenEspalda && imagenEspalda !== imagenFrente
     ? [imagenFrente, imagenEspalda]
     : [imagenFrente].filter(Boolean);
+  const stockTalles = normalizarStockTalles(datos.stockTalles, datos.stock, datos.talles);
+  const stock = Math.max(normalizarStock(datos.stock ?? 0), sumarStockTalles(stockTalles));
+  const destacado = Boolean(datos.destacado);
+  const enOferta = Boolean(datos.enOferta);
 
   return {
     id: datos.id,
     nombre: datos.nombre,
     precio: datos.precio,
     precioOferta,
+    precio_oferta: precioOferta,
+    destacado,
+    enOferta,
+    en_oferta: enOferta,
     categoria: datos.categoria,
     genero: normalizarGenero(datos.genero),
     imagenFrente,
     imagenEspalda,
     imagen,
-    stock: normalizarStock(datos.stock ?? 10),
+    stock,
+    stockTalles,
     activo: datos.activo !== false,
-    talles: normalizarTalles(datos.talles),
+    talles: normalizarTalles(datos.talles?.length ? datos.talles : tallesDesdeStockTalles(stockTalles)),
     descripcion: String(datos.descripcion || '').trim(),
     liga: String(datos.liga || '').trim(),
   };
@@ -801,28 +947,33 @@ function obtenerPrecioEfectivoProducto(producto) {
 
 async function revertirDecrementosStock(decrementos) {
   await Promise.all(
-    decrementos.map(({ productoId, cantidad }) =>
-      Producto.findByIdAndUpdate(productoId, { $inc: { stock: cantidad } })
-    )
+    decrementos.map(({ productoId, cantidad, talle }) => {
+      const update = { $inc: { stock: cantidad } };
+      if (talle && TALLES_PERMITIDOS.has(talle)) {
+        update.$inc[`stockTalles.${talle}`] = cantidad;
+      }
+      return Producto.findByIdAndUpdate(productoId, update);
+    })
   );
 }
 
 async function restaurarStockDesdePedido(pedido) {
-  const incrementos = new Map();
-  const productos = pedido?.productos || [];
+  const decrementos = [];
 
-  for (const item of productos) {
+  for (const item of pedido?.productos || []) {
     const productoId = item.producto?.id ?? item.producto;
     const producto = await buscarProductoPorId(productoId);
     if (!producto) continue;
 
-    const clave = String(producto._id);
-    incrementos.set(clave, (incrementos.get(clave) || 0) + Number(item.cantidad || 0));
+    const talleRaw = item.producto?.talle ? String(item.producto.talle).trim().toUpperCase() : null;
+    decrementos.push({
+      productoId: String(producto._id),
+      cantidad: Number(item.cantidad || 0),
+      talle: talleRaw && TALLES_PERMITIDOS.has(talleRaw) ? talleRaw : null,
+    });
   }
 
-  await revertirDecrementosStock(
-    [...incrementos.entries()].map(([productoId, cantidad]) => ({ productoId, cantidad }))
-  );
+  await revertirDecrementosStock(decrementos);
 }
 
 async function limpiarPedidosExpirados() {
@@ -922,7 +1073,6 @@ async function validarItemsYReservarStock(items) {
   }
 
   const lineasValidadas = [];
-  const stockRequerido = new Map();
 
   for (const item of items) {
     const productoId = item.productoId ?? item.id;
@@ -959,9 +1109,6 @@ async function validarItemsYReservarStock(items) {
       return { error: `Precio inválido para «${producto.nombre}».`, status: 400 };
     }
 
-    const claveStock = String(producto._id);
-    stockRequerido.set(claveStock, (stockRequerido.get(claveStock) || 0) + cantidad);
-
     lineasValidadas.push({
       producto,
       cantidad,
@@ -972,28 +1119,58 @@ async function validarItemsYReservarStock(items) {
 
   const decrementosRealizados = [];
 
-  for (const [productoIdStr, cantidadTotal] of stockRequerido) {
-    const actualizado = await Producto.findOneAndUpdate(
-      { _id: productoIdStr, activo: { $ne: false }, stock: { $gte: cantidadTotal } },
-      { $inc: { stock: -cantidadTotal } },
-      { new: true }
-    );
+  for (const linea of lineasValidadas) {
+    const productoIdStr = String(linea.producto._id);
+    const cantidad = linea.cantidad;
+    const talle = linea.talle;
+    const filtro = {
+      _id: productoIdStr,
+      activo: { $ne: false },
+      stock: { $gte: cantidad },
+    };
+    const update = { $inc: { stock: -cantidad } };
+
+    if (talle && TALLES_PERMITIDOS.has(talle)) {
+      const stockTallesActual = normalizarStockTalles(
+        linea.producto.stockTalles,
+        linea.producto.stock,
+        linea.producto.talles
+      );
+      const usaStockPorTalle = TALLES_DEFECTO.some((t) => stockTallesActual[t] > 0);
+
+      if (usaStockPorTalle) {
+        filtro[`stockTalles.${talle}`] = { $gte: cantidad };
+        update.$inc[`stockTalles.${talle}`] = -cantidad;
+      }
+    }
+
+    const actualizado = await Producto.findOneAndUpdate(filtro, update, { new: true });
 
     if (!actualizado) {
-      const linea = lineasValidadas.find((lineaItem) => String(lineaItem.producto._id) === productoIdStr);
       const productoActual = await Producto.findById(productoIdStr);
-      const disponible = normalizarStock(productoActual?.stock ?? 0);
+      const stockTallesActual = normalizarStockTalles(
+        productoActual?.stockTalles,
+        productoActual?.stock,
+        productoActual?.talles
+      );
+      const disponible = talle && stockTallesActual[talle] > 0
+        ? normalizarStock(stockTallesActual[talle])
+        : normalizarStock(productoActual?.stock ?? 0);
       const nombreProducto = linea?.producto?.nombre || productoActual?.nombre || 'Producto';
 
       await revertirDecrementosStock(decrementosRealizados);
 
       return {
-        error: `Stock insuficiente para «${nombreProducto}». Disponible: ${disponible}, solicitado: ${cantidadTotal}.`,
+        error: `Stock insuficiente para «${nombreProducto}»${talle ? ` (talle ${talle})` : ''}. Disponible: ${disponible}, solicitado: ${cantidad}.`,
         status: 400,
       };
     }
 
-    decrementosRealizados.push({ productoId: productoIdStr, cantidad: cantidadTotal });
+    decrementosRealizados.push({
+      productoId: productoIdStr,
+      cantidad,
+      talle: talle && TALLES_PERMITIDOS.has(talle) ? talle : null,
+    });
   }
 
   const productosPedido = lineasValidadas.map(({ producto, cantidad, talle, precioUnitario }) => {
@@ -1392,6 +1569,17 @@ app.get('/api/productos', async (req, res) => {
     const incluirInactivos = req.query.todos === 'true';
     const filtro = incluirInactivos ? {} : { activo: { $ne: false } };
 
+    if (parsearBooleano(req.query.destacado, null) === true) {
+      filtro.destacado = true;
+    }
+
+    if (
+      parsearBooleano(req.query.enOferta, null) === true
+      || parsearBooleano(req.query.en_oferta, null) === true
+    ) {
+      filtro.enOferta = true;
+    }
+
     let productos = await Producto.find(filtro);
 
     if (productos.length === 0 && incluirInactivos) {
@@ -1575,30 +1763,68 @@ app.patch('/api/productos/:id/activo', verificarAdminJWT, async (req, res) => {
   }
 });
 
+app.patch('/api/productos/:id/portada', verificarAdminJWT, async (req, res) => {
+  try {
+    const actualizacion = {};
+
+    if (req.body?.destacado !== undefined) {
+      actualizacion.destacado = parsearBooleano(req.body.destacado);
+    }
+
+    if (req.body?.enOferta !== undefined || req.body?.en_oferta !== undefined) {
+      actualizacion.enOferta = parsearBooleano(
+        req.body.enOferta !== undefined ? req.body.enOferta : req.body.en_oferta
+      );
+    }
+
+    if (!Object.keys(actualizacion).length) {
+      return res.status(400).json({
+        error: 'Indicá al menos un campo de portada: destacado o enOferta.',
+      });
+    }
+
+    const actualizado = await buscarProductoParaActualizar(req.params.id, actualizacion);
+
+    if (!actualizado) {
+      return res.status(404).json({ error: 'Producto no encontrado.' });
+    }
+
+    res.json(formatearProducto(actualizado));
+  } catch (error) {
+    console.error('Error al actualizar portada del producto:', error);
+    res.status(500).json({ error: 'Error interno del servidor.' });
+  }
+});
+
 app.post('/api/productos', verificarAdminJWT, async (req, res) => {
   try {
-    const stock = parseInt(req.body.stock, 10) || 0;
-    const talles = parsearTallesDesdeBody(req.body.talles);
-    const { nombre, precio, precioOferta, categoria, genero, descripcion } = req.body;
+    const { nombre, precio, precioOferta, precio_oferta, categoria, genero, descripcion } = req.body;
     const { imagenFrente, imagenEspalda } = resolverImagenesProducto(req.body);
     const categoriaNombre = await resolverCategoriaProducto(categoria);
+    const { stock, stockTalles, talles } = resolverStockYTallesDesdeBody(req.body);
 
     if (!nombre || !categoriaNombre || !imagenFrente || !precio || Number(precio) <= 0) {
       return res.status(400).json({ error: 'Datos de producto incompletos o inválidos.' });
     }
 
     const precioNumerico = Number(precio);
+    const ofertaRaw = precioOferta !== undefined ? precioOferta : precio_oferta;
 
     const nuevoProducto = await new Producto({
       nombre: String(nombre).trim(),
       precio: precioNumerico,
-      precioOferta: normalizarPrecioOferta(precioOferta, precioNumerico),
+      precioOferta: normalizarPrecioOferta(ofertaRaw, precioNumerico),
+      destacado: parsearBooleano(req.body.destacado),
+      enOferta: parsearBooleano(
+        req.body.enOferta !== undefined ? req.body.enOferta : req.body.en_oferta
+      ),
       categoria: categoriaNombre,
       genero: normalizarGenero(genero),
       imagenFrente,
       imagenEspalda,
-      stock: normalizarStock(stock ?? 10),
-      talles: normalizarTalles(talles),
+      stock,
+      stockTalles,
+      talles,
       descripcion: String(descripcion || '').trim(),
     }).save();
 
@@ -1611,31 +1837,43 @@ app.post('/api/productos', verificarAdminJWT, async (req, res) => {
 
 app.put('/api/productos/:id', verificarAdminJWT, async (req, res) => {
   try {
-    const stock = parseInt(req.body.stock, 10) || 0;
-    const talles = parsearTallesDesdeBody(req.body.talles);
-    const { nombre, precio, precioOferta, categoria, genero, descripcion } = req.body;
+    const { nombre, precio, precioOferta, precio_oferta, categoria, genero, descripcion } = req.body;
     const productoExistente = await buscarProductoPorId(req.params.id);
     const { imagenFrente, imagenEspalda } = resolverImagenesProducto(req.body, productoExistente);
     const categoriaNombre = await resolverCategoriaProducto(categoria);
+    const { stock, stockTalles, talles } = resolverStockYTallesDesdeBody(req.body, productoExistente);
 
     if (!nombre || !categoriaNombre || !imagenFrente || !precio || Number(precio) <= 0) {
       return res.status(400).json({ error: 'Datos de producto incompletos o inválidos.' });
     }
 
     const precioNumerico = Number(precio);
-
-    const actualizado = await buscarProductoParaActualizar(req.params.id, {
+    const ofertaRaw = precioOferta !== undefined ? precioOferta : precio_oferta;
+    const actualizacion = {
       nombre: String(nombre).trim(),
       precio: precioNumerico,
-      precioOferta: normalizarPrecioOferta(precioOferta, precioNumerico),
+      precioOferta: normalizarPrecioOferta(ofertaRaw, precioNumerico),
       categoria: categoriaNombre,
       genero: normalizarGenero(genero),
       imagenFrente,
       imagenEspalda,
-      stock: normalizarStock(stock),
-      talles: normalizarTalles(talles),
+      stock,
+      stockTalles,
+      talles,
       descripcion: String(descripcion || '').trim(),
-    });
+    };
+
+    if (req.body.destacado !== undefined) {
+      actualizacion.destacado = parsearBooleano(req.body.destacado);
+    }
+
+    if (req.body.enOferta !== undefined || req.body.en_oferta !== undefined) {
+      actualizacion.enOferta = parsearBooleano(
+        req.body.enOferta !== undefined ? req.body.enOferta : req.body.en_oferta
+      );
+    }
+
+    const actualizado = await buscarProductoParaActualizar(req.params.id, actualizacion);
 
     if (!actualizado) {
       return res.status(404).json({ error: 'Producto no encontrado.' });

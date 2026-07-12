@@ -265,14 +265,12 @@
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  mask-image: linear-gradient(to right, transparent 0%, #000 2%, #000 98%, transparent 100%);
-  -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 2%, #000 98%, transparent 100%);
 }
 
 .stadium-carousel__track {
   display: flex;
-  gap: 0;
-  padding: 20px 0.5rem;
+  gap: 1.25rem;
+  padding: 1rem 0.75rem;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   scroll-behavior: smooth;
@@ -289,19 +287,21 @@
 
 .stadium-carousel__track .product-card {
   flex: 0 0 240px;
-  margin: 0 10px;
+  margin: 0;
   scroll-snap-align: start;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.06);
 }
 
 @media (min-width: 640px) {
   .stadium-carousel__track .product-card {
-    flex: 0 0 268px;
+    flex: 0 0 260px;
   }
 }
 
 @media (min-width: 1024px) {
   .stadium-carousel__track {
-    gap: 0;
+    gap: 1.5rem;
   }
 
   .stadium-carousel__track .product-card {
@@ -634,8 +634,8 @@
 }
 
 .stadium-carousel__track .product-card {
-  background: var(--color-bg);
-  border-color: transparent;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.06);
   box-shadow: none;
 }
 
@@ -660,6 +660,7 @@
 }
 
 .product-card__image {
+  display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -668,14 +669,20 @@
 
 .product-card__image.img-frente,
 .product-card__image.img-espalda {
+  position: absolute;
+  inset: 0;
   transition: opacity 0.3s ease;
-  will-change: opacity;
+}
+
+.product-card__image.img-frente {
+  z-index: 1;
+  opacity: 1;
 }
 
 .product-card__image.img-espalda {
-  position: absolute;
-  inset: 0;
+  z-index: 2;
   opacity: 0;
+  pointer-events: none;
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -704,6 +711,7 @@
   position: absolute;
   top: 0.75rem;
   left: 0.75rem;
+  z-index: 5;
   padding: 0.375rem 0.75rem;
   font-size: 0.625rem;
   font-weight: var(--font-weight-bold);
@@ -721,6 +729,7 @@
   bottom: 0.5rem;
   left: 0.5rem;
   right: 0.5rem;
+  z-index: 5;
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
@@ -759,8 +768,34 @@
   opacity: 0.72;
 }
 
-.product-card--sin-stock .product-card__image {
-  opacity: 0.72;
+.product-card--sin-stock .product-card__image.img-frente {
+  opacity: 1;
+}
+
+.product-card--sin-stock .product-card__image.img-espalda {
+  opacity: 0;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .product-card--sin-stock:hover .product-card__image.img-frente,
+  .product-card--sin-stock:focus-within .product-card__image.img-frente {
+    opacity: 0;
+  }
+
+  .product-card--sin-stock:hover .product-card__image.img-espalda,
+  .product-card--sin-stock:focus-within .product-card__image.img-espalda {
+    opacity: 1;
+  }
+}
+
+@media (hover: none), (pointer: coarse) {
+  .product-card--sin-stock .product-card__image-wrapper:active .product-card__image.img-frente {
+    opacity: 0;
+  }
+
+  .product-card--sin-stock .product-card__image-wrapper:active .product-card__image.img-espalda {
+    opacity: 1;
+  }
 }
 
 .selector-talles {
@@ -1266,13 +1301,13 @@
   }
 
   .stadium-carousel__track {
-    gap: 0;
-    padding: 16px 0.25rem;
+    gap: 1rem;
+    padding: 1rem 0.5rem;
   }
 
   .stadium-carousel__track .product-card {
     flex: 0 0 220px;
-    margin: 0 10px;
+    margin: 0;
   }
 
   .product-detail-modal__dialog {

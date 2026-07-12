@@ -31,18 +31,18 @@ function calcularDescuentoPorcentaje(precio, precioOferta) {
 function normalizarPrecioOfertaFormulario(valor, precioBase) {
   if (valor === '' || valor === null || valor === undefined) return null;
 
-  const porcentaje = Number(valor);
+  const oferta = Number(valor);
   const base = Number(precioBase);
 
-  if (!Number.isFinite(porcentaje) || porcentaje <= 0 || porcentaje >= 100) return null;
-  if (!Number.isFinite(base) || base <= 0) return null;
+  if (!Number.isFinite(oferta) || oferta <= 0) return null;
+  if (!Number.isFinite(base) || oferta >= base) return null;
 
-  return Math.max(1, Math.round(base * (1 - porcentaje / 100)));
+  return Math.round(oferta);
 }
 
 function obtenerDescuentoOfertaFormulario(producto) {
   if (!tieneOfertaValida(producto)) return '';
-  return String(calcularDescuentoPorcentaje(producto.precio, producto.precioOferta));
+  return String(producto.precioOferta);
 }
 
 function actualizarControlesPreciosMasivo() {
@@ -396,6 +396,31 @@ async function apiFetch(ruta, opciones = {}) {
   const datos = await respuesta.json().catch(() => ({}));
 
   if (!respuesta.ok) {
+    const mensaje = String(datos.error || '');
+    const sesionExpirada =
+      respuesta.status === 401
+      && (
+        mensaje.toLowerCase().includes('expir')
+        || mensaje.toLowerCase().includes('autentic')
+      );
+
+    if (sesionExpirada || (respuesta.status === 403 && mensaje.toLowerCase().includes('token'))) {
+      const habiaSesion = Boolean(
+        localStorage.getItem(ADMIN_TOKEN_KEY)
+        || localStorage.getItem(CLIENTE_TOKEN_KEY)
+        || sessionStorage.getItem(SESSION_USER_KEY)
+        || localStorage.getItem(SESSION_USER_KEY)
+      );
+
+      if (habiaSesion && !ruta.startsWith('/api/auth/')) {
+        limpiarSesionLocal();
+        mostrarVistaTienda();
+        actualizarUIUsuario();
+        abrirAuthModal();
+        throw new Error('Tu sesión expiró. Iniciá sesión de nuevo.');
+      }
+    }
+
     if (respuesta.status === 404 && !datos.error) {
       throw new Error('El servidor no reconoce esta acción. Reiniciá el servidor e intentá de nuevo.');
     }
@@ -1364,16 +1389,83 @@ function productoTieneStock(producto) {
   return Number(producto.stock) > 0;
 }
 
+function obtenerStockTallesProducto(producto) {
+  const origen = producto?.stockTalles || {};
+  const resultado = {};
+
+  TALLES_DISPONIBLES.forEach((talle) => {
+    resultado[talle] = Math.max(0, Math.floor(Number(origen[talle]) || 0));
+  });
+
+  const total = TALLES_DISPONIBLES.reduce((acc, talle) => acc + resultado[talle], 0);
+  if (total > 0) return resultado;
+
+  const stockTotal = Math.max(0, Math.floor(Number(producto?.stock) || 0));
+  const talles = Array.isArray(producto?.talles) && producto.talles.length
+    ? producto.talles.map((t) => String(t).toUpperCase()).filter((t) => TALLES_DISPONIBLES.includes(t))
+    : [...TALLES_DISPONIBLES];
+
+  if (talles.length === 1) {
+    resultado[talles[0]] = stockTotal;
+    return resultado;
+  }
+
+  if (talles.length > 1 && stockTotal > 0) {
+    const porTalle = Math.floor(stockTotal / talles.length);
+    let resto = stockTotal - porTalle * talles.length;
+    talles.forEach((talle) => {
+      resultado[talle] = porTalle + (resto > 0 ? 1 : 0);
+      if (resto > 0) resto -= 1;
+    });
+  }
+
+  return resultado;
+}
+
 function obtenerTallesProducto(producto) {
   if (!productoTieneStock(producto)) return [];
+
+  const stockTalles = obtenerStockTallesProducto(producto);
+  const conStock = TALLES_DISPONIBLES.filter((talle) => stockTalles[talle] > 0);
+  if (conStock.length) return conStock;
+
   if (Array.isArray(producto.talles) && producto.talles.length > 0) return producto.talles;
   return [];
 }
 
+function obtenerStockTallesDelFormulario() {
+  const stockTalles = {};
+  TALLES_DISPONIBLES.forEach((talle) => {
+    const input = document.getElementById(`producto-stock-${talle}`);
+    stockTalles[talle] = Math.max(0, Math.floor(Number(input?.value) || 0));
+  });
+  return stockTalles;
+}
+
 function obtenerTallesDelFormulario() {
-  return [...document.querySelectorAll('input[name="producto-talle"]:checked')]
-    .map((input) => input.value)
-    .filter((talle) => TALLES_DISPONIBLES.includes(talle));
+  const stockTalles = obtenerStockTallesDelFormulario();
+  return TALLES_DISPONIBLES.filter((talle) => stockTalles[talle] > 0);
+}
+
+function actualizarTotalStockFormulario() {
+  const totalEl = document.getElementById('producto-stock-total');
+  if (!totalEl) return;
+  const stockTalles = obtenerStockTallesDelFormulario();
+  const total = TALLES_DISPONIBLES.reduce((acc, talle) => acc + stockTalles[talle], 0);
+  totalEl.textContent = String(total);
+}
+
+function establecerStockTallesEnFormulario(producto = null) {
+  const stockTalles = producto
+    ? obtenerStockTallesProducto(producto)
+    : { S: 2, M: 2, L: 2, XL: 2, XXL: 2 };
+
+  TALLES_DISPONIBLES.forEach((talle) => {
+    const input = document.getElementById(`producto-stock-${talle}`);
+    if (input) input.value = String(stockTalles[talle] ?? 0);
+  });
+
+  actualizarTotalStockFormulario();
 }
 
 function establecerTallesEnFormulario(talles = TALLES_DISPONIBLES) {
@@ -1387,16 +1479,18 @@ function establecerTallesEnFormulario(talles = TALLES_DISPONIBLES) {
 }
 
 function restablecerFormularioProducto() {
-  const stockInput = document.getElementById('producto-stock');
   const descripcionInput = document.getElementById('producto-descripcion');
   const precioOfertaInput = document.getElementById('producto-precio-oferta');
   const generoSelect = document.getElementById('producto-genero');
+  const urlFrente = document.getElementById('producto-imagen-frente-url');
+  const urlEspalda = document.getElementById('producto-imagen-espalda-url');
 
-  if (stockInput) stockInput.value = '10';
   if (descripcionInput) descripcionInput.value = '';
   if (precioOfertaInput) precioOfertaInput.value = '';
   if (generoSelect) generoSelect.value = 'hombre';
-  establecerTallesEnFormulario(TALLES_DISPONIBLES);
+  if (urlFrente) urlFrente.value = '';
+  if (urlEspalda) urlEspalda.value = '';
+  establecerStockTallesEnFormulario(null);
   actualizarBotonQuitarDescuentoProducto();
 }
 
@@ -2185,16 +2279,15 @@ function inicializarClubNav() {
 }
 
 function obtenerProductosDestacados() {
-  const filtrados = ordenarListaProductos(filtrarProductos(productos));
+  return filtrarProductos(productos)
+    .filter((producto) => producto.destacado === true)
+    .sort((a, b) => Number(b.id) - Number(a.id));
+}
 
-  return [...filtrados]
-    .sort((a, b) => {
-      const ofertaA = tieneOfertaValida(a) ? 1 : 0;
-      const ofertaB = tieneOfertaValida(b) ? 1 : 0;
-      if (ofertaB !== ofertaA) return ofertaB - ofertaA;
-      return Number(b.id) - Number(a.id);
-    })
-    .slice(0, 12);
+function obtenerProductosEnOfertaPortada() {
+  return filtrarProductos(productos)
+    .filter((producto) => producto.enOferta === true || producto.en_oferta === true)
+    .sort((a, b) => Number(b.id) - Number(a.id));
 }
 
 function obtenerProductosIngresos() {
@@ -2221,6 +2314,11 @@ function renderizarCarruselesInicio() {
     'destacados-carousel-track',
     obtenerProductosDestacados(),
     'No hay productos destacados para mostrar.'
+  );
+  renderizarCarruselProductos(
+    'ofertas-carousel-track',
+    obtenerProductosEnOfertaPortada(),
+    'No hay productos en oferta por ahora.'
   );
   renderizarCarruselProductos(
     'stadium-carousel-track',
@@ -2255,6 +2353,11 @@ function inicializarStadiumCarousel() {
     'destacados-carousel-track',
     'destacados-carousel-prev',
     'destacados-carousel-next'
+  );
+  inicializarCarruselHorizontal(
+    'ofertas-carousel-track',
+    'ofertas-carousel-prev',
+    'ofertas-carousel-next'
   );
   inicializarCarruselHorizontal(
     'stadium-carousel-track',
@@ -2801,6 +2904,15 @@ function renderizarEnlacesMenuMobile() {
 
   partes.push('<div class="mobile-nav__divider" role="separator"></div>');
   partes.push('<span class="mobile-nav__group-label">Mi cuenta</span>');
+
+  if (esSesionAdminActiva()) {
+    partes.push(`
+      <button type="button" class="mobile-nav__link" data-mobile-nav="admin-panel">
+        Panel de Control
+      </button>
+    `);
+  }
+
   partes.push(`
     <button type="button" class="mobile-nav__link" data-mobile-nav="cuenta" data-panel="ingresar">
       Ingresá / Mi cuenta
@@ -2881,6 +2993,18 @@ function manejarClickMenuMobile(event) {
   if (tipo === 'ofertas') {
     filtrarPorOfertas();
     cerrarMenuMobile();
+    return;
+  }
+
+  if (tipo === 'admin-panel') {
+    cerrarMenuMobile();
+    if (!esSesionAdminActiva()) return;
+    if (esPaginaCuenta()) {
+      window.location.href = 'index.html';
+      return;
+    }
+    mostrarVistaAdmin();
+    cargarPanelAdmin();
     return;
   }
 
@@ -3354,8 +3478,9 @@ function abrirModalEditar(id) {
   const precioInput = document.getElementById('producto-precio');
   const precioOfertaInput = document.getElementById('producto-precio-oferta');
   const categoriaSelect = document.getElementById('producto-categoria');
-  const stockInput = document.getElementById('producto-stock');
   const descripcionInput = document.getElementById('producto-descripcion');
+  const urlFrente = document.getElementById('producto-imagen-frente-url');
+  const urlEspalda = document.getElementById('producto-imagen-espalda-url');
 
   if (nombreInput) nombreInput.value = producto.nombre;
   if (precioInput) precioInput.value = producto.precio;
@@ -3365,13 +3490,14 @@ function abrirModalEditar(id) {
   if (categoriaSelect) categoriaSelect.value = producto.categoria;
   const generoSelect = document.getElementById('producto-genero');
   if (generoSelect) generoSelect.value = producto.genero || 'hombre';
-  if (stockInput) stockInput.value = String(producto.stock ?? 0);
   if (descripcionInput) descripcionInput.value = producto.descripcion || '';
-  establecerTallesEnFormulario(producto.talles);
+  establecerStockTallesEnFormulario(producto);
 
   resetearImagenesFormulario();
   imagenFrenteFormulario = obtenerImagenFrente(producto);
   imagenEspaldaFormulario = obtenerImagenEspalda(producto);
+  if (urlFrente) urlFrente.value = imagenFrenteFormulario || '';
+  if (urlEspalda) urlEspalda.value = imagenEspaldaFormulario || '';
   actualizarVistaPreviaImagenFormulario('frente');
   actualizarVistaPreviaImagenFormulario('espalda');
 
@@ -3408,9 +3534,12 @@ async function guardarNuevoProducto(event) {
   const descuentoOfertaRaw = document.getElementById('producto-precio-oferta')?.value ?? '';
   const categoria = document.getElementById('producto-categoria')?.value?.trim() ?? '';
   const genero = document.getElementById('producto-genero')?.value ?? 'hombre';
-  const stock = Number(document.getElementById('producto-stock')?.value);
   const descripcion = document.getElementById('producto-descripcion')?.value.trim() ?? '';
+  const stockTalles = obtenerStockTallesDelFormulario();
   const talles = obtenerTallesDelFormulario();
+  const stock = TALLES_DISPONIBLES.reduce((acc, talle) => acc + stockTalles[talle], 0);
+  const urlFrenteInput = document.getElementById('producto-imagen-frente-url')?.value.trim() ?? '';
+  const urlEspaldaInput = document.getElementById('producto-imagen-espalda-url')?.value.trim() ?? '';
   const submitBtn = document.querySelector('#product-form .product-form__submit');
 
   if (nombre.length < 3) {
@@ -3423,9 +3552,14 @@ async function guardarNuevoProducto(event) {
     return;
   }
 
-  const descuentoOferta = descuentoOfertaRaw === '' ? null : Number(descuentoOfertaRaw);
-  if (descuentoOfertaRaw !== '' && (!Number.isFinite(descuentoOferta) || descuentoOferta <= 0 || descuentoOferta >= 100)) {
-    mostrarToast('Ingresá un descuento entre 1% y 99%, o dejá el campo vacío.', 'error');
+  const precioOfertaIngresado = descuentoOfertaRaw === '' ? null : Number(descuentoOfertaRaw);
+  if (descuentoOfertaRaw !== '' && (!Number.isFinite(precioOfertaIngresado) || precioOfertaIngresado <= 0)) {
+    mostrarToast('Ingresá un precio de oferta válido, o dejá el campo vacío.', 'error');
+    return;
+  }
+
+  if (precioOfertaIngresado !== null && precioOfertaIngresado >= precio) {
+    mostrarToast('El precio de oferta debe ser menor al precio regular.', 'error');
     return;
   }
 
@@ -3439,21 +3573,23 @@ async function guardarNuevoProducto(event) {
     return;
   }
 
-  if (!Number.isFinite(stock) || stock < 0) {
-    mostrarToast('Ingresá un stock válido (0 o mayor).', 'error');
+  if (!talles.length) {
+    mostrarToast('Indicá stock en al menos un talle.', 'error');
     return;
   }
 
-  if (!talles.length) {
-    mostrarToast('Seleccioná al menos un talle disponible.', 'error');
-    return;
+  if (urlFrenteInput) {
+    imagenFrenteFormulario = urlFrenteInput;
+  }
+  if (urlEspaldaInput) {
+    imagenEspaldaFormulario = urlEspaldaInput;
   }
 
   const esEdicion = editandoProductoId !== null;
   const tieneImagenFrente = Boolean(imagenFrenteFormulario || archivoPendienteFrente);
 
   if (!tieneImagenFrente) {
-    mostrarToast('Subí al menos la imagen del frente del producto.', 'error');
+    mostrarToast('Subí al menos la imagen del frente del producto o pegá una URL.', 'error');
     return;
   }
 
@@ -3485,10 +3621,12 @@ async function guardarNuevoProducto(event) {
       categoria,
       genero,
       stock,
+      stockTalles,
       descripcion,
       imagenFrente,
       imagenEspalda,
       talles,
+      enOferta: precioOferta !== null ? true : undefined,
     };
 
     if (esEdicion) {
@@ -4737,18 +4875,43 @@ function normalizarEmail(email) {
 
 function obtenerSesionUsuario() {
   try {
-    const sesion = sessionStorage.getItem(SESSION_USER_KEY);
+    const sesion =
+      sessionStorage.getItem(SESSION_USER_KEY) || localStorage.getItem(SESSION_USER_KEY);
     return sesion ? JSON.parse(sesion) : null;
   } catch {
     return null;
   }
 }
 
+function decodificarPayloadJwt(token) {
+  try {
+    const parte = String(token || '').split('.')[1];
+    if (!parte) return null;
+    const json = atob(parte.replace(/-/g, '+').replace(/_/g, '/'));
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
+function tokenJwtVigente(token) {
+  const payload = decodificarPayloadJwt(token);
+  if (!payload) return false;
+  if (!payload.exp) return true;
+  return Number(payload.exp) * 1000 > Date.now() + 5000;
+}
+
+function limpiarSesionLocal() {
+  sessionStorage.removeItem(SESSION_USER_KEY);
+  localStorage.removeItem(SESSION_USER_KEY);
+  localStorage.removeItem(ADMIN_TOKEN_KEY);
+  localStorage.removeItem(CLIENTE_TOKEN_KEY);
+}
+
 function establecerSesion(usuario, token = null) {
-  sessionStorage.setItem(
-    SESSION_USER_KEY,
-    JSON.stringify({ email: usuario.email, rol: usuario.rol })
-  );
+  const payload = JSON.stringify({ email: usuario.email, rol: usuario.rol });
+  sessionStorage.setItem(SESSION_USER_KEY, payload);
+  localStorage.setItem(SESSION_USER_KEY, payload);
 
   if (usuario.rol === 'admin' && token) {
     localStorage.setItem(ADMIN_TOKEN_KEY, token);
@@ -4762,13 +4925,18 @@ function establecerSesion(usuario, token = null) {
 function esSesionAdminActiva() {
   const sesion = obtenerSesionUsuario();
   const tokenAdmin = localStorage.getItem(ADMIN_TOKEN_KEY);
-  return sesion?.rol === 'admin' && Boolean(tokenAdmin);
+  return sesion?.rol === 'admin' && Boolean(tokenAdmin) && tokenJwtVigente(tokenAdmin);
 }
 
 function esSesionClienteActiva() {
   const sesion = obtenerSesionUsuario();
   const tokenCliente = localStorage.getItem(CLIENTE_TOKEN_KEY);
-  return Boolean(sesion?.email) && sesion?.rol !== 'admin' && Boolean(tokenCliente);
+  return (
+    Boolean(sesion?.email)
+    && sesion?.rol !== 'admin'
+    && Boolean(tokenCliente)
+    && tokenJwtVigente(tokenCliente)
+  );
 }
 
 function ocultarErroresAuth() {
@@ -4906,7 +5074,24 @@ function actualizarUIUsuario() {
   const accessBtn = document.getElementById('admin-access-btn');
   const chevron = document.getElementById('header-cuenta-chevron');
   const emailEl = document.getElementById('header-cuenta-email');
+  const panelBtn = document.getElementById('header-panel-control-btn');
   const logueado = esSesionClienteActiva();
+  const esAdmin = esSesionAdminActiva();
+  const enAdmin = document.body.classList.contains('admin-active');
+
+  if (panelBtn) {
+    panelBtn.classList.toggle('hidden', !esAdmin || enAdmin);
+  }
+
+  if (esAdmin) {
+    accessBtn?.classList.add('is-logged-in');
+    accessBtn?.setAttribute('aria-label', 'Abrir panel de control');
+    const ingresaText = accessBtn?.querySelector('.header-ingresa-btn__text');
+    if (ingresaText) ingresaText.textContent = 'Admin';
+    chevron?.classList.add('hidden');
+    if (emailEl) emailEl.textContent = sesion?.email || '';
+    return;
+  }
 
   if (logueado) {
     accessBtn?.classList.add('is-logged-in');
@@ -4936,6 +5121,7 @@ function mostrarVistaAdmin() {
 
   document.body.classList.add('admin-active');
   aplicarMarcaTienda();
+  actualizarUIUsuario();
 }
 
 function mostrarVistaTienda() {
@@ -4945,9 +5131,21 @@ function mostrarVistaTienda() {
   if (storeView) storeView.style.display = '';
   if (adminView) adminView.style.display = 'none';
 
-  document.body.classList.remove('admin-active', 'modal-open');
+  document.body.classList.remove(
+    'admin-active',
+    'modal-open',
+    'product-modal-open',
+    'auth-open',
+    'cart-open',
+    'checkout-open',
+    'mobile-nav-open'
+  );
+  document.body.style.overflow = '';
+  document.documentElement.style.overflow = '';
+
   aplicarMarcaTienda();
   cerrarModalPedido();
+  cerrarModalProducto();
   actualizarUIUsuario();
 }
 
@@ -4999,9 +5197,7 @@ function cerrarSesion() {
     vaciarCarritoDeSesion();
   }
 
-  sessionStorage.removeItem(SESSION_USER_KEY);
-  localStorage.removeItem(ADMIN_TOKEN_KEY);
-  localStorage.removeItem(CLIENTE_TOKEN_KEY);
+  limpiarSesionLocal();
   if (document.body?.dataset?.page === 'cuenta') {
     actualizarUIUsuario();
     actualizarUiCuenta();
@@ -5127,9 +5323,39 @@ async function iniciarSesion(event) {
 }
 
 function restaurarSesion() {
-  const sesion = obtenerSesionUsuario();
-  const tokenAdmin = localStorage.getItem(ADMIN_TOKEN_KEY);
-  const tokenCliente = localStorage.getItem(CLIENTE_TOKEN_KEY);
+  let sesion = obtenerSesionUsuario();
+  let tokenAdmin = localStorage.getItem(ADMIN_TOKEN_KEY);
+  let tokenCliente = localStorage.getItem(CLIENTE_TOKEN_KEY);
+
+  if (tokenAdmin && !tokenJwtVigente(tokenAdmin)) {
+    localStorage.removeItem(ADMIN_TOKEN_KEY);
+    tokenAdmin = null;
+    if (sesion?.rol === 'admin') {
+      limpiarSesionLocal();
+      sesion = null;
+    }
+  }
+
+  if (tokenCliente && !tokenJwtVigente(tokenCliente)) {
+    localStorage.removeItem(CLIENTE_TOKEN_KEY);
+    tokenCliente = null;
+    if (sesion && sesion.rol !== 'admin') {
+      limpiarSesionLocal();
+      sesion = null;
+    }
+  }
+
+  if (!sesion && tokenAdmin) {
+    const payload = decodificarPayloadJwt(tokenAdmin);
+    if (payload?.email && payload?.rol === 'admin' && tokenJwtVigente(tokenAdmin)) {
+      establecerSesion({ email: payload.email, rol: 'admin' }, tokenAdmin);
+      sesion = obtenerSesionUsuario();
+    } else {
+      localStorage.removeItem(ADMIN_TOKEN_KEY);
+      tokenAdmin = null;
+    }
+  }
+
   if (!sesion) return;
 
   if (document.body?.dataset?.page === 'cuenta') {
@@ -5181,6 +5407,10 @@ const ADMIN_PANELS = {
     title: 'Productos',
     subtitle: 'Administrá el catálogo de tu tienda',
   },
+  portada: {
+    title: 'Gestión de Portada',
+    subtitle: 'Definí Destacados y En Oferta de la página de inicio',
+  },
   configuracion: {
     title: 'Configuración',
     subtitle: 'Personalizá los datos públicos de tu tienda',
@@ -5211,6 +5441,10 @@ function cambiarPanelAdmin(panel) {
     renderizarSelectCategoriasPreciosMasivo();
     actualizarControlesPreciosMasivo();
     actualizarVistaCatalogoAdmin();
+  }
+
+  if (panel === 'portada') {
+    renderizarGestionPortada();
   }
 
   if (panel === 'dashboard') {
@@ -5485,6 +5719,138 @@ async function cargarPanelAdmin() {
   cambiarPanelAdmin(panelAdminActivo);
 }
 
+function obtenerFiltroBusquedaPortada() {
+  return String(document.getElementById('portada-buscar')?.value || '')
+    .trim()
+    .toLowerCase();
+}
+
+function actualizarContadorPortada() {
+  const countEl = document.getElementById('portada-count');
+  if (!countEl) return;
+
+  const consulta = obtenerFiltroBusquedaPortada();
+  const visibles = productos.filter((producto) => {
+    if (!consulta) return true;
+    const texto = `${producto.nombre} ${producto.categoria}`.toLowerCase();
+    return texto.includes(consulta);
+  }).length;
+  const destacados = productos.filter((p) => p.destacado).length;
+  const ofertas = productos.filter((p) => p.enOferta || p.en_oferta).length;
+
+  countEl.textContent = `${visibles} producto${visibles !== 1 ? 's' : ''} · ${destacados} destacados · ${ofertas} en oferta`;
+}
+
+function renderizarGestionPortada() {
+  const grid = document.getElementById('admin-portada-grid');
+  const emptyEl = document.getElementById('admin-portada-empty');
+  if (!grid) return;
+
+  const consulta = obtenerFiltroBusquedaPortada();
+  const lista = [...productos]
+    .filter((producto) => {
+      if (!consulta) return true;
+      const texto = `${producto.nombre} ${producto.categoria}`.toLowerCase();
+      return texto.includes(consulta);
+    })
+    .sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), 'es'));
+
+  actualizarContadorPortada();
+
+  if (!lista.length) {
+    grid.innerHTML = '';
+    emptyEl?.classList.remove('hidden');
+    return;
+  }
+
+  emptyEl?.classList.add('hidden');
+  grid.innerHTML = lista
+    .map((producto) => {
+      const imagen = obtenerImagenFrente(producto) || 'https://placehold.co/144x180/f3f4f6/9ca3af?text=Sin+img';
+      const destacado = producto.destacado === true;
+      const enOferta = producto.enOferta === true || producto.en_oferta === true;
+
+      return `
+        <article class="admin-portada-card" data-product-id="${producto.id}">
+          <img class="admin-portada-card__thumb" src="${imagen}" alt="" width="72" height="90" loading="lazy">
+          <div class="admin-portada-card__body">
+            <h3 class="admin-portada-card__nombre" title="${producto.nombre}">${producto.nombre}</h3>
+            <p class="admin-portada-card__meta">${producto.categoria || 'Sin categoría'} · ${formatearPrecio(producto.precio)}</p>
+            <div class="admin-portada-card__switches">
+              <label class="admin-portada-card__switch">
+                <span>Productos Destacados</span>
+                <span class="admin-toggle" title="Marcar como destacado">
+                  <input
+                    type="checkbox"
+                    class="admin-toggle__input admin-portada-toggle"
+                    data-product-id="${producto.id}"
+                    data-campo="destacado"
+                    ${destacado ? 'checked' : ''}
+                  >
+                  <span class="admin-toggle__track" aria-hidden="true"></span>
+                </span>
+              </label>
+              <label class="admin-portada-card__switch">
+                <span>En Oferta</span>
+                <span class="admin-toggle" title="Marcar en oferta">
+                  <input
+                    type="checkbox"
+                    class="admin-toggle__input admin-portada-toggle"
+                    data-product-id="${producto.id}"
+                    data-campo="enOferta"
+                    ${enOferta ? 'checked' : ''}
+                  >
+                  <span class="admin-toggle__track" aria-hidden="true"></span>
+                </span>
+              </label>
+            </div>
+          </div>
+        </article>
+      `;
+    })
+    .join('');
+}
+
+async function cambiarAtributoPortadaProducto(id, campo, valor, input) {
+  const producto = productos.find((item) => String(item.id) === String(id));
+  if (!producto) return;
+  if (input?.dataset.saving === 'true') return;
+
+  const estadoAnterior = campo === 'destacado'
+    ? producto.destacado === true
+    : producto.enOferta === true || producto.en_oferta === true;
+
+  if (input) input.dataset.saving = 'true';
+
+  try {
+    const body = campo === 'destacado'
+      ? { destacado: valor }
+      : { enOferta: valor };
+
+    const actualizado = await apiFetch(`/api/productos/${id}/portada`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    });
+
+    const indice = productos.findIndex((item) => String(item.id) === String(id));
+    if (indice !== -1) {
+      productos[indice] = actualizado;
+    }
+
+    actualizarContadorPortada();
+    mostrarToast(
+      campo === 'destacado'
+        ? (valor ? 'Producto marcado como destacado.' : 'Producto quitado de destacados.')
+        : (valor ? 'Producto marcado en oferta.' : 'Producto quitado de ofertas.')
+    );
+  } catch (error) {
+    if (input) input.checked = estadoAnterior;
+    mostrarToast(error?.message || 'No se pudo actualizar la portada.', 'error');
+  } finally {
+    if (input) delete input.dataset.saving;
+  }
+}
+
 async function cambiarEstadoActivoProducto(id, activo, input) {
   const producto = productos.find((item) => String(item.id) === String(id));
   if (!producto) return;
@@ -5725,9 +6091,6 @@ function cerrarModalPedido() {
   const modal = document.getElementById('order-modal');
   modal?.classList.remove('is-open');
   modal?.setAttribute('aria-hidden', 'true');
-  if (esSesionAdminActiva()) {
-    document.body.classList.add('admin-active');
-  }
   document.body.classList.remove('modal-open');
 }
 
@@ -5850,6 +6213,41 @@ function inicializarEventosAdmin() {
   document.getElementById('btn-quitar-descuento-producto')?.addEventListener('click', quitarDescuentoProducto);
   document.getElementById('producto-precio-oferta')?.addEventListener('input', actualizarBotonQuitarDescuentoProducto);
   document.getElementById('form-configuracion')?.addEventListener('submit', guardarConfiguracion);
+  document.getElementById('portada-buscar')?.addEventListener('input', () => {
+    if (panelAdminActivo === 'portada') renderizarGestionPortada();
+  });
+  document.getElementById('admin-portada-grid')?.addEventListener('change', (event) => {
+    const toggle = event.target.closest('.admin-portada-toggle');
+    if (!toggle) return;
+    cambiarAtributoPortadaProducto(
+      toggle.dataset.productId,
+      toggle.dataset.campo,
+      toggle.checked,
+      toggle
+    );
+  });
+  document.getElementById('producto-stock-talles')?.addEventListener('input', actualizarTotalStockFormulario);
+  document.getElementById('producto-imagen-frente-url')?.addEventListener('input', (event) => {
+    const url = String(event.target.value || '').trim();
+    if (!url) return;
+    imagenFrenteFormulario = url;
+    actualizarVistaPreviaImagenFormulario('frente');
+  });
+  document.getElementById('producto-imagen-espalda-url')?.addEventListener('input', (event) => {
+    const url = String(event.target.value || '').trim();
+    if (!url) return;
+    imagenEspaldaFormulario = url;
+    actualizarVistaPreviaImagenFormulario('espalda');
+  });
+  document.getElementById('header-panel-control-btn')?.addEventListener('click', () => {
+    if (!esSesionAdminActiva()) return;
+    if (esPaginaCuenta()) {
+      window.location.href = 'index.html';
+      return;
+    }
+    mostrarVistaAdmin();
+    cargarPanelAdmin();
+  });
 
   sidebarLinks.forEach((link) => {
     link.addEventListener('click', (e) => {
