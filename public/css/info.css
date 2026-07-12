@@ -130,6 +130,60 @@
   color: var(--color-text-muted);
 }
 
+.info-panel__heading {
+  margin: 1.5rem 0 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text);
+}
+
+.info-panel__pasos {
+  margin: 0.75rem 0 1rem;
+  padding-left: 1.25rem;
+  list-style: decimal;
+}
+
+.info-panel__pasos li {
+  margin-bottom: 0.5rem;
+  font-size: 0.9375rem;
+  line-height: 1.65;
+  color: var(--color-text-muted);
+}
+
+.info-panel[hidden] {
+  display: none !important;
+}
+
+.info-panel__content--grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.75rem 2rem;
+}
+
+@media (min-width: 720px) {
+  .info-panel__content--grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.info-policy-card__title {
+  margin: 0 0 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-text);
+}
+
+.info-policy-card p {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.65;
+  color: var(--color-text-muted);
+}
+
 @media (max-width: 768px) {
   .info-layout {
     grid-template-columns: 1fr;

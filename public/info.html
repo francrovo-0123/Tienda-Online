@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="css/global.css?v=3.14">
   <link rel="stylesheet" href="css/header.css?v=5.4">
   <link rel="stylesheet" href="css/footer.css?v=3.1">
-  <link rel="stylesheet" href="css/info.css?v=1.0">
+  <link rel="stylesheet" href="css/info.css?v=1.2">
 </head>
 <body data-page="info">
 
@@ -54,22 +54,6 @@
         </a>
       </div>
 
-      <div class="header-search" id="header-search-panel" aria-label="Buscar productos">
-        <div class="search-bar">
-          <input
-            type="search"
-            id="input-busqueda"
-            class="search-bar__input"
-            placeholder="Buscar productos, marcas y más..."
-            autocomplete="off"
-            aria-label="Buscar en la tienda"
-          >
-          <svg class="search-bar__icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/>
-          </svg>
-        </div>
-      </div>
-
       <div class="header-actions">
         <button
           type="button"
@@ -105,6 +89,22 @@
         </div>
       </div>
     </div>
+
+    <div class="header-search" id="header-search-panel" aria-label="Buscar productos" hidden>
+      <div class="search-bar">
+        <input
+          type="search"
+          id="input-busqueda"
+          class="search-bar__input"
+          placeholder="Buscar productos, marcas y más..."
+          autocomplete="off"
+          aria-label="Buscar en la tienda"
+        >
+        <svg class="search-bar__icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/>
+        </svg>
+      </div>
+    </div>
   </header>
 
   <main>
@@ -120,6 +120,10 @@
           <button type="button" class="info-nav__link" data-info-panel="envios">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 00-3.213-9.193 2.056 2.056 0 00-1.58-.86H14.25M16.5 18.75h-2.25m0-11.177v-.958c0-.568-.422-1.048-.987-1.106a48.554 48.554 0 00-10.026 0 1.106 1.106 0 00-.987 1.106v7.635m12-6.677v6.677m0 4.5v-4.5m0 0h-12"/></svg>
             Envíos
+          </button>
+          <button type="button" class="info-nav__link" data-info-panel="cambios">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"/></svg>
+            Cambios y devoluciones
           </button>
           <button type="button" class="info-nav__link" data-info-panel="contacto">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75"/></svg>
@@ -160,6 +164,31 @@
               <li><strong>Despacho por correo:</strong> para el interior del país enviamos por correo o mensajería, con seguimiento del paquete.</li>
             </ul>
             <p>Una vez confirmado tu pedido, te contactamos para coordinar el método de entrega más conveniente. Los tiempos varían según la modalidad elegida y tu localidad.</p>
+          </div>
+        </section>
+
+        <section class="info-panel" id="info-panel-cambios" data-info-panel="cambios" hidden>
+          <header class="info-panel__header">
+            <h1 class="info-panel__title">Cambios y devoluciones</h1>
+            <p class="info-panel__subtitle">Cómo funciona si necesitás cambiar o devolver una prenda</p>
+          </header>
+          <div class="info-panel__content info-panel__content--grid">
+            <article class="info-policy-card">
+              <h2 class="info-policy-card__title">Plazo</h2>
+              <p>Tenés <strong>10 días corridos</strong> desde que recibís el pedido para pedir un cambio o una devolución.</p>
+            </article>
+            <article class="info-policy-card">
+              <h2 class="info-policy-card__title">Condiciones</h2>
+              <p>La camiseta tiene que estar sin uso, con etiquetas y en buen estado. No se aceptan prendas lavadas, usadas o dañadas por mal uso.</p>
+            </article>
+            <article class="info-policy-card">
+              <h2 class="info-policy-card__title">Cómo solicitarlo</h2>
+              <p>Escribinos por WhatsApp con el número de pedido y el motivo. Te confirmamos el cambio o la devolución y te indicamos los pasos.</p>
+            </article>
+            <article class="info-policy-card">
+              <h2 class="info-policy-card__title">Defectuosos</h2>
+              <p>Si llega con falla, dañada o equivocada, escribinos apenas la recibas. En esos casos nos hacemos cargo del cambio y del envío.</p>
+            </article>
           </div>
         </section>
 
@@ -216,6 +245,7 @@
       <div class="footer-col">
         <h3 class="footer-col__title">Legales</h3>
         <ul class="footer-links">
+          <li><a href="info.html#cambios">Cambios y devoluciones</a></li>
           <li><a href="info.html#terminos">Términos y Condiciones</a></li>
           <li><a href="info.html#privacidad">Privacidad</a></li>
         </ul>
@@ -344,6 +374,6 @@
   </div>
 
   <script src="js/api.js"></script>
-  <script src="js/app.js?v=9.4"></script>
+  <script src="js/app.js?v=10.8"></script>
 </body>
 </html>

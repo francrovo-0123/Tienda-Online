@@ -1,6 +1,30 @@
 .main-footer {
-  background-color: #0f172a;
+  background-color: #111;
   color: #ffffff;
+}
+
+.footer-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 2.5rem 1.25rem 1.5rem;
+}
+
+.footer-nav a {
+  font-family: var(--font-display);
+  font-size: clamp(1.5rem, 5vw, 2.25rem);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1.15;
+  color: #fff;
+  transition: opacity var(--transition-fast);
+}
+
+.footer-nav a:hover {
+  opacity: 0.65;
 }
 
 .footer-inner {
@@ -9,14 +33,23 @@
   gap: var(--space-xl);
   max-width: var(--max-width);
   margin: 0 auto;
-  padding: 3rem var(--space-md) 2.5rem;
+  padding: 1.5rem var(--space-md) 2.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 @media (min-width: 768px) {
+  .footer-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 1.25rem 2rem;
+    padding: 3rem 2rem 1.75rem;
+  }
+
   .footer-inner {
     grid-template-columns: 1.4fr 1fr 1fr 1.2fr;
     gap: 2rem;
     align-items: start;
+    padding-inline: 2rem;
   }
 }
 
@@ -29,9 +62,10 @@
 
 .footer-logo {
   display: block;
-  font-size: 0.9375rem;
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: 0.14em;
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
   color: #ffffff;
 }
@@ -41,15 +75,16 @@
   font-size: 0.8125rem;
   font-weight: var(--font-weight-regular);
   line-height: 1.65;
-  color: #94a3b8;
+  color: rgba(255, 255, 255, 0.62);
 }
 
 /* ── Columnas ── */
 .footer-col__title {
   margin-bottom: 1rem;
+  font-family: var(--font-display);
   font-size: 0.75rem;
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: 0.12em;
+  font-weight: 600;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: #ffffff;
 }
@@ -65,7 +100,7 @@
 .footer-links button {
   font-size: 0.8125rem;
   font-weight: var(--font-weight-regular);
-  color: #94a3b8;
+  color: rgba(255, 255, 255, 0.62);
   transition: color var(--transition-fast);
   text-align: left;
   padding: 0;
@@ -89,7 +124,7 @@
   gap: 0.5rem;
   font-size: 0.8125rem;
   line-height: 1.5;
-  color: #94a3b8;
+  color: rgba(255, 255, 255, 0.62);
 }
 
 .footer-contact__icon {
@@ -97,7 +132,7 @@
   width: 1rem;
   height: 1rem;
   margin-top: 0.125rem;
-  color: #94a3b8;
+  color: rgba(255, 255, 255, 0.62);
 }
 
 .footer-contact__link {
@@ -269,8 +304,8 @@
 }
 
 .social-link:hover {
-  color: #cbd5e1;
-  opacity: 0.85;
+  color: #ffffff;
+  opacity: 0.7;
 }
 
 /* ── Copyright ── */

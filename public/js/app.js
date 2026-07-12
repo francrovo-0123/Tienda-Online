@@ -1880,9 +1880,9 @@ function actualizarUiFiltroColeccion() {
     subtitulo && (subtitulo.textContent = `Todas las camisetas de ${ligaFiltroActiva}`);
     coleccion?.classList.add('products-section--filtrada');
   } else {
-    titulo && (titulo.textContent = 'Colección destacada');
+    titulo && (titulo.textContent = 'Todos nuestros Productos');
     subtitulo &&
-      (subtitulo.textContent = 'Selección curada de nuestras piezas más exclusivas');
+      (subtitulo.textContent = 'Todas las camisetas, filtrá por club o sección');
     coleccion?.classList.remove('products-section--filtrada');
   }
 
@@ -1953,9 +1953,24 @@ function aplicarFiltroColeccion(opciones = {}) {
   actualizarUiFiltroColeccion();
   solicitarRenderizadoProductos({ skeleton: false });
 
-  if (scroll && (categoriaFiltroActiva !== 'todos' || ligaFiltroActiva)) {
+  if (scroll) {
     document.getElementById('coleccion')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
+}
+
+function inicializarEnlaceProductos() {
+  document.addEventListener('click', (event) => {
+    const enlace = event.target.closest(
+      '.footer-nav a[href="#coleccion"], .mobile-nav__link[href$="#coleccion"]'
+    );
+    if (!enlace) return;
+
+    event.preventDefault();
+    aplicarFiltroColeccion({ equipo: 'todos', liga: '', scroll: true });
+    if (window.location.hash !== '#coleccion') {
+      history.replaceState(null, '', '#coleccion');
+    }
+  });
 }
 
 function crearHtmlIconoSeccion(seccion) {
@@ -2246,6 +2261,97 @@ function inicializarStadiumCarousel() {
     'stadium-carousel-prev',
     'stadium-carousel-next'
   );
+}
+
+function inicializarHeroStage() {
+  const viewport = document.getElementById('hero-stage-viewport');
+  const counter = document.getElementById('hero-stage-counter');
+  const nextBtn = document.getElementById('hero-stage-next');
+  const dots = document.querySelectorAll('#hero-stage-dots [data-hero-goto]');
+  if (!viewport) return;
+
+  const slides = Array.from(viewport.querySelectorAll('.hero-slide'));
+  if (!slides.length) return;
+
+  let indice = Math.max(0, slides.findIndex((slide) => slide.classList.contains('is-active')));
+  let timerId = null;
+
+  const irA = (nuevoIndice) => {
+    indice = ((nuevoIndice % slides.length) + slides.length) % slides.length;
+    slides.forEach((slide, i) => {
+      slide.classList.toggle('is-active', i === indice);
+    });
+    dots.forEach((dot, i) => {
+      const activo = i === indice;
+      dot.classList.toggle('is-active', activo);
+      dot.setAttribute('aria-selected', activo ? 'true' : 'false');
+    });
+    if (counter) counter.textContent = `${indice + 1} / ${slides.length}`;
+  };
+
+  const siguiente = () => irA(indice + 1);
+
+  const reiniciarAutoplay = () => {
+    if (timerId) window.clearInterval(timerId);
+    timerId = window.setInterval(siguiente, 5500);
+  };
+
+  nextBtn?.addEventListener('click', () => {
+    siguiente();
+    reiniciarAutoplay();
+  });
+
+  dots.forEach((dot) => {
+    dot.addEventListener('click', () => {
+      const destino = Number(dot.dataset.heroGoto);
+      if (Number.isNaN(destino)) return;
+      irA(destino);
+      reiniciarAutoplay();
+    });
+  });
+
+  let touchStartX = 0;
+  viewport.addEventListener('touchstart', (event) => {
+    touchStartX = event.changedTouches?.[0]?.clientX || 0;
+  }, { passive: true });
+
+  viewport.addEventListener('touchend', (event) => {
+    const touchEndX = event.changedTouches?.[0]?.clientX || 0;
+    const delta = touchEndX - touchStartX;
+    if (Math.abs(delta) < 40) return;
+    if (delta < 0) siguiente();
+    else irA(indice - 1);
+    reiniciarAutoplay();
+  }, { passive: true });
+
+  irA(indice);
+  reiniciarAutoplay();
+}
+
+function inicializarNewsletter() {
+  const form = document.getElementById('newsletter-form');
+  const feedback = document.getElementById('newsletter-feedback');
+  const input = document.getElementById('newsletter-email');
+  if (!form || !input) return;
+
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const email = String(input.value || '').trim();
+    const valido = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+    if (!feedback) return;
+
+    feedback.classList.remove('hidden', 'is-error');
+
+    if (!valido) {
+      feedback.classList.add('is-error');
+      feedback.textContent = 'Ingresá un email válido.';
+      return;
+    }
+
+    feedback.textContent = '¡Listo! Te vamos a avisar con las próximas novedades.';
+    input.value = '';
+  });
 }
 
 function filtrarPorCategoria(categoria, elemento) {
@@ -2802,10 +2908,12 @@ function esVistaMobile() {
 function abrirBuscadorMobile() {
   const header = document.querySelector('.main-header');
   const toggle = document.getElementById('header-search-toggle');
+  const panel = document.getElementById('header-search-panel');
   const input = document.getElementById('input-busqueda');
-  if (!header || !toggle || !esVistaMobile()) return;
+  if (!header || !toggle) return;
 
   cerrarMenuMobile();
+  panel?.removeAttribute('hidden');
   header.classList.add('is-search-open');
   toggle.setAttribute('aria-expanded', 'true');
   window.dispatchEvent(new Event('header:remeasure'));
@@ -2818,10 +2926,12 @@ function abrirBuscadorMobile() {
 function cerrarBuscadorMobile() {
   const header = document.querySelector('.main-header');
   const toggle = document.getElementById('header-search-toggle');
+  const panel = document.getElementById('header-search-panel');
   const input = document.getElementById('input-busqueda');
   if (!header?.classList.contains('is-search-open')) return;
 
   header.classList.remove('is-search-open');
+  panel?.setAttribute('hidden', '');
   toggle?.setAttribute('aria-expanded', 'false');
   ocultarSugerenciasBusqueda();
   window.dispatchEvent(new Event('header:remeasure'));
@@ -2833,7 +2943,7 @@ function cerrarBuscadorMobile() {
 
 function alternarBuscadorMobile() {
   const header = document.querySelector('.main-header');
-  if (!header || !esVistaMobile()) return;
+  if (!header) return;
 
   if (header.classList.contains('is-search-open')) {
     cerrarBuscadorMobile();
@@ -2855,23 +2965,17 @@ function inicializarBuscadorMobile() {
   });
 
   document.addEventListener('click', (event) => {
-    if (!esVistaMobile() || !header.classList.contains('is-search-open')) return;
+    if (!header.classList.contains('is-search-open')) return;
     if (event.target.closest('.header-search') || event.target.closest('#header-search-toggle')) return;
     cerrarBuscadorMobile();
   });
 
   let scrollTimer;
   window.addEventListener('scroll', () => {
-    if (!esVistaMobile() || !header.classList.contains('is-search-open')) return;
+    if (!header.classList.contains('is-search-open')) return;
     clearTimeout(scrollTimer);
     scrollTimer = setTimeout(cerrarBuscadorMobile, 80);
   }, { passive: true });
-
-  window.addEventListener('resize', () => {
-    if (!esVistaMobile()) {
-      cerrarBuscadorMobile();
-    }
-  });
 
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && header.classList.contains('is-search-open')) {
@@ -2913,84 +3017,17 @@ function inicializarHeaderScroll() {
   const header = document.querySelector('.main-header');
   if (!header) return;
 
-  let lastY = obtenerScrollY();
-  let ticking = false;
-  const UMBRAL_SCROLL = 15;
-
   const obtenerAltura = () => {
-    const alto = header.offsetHeight;
+    const fila = header.querySelector('.header-inner');
+    const alto = fila?.offsetHeight || 64;
     document.documentElement.style.setProperty('--main-header-height', `${alto}px`);
+    header.classList.remove('main-header--hidden');
     return alto;
   };
 
-  const mostrar = () => header.classList.remove('main-header--hidden');
-  const ocultar = () => header.classList.add('main-header--hidden');
-
-  const actualizar = () => {
-    const y = obtenerScrollY();
-    const delta = y - lastY;
-    const alto = parseInt(
-      getComputedStyle(document.documentElement).getPropertyValue('--main-header-height'),
-      10
-    ) || obtenerAltura();
-
-    if (y <= 0) {
-      mostrar();
-      lastY = 0;
-      ticking = false;
-      return;
-    }
-
-    if (y < alto) {
-      mostrar();
-
-      if (Math.abs(delta) >= UMBRAL_SCROLL) {
-        lastY = y;
-      }
-
-      ticking = false;
-      return;
-    }
-
-    if (Math.abs(delta) >= UMBRAL_SCROLL) {
-      if (delta > 0) {
-        ocultar();
-      } else {
-        mostrar();
-      }
-      lastY = y;
-    }
-
-    ticking = false;
-  };
-
-  const programarActualizacion = () => {
-    if (!ticking) {
-      requestAnimationFrame(actualizar);
-      ticking = true;
-    }
-  };
-
-  window.addEventListener('scroll', programarActualizacion, { passive: true });
-
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', () => {
-      obtenerAltura();
-      programarActualizacion();
-    }, { passive: true });
-    window.visualViewport.addEventListener('scroll', programarActualizacion, { passive: true });
-  }
-
   window.addEventListener('resize', obtenerAltura);
   window.addEventListener('header:remeasure', obtenerAltura);
-
-  if (typeof ResizeObserver !== 'undefined') {
-    const observer = new ResizeObserver(obtenerAltura);
-    observer.observe(header);
-  }
-
   obtenerAltura();
-  actualizar();
 }
 
 function inicializarBuscador() {
@@ -4553,20 +4590,19 @@ function inicializarCheckout() {
 
 /* ── Página de información ── */
 
-const PANELES_INFO = ['nosotros', 'envios', 'contacto'];
+const PANELES_INFO = ['nosotros', 'envios', 'cambios', 'contacto'];
 
 function obtenerPanelInfoDesdeHash() {
   const hash = window.location.hash.replace('#', '');
+  if (hash === 'terminos') return 'cambios';
   return PANELES_INFO.includes(hash) ? hash : 'nosotros';
 }
 
 function mostrarPanelInfo(panelId) {
   if (!PANELES_INFO.includes(panelId)) return;
 
-  document.querySelectorAll('[data-info-panel]').forEach((panel) => {
-    if (panel.tagName === 'SECTION') {
-      panel.hidden = panel.dataset.infoPanel !== panelId;
-    }
+  document.querySelectorAll('.info-panel[data-info-panel]').forEach((panel) => {
+    panel.hidden = panel.dataset.infoPanel !== panelId;
   });
 
   document.querySelectorAll('#info-nav [data-info-panel]').forEach((link) => {
@@ -5888,36 +5924,45 @@ document.addEventListener('DOMContentLoaded', async () => {
   inicializarHeaderScroll();
   inicializarMenuMobile();
   inicializarBuscadorMobile();
-  await cargarConfiguracionTienda();
+
   const pagina = document.body?.dataset?.page || 'index';
 
   if (pagina === 'cuenta') {
     inicializarAutenticacion();
     inicializarBuscadorPedidos();
     inicializarCuenta();
+    await cargarConfiguracionTienda();
     return;
   }
 
   if (pagina === 'info') {
+    inicializarInfo();
     inicializarAutenticacion();
     inicializarBuscadorPedidos();
-    inicializarInfo();
+    await cargarConfiguracionTienda();
     return;
   }
 
+  await cargarConfiguracionTienda();
+
   const hashInformativo = window.location.hash.replace('#', '');
-  if (PANELES_INFO.includes(hashInformativo)) {
-    window.location.replace(`info.html#${hashInformativo}`);
+  const panelInfo =
+    hashInformativo === 'terminos' ? 'cambios' : hashInformativo;
+  if (PANELES_INFO.includes(panelInfo)) {
+    window.location.replace(`info.html#${panelInfo}`);
     return;
   }
 
   inicializarDropdownCategorias();
   inicializarClubNav();
+  inicializarHeroStage();
   inicializarStadiumCarousel();
+  inicializarNewsletter();
   inicializarDetalleProducto();
   inicializarDropdownOrden();
   inicializarDropdownGenero();
   inicializarBuscador();
+  inicializarEnlaceProductos();
   await cargarSecciones();
   renderizarCarruselSecciones();
   renderizarEnlacesMenuMobile();

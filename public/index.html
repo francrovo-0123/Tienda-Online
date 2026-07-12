@@ -8,78 +8,67 @@
   <link rel="icon" href="/favicon.ico" sizes="32x32">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/favicon.png">
-  <link rel="stylesheet" href="css/global.css?v=3.15">
-  <link rel="stylesheet" href="css/header.css?v=5.5">
-  <link rel="stylesheet" href="css/main.css?v=3.7">
-  <link rel="stylesheet" href="css/footer.css?v=3.1">
+  <link rel="stylesheet" href="css/global.css?v=4.0">
+  <link rel="stylesheet" href="css/header.css?v=6.2">
+  <link rel="stylesheet" href="css/main.css?v=4.4">
+  <link rel="stylesheet" href="css/footer.css?v=4.0">
   <link rel="stylesheet" href="css/cart.css?v=2.8">
 </head>
 <body>
 
   <div id="store-view">
+    <div class="promo-ticker" aria-hidden="true">
+      <div class="promo-ticker__track">
+        <span>CAMISETAS DE FÚTBOL</span>
+        <span aria-hidden="true">·</span>
+        <span>ENVÍO A TODO EL PAÍS</span>
+        <span aria-hidden="true">·</span>
+        <span>DESCUENTOS EN TRANSFERENCIA Y EFECTIVO</span>
+        <span aria-hidden="true">·</span>
+        <span>CAMISETAS DE FÚTBOL</span>
+        <span aria-hidden="true">·</span>
+        <span>ENVÍO A TODO EL PAÍS</span>
+        <span aria-hidden="true">·</span>
+        <span>DESCUENTOS EN TRANSFERENCIA Y EFECTIVO</span>
+        <span aria-hidden="true">·</span>
+        <span>CAMISETAS DE FÚTBOL</span>
+        <span aria-hidden="true">·</span>
+        <span>ENVÍO A TODO EL PAÍS</span>
+        <span aria-hidden="true">·</span>
+        <span>DESCUENTOS EN TRANSFERENCIA Y EFECTIVO</span>
+        <span aria-hidden="true">·</span>
+      </div>
+    </div>
+
     <header class="main-header">
       <div class="header-inner">
-        <div class="header-brand">
-          <button
-            type="button"
-            class="header-menu-btn"
-            id="header-menu-btn"
-            aria-label="Abrir menú de accesos rápidos"
-            aria-expanded="false"
-            aria-controls="mobile-nav-panel"
-          >
-            <span class="header-menu-btn__bar" aria-hidden="true"></span>
-            <span class="header-menu-btn__bar" aria-hidden="true"></span>
-            <span class="header-menu-btn__bar" aria-hidden="true"></span>
-          </button>
+        <button
+          type="button"
+          class="header-menu-btn"
+          id="header-menu-btn"
+          aria-label="Abrir menú"
+          aria-expanded="false"
+          aria-controls="mobile-nav-panel"
+        >
+          <span class="header-menu-btn__label">MENÚ</span>
+        </button>
 
-          <a href="/" class="logo" aria-label="Jerseys Store — Inicio">
-            <svg class="logo-shield" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 60" aria-hidden="true">
-              <defs>
-                <linearGradient id="shield-body" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stop-color="#1a1a1a"/>
-                  <stop offset="100%" stop-color="#0a0a0a"/>
-                </linearGradient>
-                <linearGradient id="shield-accent" x1="0%" y1="0%" x2="0%" y2="100%">
-                  <stop offset="0%" stop-color="#f5c842"/>
-                  <stop offset="100%" stop-color="#d4a017"/>
-                </linearGradient>
-              </defs>
-              <path d="M26 2 L48 10 V28 C48 42 38 54 26 58 C14 54 4 42 4 28 V10 Z" fill="url(#shield-body)" stroke="url(#shield-accent)" stroke-width="2"/>
-              <path d="M26 8 L42 14 V27 C42 38 35 47 26 51 C17 47 10 38 10 27 V14 Z" fill="none" stroke="rgba(245,200,66,0.35)" stroke-width="1"/>
-              <text x="26" y="34" text-anchor="middle" fill="url(#shield-accent)" font-family="Plus Jakarta Sans, sans-serif" font-size="11" font-weight="700" letter-spacing="1">JS</text>
-            </svg>
-            <span class="logo-text">
-              <span class="logo-text__brand">Jerseys</span>
-              <span class="logo-text__store">Store</span>
-            </span>
-          </a>
-        </div>
-
-        <div class="header-search" id="header-search-panel" aria-label="Buscar productos">
-          <div class="search-bar">
-            <input
-              type="search"
-              id="input-busqueda"
-              class="search-bar__input"
-              placeholder="Buscar productos, marcas y más..."
-              autocomplete="off"
-              aria-autocomplete="list"
-              aria-controls="contenedor-resultados-predicativos"
-              aria-expanded="false"
-            >
-            <svg class="search-bar__icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/>
-            </svg>
-            <div
-              class="search-suggestions"
-              id="contenedor-resultados-predicativos"
-              role="listbox"
-              aria-label="Sugerencias de productos"
-              hidden
-            ></div>
-          </div>
-        </div>
+        <a href="/" class="logo" aria-label="Jerseys Store — Inicio">
+          <svg class="logo-shield" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 60" aria-hidden="true">
+            <defs>
+              <linearGradient id="shield-body" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#111"/>
+                <stop offset="100%" stop-color="#000"/>
+              </linearGradient>
+            </defs>
+            <path d="M26 2 L48 10 V28 C48 42 38 54 26 58 C14 54 4 42 4 28 V10 Z" fill="url(#shield-body)" stroke="#111" stroke-width="2"/>
+            <text x="26" y="34" text-anchor="middle" fill="#fff" font-family="Oswald, sans-serif" font-size="12" font-weight="700" letter-spacing="1">JS</text>
+          </svg>
+          <span class="logo-text">
+            <span class="logo-text__brand">Jerseys</span>
+            <span class="logo-text__store">Store</span>
+          </span>
+        </a>
 
         <div class="header-actions">
           <button
@@ -120,37 +109,118 @@
                 <path d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z"/>
               </svg>
             </button>
-            <button type="button" class="header-icono-btn cart-btn" id="cart-btn" aria-label="Abrir carrito">
-              <svg class="header-icono-svg cart-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M8.25 7.5V6.75A2.25 2.25 0 0 1 10.5 4.5h3a2.25 2.25 0 0 1 2.25 2.25V7.5"/>
-                <path d="M6 8.25h12a1.5 1.5 0 0 1 1.5 1.5v9a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 18.75v-9A1.5 1.5 0 0 1 6 8.25z"/>
-              </svg>
+            <button type="button" class="header-cart-btn cart-btn" id="cart-btn" aria-label="Abrir carrito">
+              <span class="header-cart-btn__label">CARRITO</span>
               <span class="cart-count" id="cart-count">0</span>
             </button>
           </div>
         </div>
       </div>
+
+      <div class="header-search" id="header-search-panel" aria-label="Buscar productos" hidden>
+        <div class="search-bar">
+          <input
+            type="search"
+            id="input-busqueda"
+            class="search-bar__input"
+            placeholder="Buscar camisetas, clubes..."
+            autocomplete="off"
+            aria-autocomplete="list"
+            aria-controls="contenedor-resultados-predicativos"
+            aria-expanded="false"
+          >
+          <svg class="search-bar__icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/>
+          </svg>
+          <div
+            class="search-suggestions"
+            id="contenedor-resultados-predicativos"
+            role="listbox"
+            aria-label="Sugerencias de productos"
+            hidden
+          ></div>
+        </div>
+      </div>
     </header>
 
-    <nav class="club-nav" id="club-nav" aria-label="Filtrar por sección">
-      <div class="club-nav__carousel">
-        <button type="button" class="club-nav__arrow club-nav__arrow--prev" id="club-nav-prev" aria-label="Secciones anteriores">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
-        </button>
-        <div class="club-nav__viewport">
-          <ul class="club-nav__list" id="club-nav-list" role="list" aria-label="Secciones de la tienda"></ul>
-        </div>
-        <button type="button" class="club-nav__arrow club-nav__arrow--next" id="club-nav-next" aria-label="Secciones siguientes">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
-        </button>
-      </div>
-    </nav>
-
     <main>
-      <section class="stadium-section grass-texture" id="inicio">
+      <section class="hero-stage" id="inicio" aria-label="Categorías destacadas">
+        <div class="hero-stage__viewport" id="hero-stage-viewport">
+          <article class="hero-slide is-active" data-hero-index="0">
+            <div class="hero-slide__media hero-slide__media--camisetas" role="img" aria-label="Camisetas de fútbol"></div>
+            <div class="hero-slide__overlay">
+              <h2 class="hero-slide__title">CAMISETAS<br>DE FÚTBOL</h2>
+            </div>
+          </article>
+          <article class="hero-slide" data-hero-index="1">
+            <div class="hero-slide__media hero-slide__media--clubes" role="img" aria-label="Clubes argentinos"></div>
+            <div class="hero-slide__overlay">
+              <h2 class="hero-slide__title">CLUBES<br>ARGENTINOS</h2>
+            </div>
+          </article>
+          <article class="hero-slide" data-hero-index="2">
+            <div class="hero-slide__media hero-slide__media--selecciones" role="img" aria-label="Selecciones y retro"></div>
+            <div class="hero-slide__overlay">
+              <h2 class="hero-slide__title">SELECCIONES<br>&amp; RETRO</h2>
+            </div>
+          </article>
+        </div>
+        <div class="hero-stage__ui">
+          <span class="hero-stage__counter" id="hero-stage-counter">1 / 3</span>
+          <button type="button" class="hero-stage__next" id="hero-stage-next" aria-label="Siguiente categoría">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/>
+            </svg>
+          </button>
+        </div>
+        <div class="hero-stage__dots" id="hero-stage-dots" role="tablist" aria-label="Slides del hero">
+          <button type="button" class="hero-stage__dot is-active" data-hero-goto="0" aria-label="Slide 1" aria-selected="true"></button>
+          <button type="button" class="hero-stage__dot" data-hero-goto="1" aria-label="Slide 2" aria-selected="false"></button>
+          <button type="button" class="hero-stage__dot" data-hero-goto="2" aria-label="Slide 3" aria-selected="false"></button>
+        </div>
+      </section>
+
+      <div class="offer-marquee" aria-hidden="true">
+        <div class="offer-marquee__track">
+          <span>APROVECHÁ LAS OFERTAS</span>
+          <span aria-hidden="true">★</span>
+          <span>ENVÍO A TODO EL PAÍS</span>
+          <span aria-hidden="true">★</span>
+          <span>DESCUENTOS EN TRANSFERENCIA Y EFECTIVO</span>
+          <span aria-hidden="true">★</span>
+          <span>APROVECHÁ LAS OFERTAS</span>
+          <span aria-hidden="true">★</span>
+          <span>ENVÍO A TODO EL PAÍS</span>
+          <span aria-hidden="true">★</span>
+          <span>DESCUENTOS EN TRANSFERENCIA Y EFECTIVO</span>
+          <span aria-hidden="true">★</span>
+          <span>APROVECHÁ LAS OFERTAS</span>
+          <span aria-hidden="true">★</span>
+          <span>ENVÍO A TODO EL PAÍS</span>
+          <span aria-hidden="true">★</span>
+          <span>DESCUENTOS EN TRANSFERENCIA Y EFECTIVO</span>
+          <span aria-hidden="true">★</span>
+        </div>
+      </div>
+
+      <nav class="club-nav" id="club-nav" aria-label="Filtrar por sección">
+        <div class="club-nav__carousel">
+          <button type="button" class="club-nav__arrow club-nav__arrow--prev" id="club-nav-prev" aria-label="Secciones anteriores">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+          </button>
+          <div class="club-nav__viewport">
+            <ul class="club-nav__list" id="club-nav-list" role="list" aria-label="Secciones de la tienda"></ul>
+          </div>
+          <button type="button" class="club-nav__arrow club-nav__arrow--next" id="club-nav-next" aria-label="Secciones siguientes">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+          </button>
+        </div>
+      </nav>
+
+      <section class="stadium-section" id="nuevos-ingresos">
         <div class="stadium-section__inner">
           <div class="stadium-block">
-            <h2 class="stadium-section__title">PRODUCTOS DESTACADOS</h2>
+            <h2 class="stadium-section__title">NUEVOS INGRESOS</h2>
             <div class="stadium-carousel" id="destacados-carousel" aria-label="Productos destacados">
               <button type="button" class="stadium-carousel__arrow stadium-carousel__arrow--prev" id="destacados-carousel-prev" aria-label="Productos destacados anteriores">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5"/></svg>
@@ -165,7 +235,7 @@
           </div>
 
           <div class="stadium-block">
-            <h2 class="stadium-section__title">INGRESOS DE LA ULTIMA SEMANA</h2>
+            <h2 class="stadium-section__title">ÚLTIMA SEMANA</h2>
             <div class="stadium-carousel" id="stadium-carousel" aria-label="Productos recientes">
             <button type="button" class="stadium-carousel__arrow stadium-carousel__arrow--prev" id="stadium-carousel-prev" aria-label="Productos anteriores">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5"/></svg>
@@ -181,10 +251,27 @@
         </div>
       </section>
 
+      <div class="offer-marquee offer-marquee--alt" aria-hidden="true">
+        <div class="offer-marquee__track">
+          <span>HASTA 3 CUOTAS CON TARJETA</span>
+          <span aria-hidden="true">·</span>
+          <span>DESCUENTOS POR TRANSFERENCIA</span>
+          <span aria-hidden="true">·</span>
+          <span>HASTA 3 CUOTAS CON TARJETA</span>
+          <span aria-hidden="true">·</span>
+          <span>DESCUENTOS POR TRANSFERENCIA</span>
+          <span aria-hidden="true">·</span>
+          <span>HASTA 3 CUOTAS CON TARJETA</span>
+          <span aria-hidden="true">·</span>
+          <span>DESCUENTOS POR TRANSFERENCIA</span>
+          <span aria-hidden="true">·</span>
+        </div>
+      </div>
+
       <section class="products-section" id="coleccion">
         <div class="section-header">
-          <h2 class="section-title">Colección destacada</h2>
-          <p class="section-subtitle">Selección curada de nuestras piezas más exclusivas</p>
+          <h2 class="section-title">Todos nuestros Productos</h2>
+          <p class="section-subtitle">Todas las camisetas, filtrá por club o sección</p>
         </div>
         <div class="filtros-container">
           <div class="dropdown-orden" id="dropdown-orden">
@@ -237,13 +324,50 @@
         </div>
         <div id="store-sections-container"></div>
       </section>
+
+      <section class="category-banners" aria-label="Accesos rápidos">
+        <a href="#coleccion" class="category-banner category-banner--clubes">
+          <span class="category-banner__label">CLUBES</span>
+        </a>
+        <a href="#coleccion" class="category-banner category-banner--selecciones">
+          <span class="category-banner__label">SELECCIONES</span>
+        </a>
+      </section>
+
+      <section class="newsletter-section" aria-labelledby="newsletter-title">
+        <div class="newsletter-section__inner">
+          <h2 class="newsletter-section__title" id="newsletter-title">NEWSLETTER</h2>
+          <p class="newsletter-section__text">Recibí novedades y ofertas de camisetas ingresando tu correo acá</p>
+          <form class="newsletter-form" id="newsletter-form" novalidate>
+            <label class="visually-hidden" for="newsletter-email">Email</label>
+            <input
+              type="email"
+              id="newsletter-email"
+              class="newsletter-form__input"
+              placeholder="Email"
+              autocomplete="email"
+              required
+            >
+            <button type="submit" class="newsletter-form__submit">Enviar</button>
+          </form>
+          <p class="newsletter-form__feedback hidden" id="newsletter-feedback" role="status" aria-live="polite"></p>
+        </div>
+      </section>
     </main>
 
     <footer class="main-footer">
+      <div class="footer-nav">
+        <a href="#inicio">Inicio</a>
+        <a href="#coleccion">Productos</a>
+        <a href="info.html#nosotros">Quiénes Somos</a>
+        <a href="info.html#cambios">Cambios y devoluciones</a>
+        <a href="info.html#contacto">Contacto</a>
+      </div>
+
       <div class="footer-inner">
         <div class="footer-brand">
           <span class="footer-logo">Jerseys Store</span>
-          <p class="footer-tagline">Tu tienda de camisetas de fútbol.</p>
+          <p class="footer-tagline">Camisetas de fútbol para hinchas de verdad.</p>
           <div class="footer-social">
             <a href="#" class="social-link" aria-label="Instagram" target="_blank" rel="noopener noreferrer">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="22" height="22" aria-hidden="true">
@@ -256,17 +380,18 @@
         </div>
 
         <div class="footer-col">
-          <h3 class="footer-col__title">Explorar</h3>
+          <h3 class="footer-col__title">Tienda</h3>
           <ul class="footer-links">
-            <li><a href="#inicio">Inicio</a></li>
-            <li><a href="#coleccion">Productos</a></li>
-            <li><a href="info.html#nosotros">Quiénes Somos</a></li>
+            <li><a href="#nuevos-ingresos">Nuevos ingresos</a></li>
+            <li><a href="#coleccion">Ver colección</a></li>
+            <li><a href="cuenta.html#pedidos">Mis pedidos</a></li>
           </ul>
         </div>
 
         <div class="footer-col">
           <h3 class="footer-col__title">Legales</h3>
           <ul class="footer-links">
+            <li><a href="info.html#cambios">Cambios y devoluciones</a></li>
             <li><a href="info.html#terminos">Términos y Condiciones</a></li>
             <li><a href="info.html#privacidad">Privacidad</a></li>
           </ul>
@@ -1091,6 +1216,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
   <script src="js/api.js"></script>
-  <script src="js/app.js?v=9.4"></script>
+  <script src="js/app.js?v=10.8"></script>
 </body>
 </html>
