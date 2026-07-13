@@ -2390,11 +2390,13 @@ function inicializarCarruselHorizontal(trackId, prevId, nextId) {
   const next = document.getElementById(nextId);
   if (!track) return;
 
+  const scrollEl = track.closest('.stadium-carousel__viewport') || track;
+
   const desplazar = (direccion) => {
     const card = track.querySelector('.product-card');
     const gap = parseFloat(getComputedStyle(track).gap) || 16;
     const paso = card ? card.offsetWidth + gap : 260;
-    track.scrollBy({ left: direccion * paso, behavior: 'smooth' });
+    scrollEl.scrollBy({ left: direccion * paso, behavior: 'smooth' });
   };
 
   prev?.addEventListener('click', () => desplazar(-1));
@@ -5035,6 +5037,51 @@ function ocultarErroresAuth() {
   document.getElementById('auth-verificacion-error')?.classList.add('hidden');
 }
 
+const AUTH_HEADINGS = {
+  login: {
+    title: '¡Hola de nuevo!',
+    desc: 'Ingresá tus datos para continuar',
+  },
+  registro: {
+    title: 'Creá tu cuenta',
+    desc: 'Completá el formulario para registrarte',
+  },
+  verificacion: {
+    title: 'Verificá tu email',
+    desc: 'Te enviamos un código de 6 dígitos',
+  },
+};
+
+function actualizarTabsAuth(pantalla) {
+  const tabs = document.getElementById('auth-tabs');
+  const tabLogin = document.getElementById('auth-tab-login');
+  const tabRegistro = document.getElementById('auth-tab-registro');
+  const esVerificacion = pantalla === 'verificacion';
+
+  tabs?.classList.toggle('is-hidden', esVerificacion);
+
+  if (tabLogin) {
+    const activa = pantalla === 'login';
+    tabLogin.classList.toggle('auth-tab--active', activa);
+    tabLogin.setAttribute('aria-selected', activa ? 'true' : 'false');
+  }
+
+  if (tabRegistro) {
+    const activa = pantalla === 'registro';
+    tabRegistro.classList.toggle('auth-tab--active', activa);
+    tabRegistro.setAttribute('aria-selected', activa ? 'true' : 'false');
+  }
+}
+
+function actualizarHeadingAuth(pantalla) {
+  const heading = AUTH_HEADINGS[pantalla] || AUTH_HEADINGS.login;
+  const titleEl = document.getElementById('auth-modal-title');
+  const descEl = document.getElementById('auth-heading-desc');
+
+  if (titleEl) titleEl.textContent = heading.title;
+  if (descEl) descEl.textContent = heading.desc;
+}
+
 function cambiarVistaAuth(pantalla) {
   const vistas = {
     login: document.getElementById('auth-view-login'),
@@ -5043,9 +5090,15 @@ function cambiarVistaAuth(pantalla) {
   };
 
   Object.entries(vistas).forEach(([nombre, elemento]) => {
-    elemento?.classList.toggle('hidden', nombre !== pantalla);
+    if (!elemento) return;
+    const activa = nombre === pantalla;
+    elemento.classList.toggle('auth-view--active', activa);
+    elemento.classList.remove('hidden');
+    elemento.setAttribute('aria-hidden', activa ? 'false' : 'true');
   });
 
+  actualizarTabsAuth(pantalla);
+  actualizarHeadingAuth(pantalla);
   ocultarErroresAuth();
 
   if (pantalla === 'login') {
@@ -6386,8 +6439,7 @@ function inicializarAutenticacion() {
   const registroForm = document.getElementById('auth-registro-form');
   const authClose = document.getElementById('auth-modal-close');
   const authOverlay = document.getElementById('auth-modal-overlay');
-  const btnIrRegistro = document.getElementById('btn-ir-registro');
-  const btnVolverLoginRegistro = document.getElementById('btn-volver-login-registro');
+  const authTabs = document.getElementById('auth-tabs');
   const btnVolverLoginVerificacion = document.getElementById('btn-volver-login-verificacion');
   const btnConfirmarRegistro = document.getElementById('btn-confirmar-registro');
   const btnLogout = document.getElementById('btn-logout');
@@ -6398,11 +6450,15 @@ function inicializarAutenticacion() {
   registroForm?.addEventListener('submit', solicitarRegistro);
   authClose?.addEventListener('click', cerrarAuthModal);
   authOverlay?.addEventListener('click', cerrarAuthModal);
-  btnIrRegistro?.addEventListener('click', () => cambiarVistaAuth('registro'));
-  btnVolverLoginRegistro?.addEventListener('click', () => cambiarVistaAuth('login'));
   btnVolverLoginVerificacion?.addEventListener('click', () => cambiarVistaAuth('login'));
   btnConfirmarRegistro?.addEventListener('click', confirmarRegistro);
   btnLogout?.addEventListener('click', cerrarSesion);
+
+  authTabs?.addEventListener('click', (event) => {
+    const tab = event.target.closest('[data-auth-tab]');
+    if (!tab) return;
+    cambiarVistaAuth(tab.dataset.authTab);
+  });
 
   codeInput?.addEventListener('input', (e) => {
     e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6);

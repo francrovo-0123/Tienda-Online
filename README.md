@@ -52,12 +52,18 @@ Tienda online de camisetas de fútbol con catálogo, carrito de compras, seguimi
    JWT_SECRET=tu_secreto_jwt_seguro
    ADMIN_INICIAL_EMAIL=admin@tudominio.com
    ADMIN_INICIAL_PASS=tu_contraseña_segura
-   SMTP_HOST=sandbox.smtp.mailtrap.io
+   SMTP_HOST=smtp.gmail.com
    SMTP_PORT=587
-   SMTP_USER=tu_usuario_smtp
-   SMTP_PASS=tu_password_smtp
-   SMTP_FROM=Jerseys Store <noreply@jerseysstore.com>
+   SMTP_USER=tu_correo@gmail.com
+   SMTP_PASS=tu_contraseña_de_aplicacion
+   NOMBRE_TIENDA=Jersey Store
    ```
+
+   > El remitente (`from`) se fuerza a `"NOMBRE_TIENDA" <SMTP_USER>` para evitar rechazos anti-spam.
+   > No uses `SMTP_FROM` con un dominio distinto al usuario autenticado.
+   >
+   > **Gmail:** activá verificación en 2 pasos y generá una [Contraseña de aplicación](https://myaccount.google.com/apppasswords).
+   > **Puerto 465:** SSL (`secure: true`). **587 / 2525:** STARTTLS (`requireTLS: true`).
 
 4. Iniciar el servidor:
 

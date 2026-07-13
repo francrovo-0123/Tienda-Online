@@ -9,10 +9,16 @@ const path = require('path');
 const fs = require('fs');
 const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
-const nodemailer = require('nodemailer');
 const bcrypt = require('bcrypt');
 const { spawn } = require('child_process');
 const { MercadoPagoConfig, Preference, Payment } = require('mercadopago');
+const {
+  verificarConexionSmtp,
+  enviarCodigoVerificacion,
+  enviarBienvenida,
+  enviarConfirmacionCompra,
+  enviarMensajeContacto,
+} = require('./mailService');
 
 const app = express();
 const PORT = 3000;
@@ -215,15 +221,6 @@ const usuarioSchema = new mongoose.Schema({
   },
 });
 
-const mailTransport = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: Number(process.env.SMTP_PORT) || 587,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-});
-
 const Producto = mongoose.model('Producto', productoSchema);
 const Pedido = mongoose.model('Pedido', pedidoSchema);
 const Usuario = mongoose.model('Usuario', usuarioSchema);
@@ -331,65 +328,33 @@ async function verificarPassword(password, passwordAlmacenada) {
   return password === passwordAlmacenada;
 }
 
-function plantillaEmailVerificacion(codigo, nombreTienda) {
-  const tienda = String(nombreTienda || NOMBRE_TIENDA_DEFECTO || 'Jersey Store').trim();
-
-  return `
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Verificación de cuenta</title>
-</head>
-<body style="margin:0;padding:0;background-color:#f4f4f5;font-family:Arial,Helvetica,sans-serif;">
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#f4f4f5;padding:32px 16px;">
-    <tr>
-      <td align="center">
-        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:520px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
-          <tr>
-            <td style="background:#111827;padding:28px 32px;text-align:center;">
-              <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;letter-spacing:0.5px;">${tienda}</h1>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:32px;">
-              <h2 style="margin:0 0 12px;color:#111827;font-size:20px;">Verificá tu cuenta</h2>
-              <p style="margin:0 0 24px;color:#4b5563;font-size:15px;line-height:1.6;">
-                Usá el siguiente código para completar tu registro. El código vence en <strong>10 minutos</strong>.
-              </p>
-              <div style="text-align:center;margin:0 0 24px;">
-                <span style="display:inline-block;padding:16px 32px;background:#f3f4f6;border:2px dashed #d1d5db;border-radius:8px;font-size:32px;font-weight:700;letter-spacing:8px;color:#111827;">${codigo}</span>
-              </div>
-              <p style="margin:0;color:#6b7280;font-size:13px;line-height:1.5;">
-                Si no solicitaste este registro, podés ignorar este mensaje de forma segura.
-              </p>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:20px 32px;background:#f9fafb;border-top:1px solid #e5e7eb;text-align:center;">
-              <p style="margin:0;color:#9ca3af;font-size:12px;">© ${tienda} — Mensaje automático, no responder.</p>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
+async function obtenerNombreTienda() {
+  try {
+    const config = await obtenerConfiguracionUnica();
+    return formatearConfiguracion(config).nombreTienda;
+  } catch {
+    return NOMBRE_TIENDA_DEFECTO || 'Jersey Store';
+  }
 }
 
-async function enviarCodigoVerificacion(email, codigo) {
-  const config = await obtenerConfiguracionUnica();
-  const nombreTienda = formatearConfiguracion(config).nombreTienda;
+/**
+ * Envía confirmación de compra sin alterar el flujo de checkout/webhook.
+ * Si el SMTP falla, solo se registra el error.
+ */
+async function notificarConfirmacionCompraSegura(pedido, usuario) {
+  try {
+    if (usuario?.preferencias?.emailsPedidos === false) {
+      return;
+    }
 
-  await mailTransport.sendMail({
-    from: process.env.SMTP_FROM || process.env.SMTP_USER,
-    to: email,
-    subject: `Tu código de verificación — ${nombreTienda}`,
-    html: plantillaEmailVerificacion(codigo, nombreTienda),
-    text: `Tu código de verificación en ${nombreTienda} es: ${codigo}. Vence en 10 minutos.`,
-  });
+    const nombreTienda = await obtenerNombreTienda();
+    await enviarConfirmacionCompra(pedido, nombreTienda);
+  } catch (error) {
+    logError('EMAIL_CONFIRMACION_COMPRA', error, {
+      pedidoId: pedido?.id,
+      emailUsuario: pedido?.emailUsuario,
+    });
+  }
 }
 
 function generarTokenAdmin(usuario) {
@@ -2070,6 +2035,11 @@ app.post('/api/pedidos', verificarClienteJWT, async (req, res) => {
     }
 
     res.status(201).json(formatearPedido(nuevoPedido));
+
+    // No bloquea ni altera la respuesta del checkout si el correo falla.
+    setImmediate(() => {
+      notificarConfirmacionCompraSegura(nuevoPedido, usuario);
+    });
   } catch (error) {
     logError('CREAR_PEDIDO', error, {
       emailUsuario: normalizarEmail(req.usuario?.email),
@@ -2269,6 +2239,19 @@ async function manejarWebhookMercadoPago(req, res) {
       pedido.estado = 'Aprobado';
       pedido.mercadopagoPaymentId = paymentId;
       await pedido.save();
+
+      setImmediate(async () => {
+        try {
+          const usuarioPedido = await Usuario.findOne({ email: normalizarEmail(pedido.emailUsuario) });
+          await notificarConfirmacionCompraSegura(pedido, usuarioPedido);
+        } catch (mailError) {
+          logError('EMAIL_CONFIRMACION_COMPRA_MP', mailError, {
+            pedidoId: pedido.id,
+            emailUsuario: pedido.emailUsuario,
+          });
+        }
+      });
+
       return res.sendStatus(200);
     }
 
@@ -2310,6 +2293,74 @@ app.get('/api/cron/limpiar-stock', async (req, res) => {
   } catch (error) {
     console.error('Error en cron limpiar-stock:', error);
     return res.status(500).json({ error: 'Error al ejecutar la limpieza de pedidos expirados.' });
+  }
+});
+
+// ── TEMPORAL: limpieza de usuarios de prueba (quitar tras usarlo en producción) ──
+// Conserva siempre admin@jerseysstore.com y cualquier usuario con rol admin.
+// Requiere JWT admin + body { "confirmar": "ELIMINAR_USUARIOS_PRUEBA" }
+
+const EMAIL_ADMIN_PROTEGIDO = 'admin@jerseysstore.com';
+
+app.delete('/api/admin/limpiar-usuarios-prueba', verificarAdminJWT, async (req, res) => {
+  try {
+    if (req.body?.confirmar !== 'ELIMINAR_USUARIOS_PRUEBA') {
+      return res.status(400).json({
+        error: 'Confirmación requerida. Enviá { "confirmar": "ELIMINAR_USUARIOS_PRUEBA" }.',
+      });
+    }
+
+    const emailsProtegidos = new Set([EMAIL_ADMIN_PROTEGIDO]);
+    const emailEnv = normalizarEmail(process.env.ADMIN_INICIAL_EMAIL);
+    if (emailEnv) emailsProtegidos.add(emailEnv);
+
+    const filtroUsuariosPrueba = {
+      email: { $nin: [...emailsProtegidos] },
+      rol: { $ne: 'admin' },
+    };
+
+    const adminConservado = await Usuario.findOne({
+      $or: [{ email: { $in: [...emailsProtegidos] } }, { rol: 'admin' }],
+    })
+      .select('email rol')
+      .lean();
+
+    if (!adminConservado) {
+      return res.status(409).json({
+        error: `Abortado: no se encontró la cuenta admin protegida (${EMAIL_ADMIN_PROTEGIDO}). No se eliminó nada.`,
+      });
+    }
+
+    const usuariosAEliminar = await Usuario.find(filtroUsuariosPrueba).select('email').lean();
+    const emailsAEliminar = usuariosAEliminar.map((u) => normalizarEmail(u.email)).filter(Boolean);
+
+    let pedidosEliminados = 0;
+    if (emailsAEliminar.length > 0) {
+      const resultadoPedidos = await Pedido.deleteMany({
+        emailUsuario: { $in: emailsAEliminar },
+      });
+      pedidosEliminados = resultadoPedidos.deletedCount || 0;
+    }
+
+    // Equivalente seguro a: Usuario.deleteMany({ email: { $ne: "admin@jerseysstore.com" } })
+    const resultadoUsuarios = await Usuario.deleteMany(filtroUsuariosPrueba);
+    const usuariosEliminados = resultadoUsuarios.deletedCount || 0;
+    const mensaje = `Se eliminaron ${usuariosEliminados} usuarios de prueba`;
+
+    console.log(
+      `=> [admin] ${mensaje}. Admin intacto: ${adminConservado.email}. Pedidos asociados eliminados: ${pedidosEliminados}.`
+    );
+
+    return res.status(200).json({
+      ok: true,
+      mensaje,
+      usuariosEliminados,
+      pedidosEliminados,
+      adminConservado: adminConservado.email,
+    });
+  } catch (error) {
+    console.error('Error al limpiar usuarios de prueba:', error);
+    return res.status(500).json({ error: 'Error al limpiar usuarios de prueba.' });
   }
 });
 
@@ -2409,34 +2460,14 @@ app.post('/api/contacto', async (req, res) => {
       return res.status(503).json({ error: 'El formulario de contacto no está disponible en este momento.' });
     }
 
-    const asunto = '📩 Nuevo mensaje de contacto - Jersey Store';
-    const cuerpoTexto = [
-      'Nuevo mensaje de contacto desde la tienda.',
-      '',
-      `Nombre: ${nombre}`,
-      `Correo: ${email}`,
-      '',
-      'Mensaje:',
+    const nombreTienda = await obtenerNombreTienda();
+
+    await enviarMensajeContacto({
+      nombre,
+      email,
       mensaje,
-    ].join('\n');
-
-    const cuerpoHtml = `
-      <div style="font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;line-height:1.6;">
-        <h2 style="margin:0 0 16px;color:#111827;">Nuevo mensaje de contacto</h2>
-        <p style="margin:0 0 8px;"><strong>Nombre:</strong> ${nombre}</p>
-        <p style="margin:0 0 8px;"><strong>Correo:</strong> <a href="mailto:${email}">${email}</a></p>
-        <p style="margin:16px 0 8px;"><strong>Mensaje:</strong></p>
-        <p style="margin:0;padding:12px 16px;background:#f3f4f6;border-radius:8px;white-space:pre-wrap;">${mensaje.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>
-      </div>
-    `;
-
-    await mailTransport.sendMail({
-      from: process.env.SMTP_FROM || process.env.SMTP_USER,
-      to: adminEmail,
-      replyTo: email,
-      subject: asunto,
-      text: cuerpoTexto,
-      html: cuerpoHtml,
+      adminEmail,
+      nombreTienda,
     });
 
     res.json({ ok: true, mensaje: 'Mensaje enviado correctamente.' });
@@ -2477,7 +2508,8 @@ app.post('/api/auth/registro', async (req, res) => {
     }).save();
 
     try {
-      await enviarCodigoVerificacion(email, codigoVerificacion);
+      const nombreTienda = await obtenerNombreTienda();
+      await enviarCodigoVerificacion(email, codigoVerificacion, nombreTienda);
     } catch (mailError) {
       await Usuario.findByIdAndDelete(nuevoUsuario._id);
       console.error('Error al enviar email de verificación:', mailError);
@@ -2531,6 +2563,15 @@ app.post('/api/auth/confirmar', async (req, res) => {
     usuario.codigoVerificacion = undefined;
     usuario.codigoVerificacionExpira = undefined;
     await usuario.save();
+
+    setImmediate(async () => {
+      try {
+        const nombreTienda = await obtenerNombreTienda();
+        await enviarBienvenida(email, nombreTienda);
+      } catch (mailError) {
+        logError('EMAIL_BIENVENIDA', mailError, { email });
+      }
+    });
 
     if (usuario.rol === 'admin') {
       const token = generarTokenAdmin(usuario);
@@ -2669,6 +2710,8 @@ async function iniciarServidor() {
   try {
     await asegurarConexionDB();
     console.log('  ✓ MongoDB conectado');
+
+    await verificarConexionSmtp();
 
     await new Promise((resolve) => {
       app.listen(PORT, resolve);

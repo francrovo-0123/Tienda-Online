@@ -264,25 +264,30 @@
 .stadium-carousel__viewport {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-}
-
-.stadium-carousel__track {
-  display: flex;
-  gap: 1.25rem;
-  padding: 1rem 0.75rem;
+  margin: 0;
   overflow-x: auto;
+  overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
   scroll-behavior: smooth;
   scroll-snap-type: x mandatory;
+  scroll-padding-inline: 0.75rem;
   overscroll-behavior-x: contain;
   touch-action: pan-x pan-y;
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
 
-.stadium-carousel__track::-webkit-scrollbar {
+.stadium-carousel__viewport::-webkit-scrollbar {
   display: none;
+}
+
+.stadium-carousel__track {
+  display: flex;
+  gap: 1.25rem;
+  width: max-content;
+  min-width: 100%;
+  margin: 0;
+  padding: 1rem 2rem 1rem 0.75rem;
 }
 
 .stadium-carousel__track .product-card {
@@ -293,6 +298,10 @@
   border: 1px solid rgba(0, 0, 0, 0.06);
 }
 
+.stadium-carousel__track .product-card:last-child {
+  scroll-snap-align: end;
+}
+
 @media (min-width: 640px) {
   .stadium-carousel__track .product-card {
     flex: 0 0 260px;
@@ -300,8 +309,14 @@
 }
 
 @media (min-width: 1024px) {
+  .stadium-carousel__viewport {
+    scroll-padding-inline: 1rem;
+  }
+
   .stadium-carousel__track {
     gap: 1.5rem;
+    padding-left: 1rem;
+    padding-right: 2rem;
   }
 
   .stadium-carousel__track .product-card {
@@ -1302,7 +1317,13 @@
 
   .stadium-carousel__track {
     gap: 1rem;
-    padding: 1rem 0.5rem;
+    padding: 1rem 0;
+    scroll-padding-inline: 0.5rem;
+  }
+
+  .stadium-carousel__track::before,
+  .stadium-carousel__track::after {
+    flex-basis: 0.5rem;
   }
 
   .stadium-carousel__track .product-card {

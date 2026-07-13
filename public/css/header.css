@@ -686,15 +686,24 @@
   width: max-content;
   min-width: 100%;
   margin: 0;
-  padding: 0.375rem 0 0.625rem;
+  padding: 0.5rem 0 0.625rem;
   list-style: none;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   scroll-behavior: smooth;
   scroll-snap-type: x mandatory;
+  scroll-padding-inline: 0.5rem;
   overscroll-behavior-x: contain;
   scrollbar-width: none;
   -ms-overflow-style: none;
+}
+
+.club-nav__list::before,
+.club-nav__list::after {
+  content: '';
+  flex: 0 0 0.5rem;
+  align-self: stretch;
+  pointer-events: none;
 }
 
 .club-nav__list > li {
@@ -705,6 +714,10 @@
   max-width: 180px;
   scroll-snap-align: start;
   scroll-snap-stop: normal;
+}
+
+.club-nav__list > li:last-child {
+  scroll-snap-align: end;
 }
 
 .club-nav__list::-webkit-scrollbar {
@@ -1320,6 +1333,7 @@ body.mobile-nav-open {
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
     scroll-snap-type: x mandatory;
+    scroll-padding-inline: 0.75rem;
     scroll-behavior: auto;
     overscroll-behavior-x: contain;
     touch-action: pan-x pan-y;
@@ -1335,6 +1349,11 @@ body.mobile-nav-open {
     overflow: visible;
     scroll-snap-type: none;
     scroll-behavior: auto;
+  }
+
+  .club-nav__list::before,
+  .club-nav__list::after {
+    flex-basis: 0.75rem;
   }
 
   .club-nav__list > li {

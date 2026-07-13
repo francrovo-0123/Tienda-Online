@@ -8,9 +8,9 @@
   <link rel="icon" href="/favicon.ico" sizes="32x32">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/favicon.png">
-  <link rel="stylesheet" href="css/global.css?v=4.2">
-  <link rel="stylesheet" href="css/header.css?v=6.5">
-  <link rel="stylesheet" href="css/main.css?v=4.6">
+  <link rel="stylesheet" href="css/global.css?v=4.4">
+  <link rel="stylesheet" href="css/header.css?v=6.6">
+  <link rel="stylesheet" href="css/main.css?v=4.7">
   <link rel="stylesheet" href="css/footer.css?v=4.0">
   <link rel="stylesheet" href="css/cart.css?v=2.8">
 </head>
@@ -1244,69 +1244,98 @@
   <div class="auth-modal" id="auth-modal" aria-hidden="true">
     <div class="auth-modal__overlay" id="auth-modal-overlay"></div>
     <div class="auth-modal__card" role="dialog" aria-labelledby="auth-modal-title" aria-modal="true">
-      <div class="auth-modal__header">
-        <h2 class="auth-modal__title" id="auth-modal-title">Tu cuenta</h2>
-        <button class="auth-modal__close" id="auth-modal-close" type="button" aria-label="Cerrar">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
-          </svg>
-        </button>
-      </div>
+      <button class="auth-modal__close" id="auth-modal-close" type="button" aria-label="Cerrar">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
 
       <div class="auth-modal__body">
         <div class="auth-toast hidden" id="auth-toast" role="status" aria-live="polite"></div>
 
-        <div class="auth-view" id="auth-view-login">
-          <form class="auth-form" id="auth-login-form">
-            <div class="auth-form__field">
-              <label for="auth-login-email" class="auth-form__label">Email</label>
-              <input type="email" id="auth-login-email" class="auth-form__input" required autocomplete="email" placeholder="tu@email.com">
-            </div>
-            <div class="auth-form__field">
-              <label for="auth-login-password" class="auth-form__label">Contraseña</label>
-              <input type="password" id="auth-login-password" class="auth-form__input" required autocomplete="current-password" placeholder="••••••••">
-            </div>
-            <p class="auth-form__error hidden" id="auth-login-error">Email o contraseña incorrectos.</p>
-            <button type="submit" class="auth-form__submit">Ingresar</button>
-            <button type="button" class="auth-form__link" id="btn-ir-registro">¿No tenés cuenta? Registrate</button>
-          </form>
+        <div class="auth-tabs" id="auth-tabs" role="tablist" aria-label="Acceso a tu cuenta">
+          <button
+            type="button"
+            class="auth-tab auth-tab--active"
+            id="auth-tab-login"
+            role="tab"
+            aria-selected="true"
+            aria-controls="auth-view-login"
+            data-auth-tab="login"
+          >
+            Iniciar Sesión
+          </button>
+          <button
+            type="button"
+            class="auth-tab"
+            id="auth-tab-registro"
+            role="tab"
+            aria-selected="false"
+            aria-controls="auth-view-registro"
+            data-auth-tab="registro"
+          >
+            Registrarse
+          </button>
         </div>
 
-        <div class="auth-view hidden" id="auth-view-registro">
-          <form class="auth-form" id="auth-registro-form">
-            <div class="auth-form__field">
-              <label for="auth-registro-email" class="auth-form__label">Email</label>
-              <input type="email" id="auth-registro-email" class="auth-form__input" required autocomplete="email" placeholder="tu@email.com">
-            </div>
-            <div class="auth-form__field">
-              <label for="auth-registro-password" class="auth-form__label">Nueva contraseña</label>
-              <input type="password" id="auth-registro-password" class="auth-form__input" required autocomplete="new-password" placeholder="Mínimo 6 caracteres" minlength="6">
-            </div>
-            <p class="auth-form__error hidden" id="auth-registro-error">Este email ya está registrado.</p>
-            <button type="submit" class="auth-form__submit">Continuar</button>
-            <button type="button" class="auth-form__link" id="btn-volver-login-registro">¿Ya tenés cuenta? Iniciá sesión</button>
-          </form>
+        <div class="auth-heading" id="auth-heading">
+          <h2 class="auth-heading__title" id="auth-modal-title">¡Hola de nuevo!</h2>
+          <p class="auth-heading__desc" id="auth-heading-desc">Ingresá tus datos para continuar</p>
         </div>
 
-        <div class="auth-view hidden" id="auth-view-verificacion">
-          <p class="auth-verificacion__text">Ingresá el código de 6 dígitos enviado a tu mail</p>
-          <p class="auth-verificacion__email" id="auth-verificacion-email"></p>
-          <div class="auth-form__field">
-            <label for="verification-code-input" class="auth-form__label">Código de verificación</label>
-            <input
-              type="text"
-              id="verification-code-input"
-              class="auth-form__input auth-form__input--code"
-              maxlength="6"
-              inputmode="numeric"
-              pattern="[0-9]{6}"
-              placeholder="000000"
-              autocomplete="one-time-code"
-            >
+        <div class="auth-panels">
+          <div class="auth-view auth-view--active" id="auth-view-login" role="tabpanel" aria-labelledby="auth-tab-login">
+            <form class="auth-form" id="auth-login-form">
+              <div class="auth-form__field">
+                <label for="auth-login-email" class="auth-form__label">Email</label>
+                <input type="email" id="auth-login-email" class="auth-form__input" required autocomplete="email" placeholder="tu@email.com">
+              </div>
+              <div class="auth-form__field">
+                <label for="auth-login-password" class="auth-form__label">Contraseña</label>
+                <input type="password" id="auth-login-password" class="auth-form__input" required autocomplete="current-password" placeholder="••••••••">
+              </div>
+              <p class="auth-form__error hidden" id="auth-login-error">Email o contraseña incorrectos.</p>
+              <button type="submit" class="auth-form__submit">Ingresar</button>
+            </form>
           </div>
-          <p class="auth-form__error hidden" id="auth-verificacion-error">El código ingresado no es válido.</p>
-          <button type="button" class="auth-form__submit" id="btn-confirmar-registro">Verificar y Activar</button>
-          <button type="button" class="auth-form__link" id="btn-volver-login-verificacion">Volver al login</button>
+
+          <div class="auth-view" id="auth-view-registro" role="tabpanel" aria-labelledby="auth-tab-registro" aria-hidden="true">
+            <form class="auth-form" id="auth-registro-form">
+              <div class="auth-form__field auth-form__field--exclusive">
+                <label for="auth-registro-email" class="auth-form__label">Email</label>
+                <input type="email" id="auth-registro-email" class="auth-form__input" required autocomplete="email" placeholder="tu@email.com">
+              </div>
+              <div class="auth-form__field auth-form__field--exclusive">
+                <label for="auth-registro-password" class="auth-form__label">Nueva contraseña</label>
+                <input type="password" id="auth-registro-password" class="auth-form__input" required autocomplete="new-password" placeholder="Mínimo 6 caracteres" minlength="6">
+              </div>
+              <p class="auth-form__error hidden" id="auth-registro-error">Este email ya está registrado.</p>
+              <button type="submit" class="auth-form__submit">Continuar</button>
+            </form>
+          </div>
+
+          <div class="auth-view" id="auth-view-verificacion" aria-hidden="true">
+            <div class="auth-form">
+              <p class="auth-verificacion__text">Ingresá el código de 6 dígitos enviado a tu mail</p>
+              <p class="auth-verificacion__email" id="auth-verificacion-email"></p>
+              <div class="auth-form__field">
+                <label for="verification-code-input" class="auth-form__label">Código de verificación</label>
+                <input
+                  type="text"
+                  id="verification-code-input"
+                  class="auth-form__input auth-form__input--code"
+                  maxlength="6"
+                  inputmode="numeric"
+                  pattern="[0-9]{6}"
+                  placeholder="000000"
+                  autocomplete="one-time-code"
+                >
+              </div>
+              <p class="auth-form__error hidden" id="auth-verificacion-error">El código ingresado no es válido.</p>
+              <button type="button" class="auth-form__submit" id="btn-confirmar-registro">Verificar y Activar</button>
+              <button type="button" class="auth-form__link" id="btn-volver-login-verificacion">Volver al inicio de sesión</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -1314,6 +1343,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
   <script src="js/api.js"></script>
-  <script src="js/app.js?v=11.1"></script>
+  <script src="js/app.js?v=11.2"></script>
 </body>
 </html>
