@@ -1,4 +1,4 @@
-﻿function formatearPrecio(valor) {
+function formatearPrecio(valor) {
   const numero = Number(valor);
   if (!Number.isFinite(numero)) {
     return '$ 0';

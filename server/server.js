@@ -221,9 +221,24 @@ const usuarioSchema = new mongoose.Schema({
   },
 });
 
+const registroPendienteSchema = new mongoose.Schema({
+  email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+  password: { type: String, required: true },
+  codigoVerificacion: { type: String, required: true },
+  codigoVerificacionExpira: { type: Date, required: true },
+  creadoEn: { type: Date, default: Date.now },
+});
+
+// Expira automáticamente ~1 hora después de la caducidad del código (libera el email).
+registroPendienteSchema.index(
+  { codigoVerificacionExpira: 1 },
+  { expireAfterSeconds: 3600 }
+);
+
 const Producto = mongoose.model('Producto', productoSchema);
 const Pedido = mongoose.model('Pedido', pedidoSchema);
 const Usuario = mongoose.model('Usuario', usuarioSchema);
+const RegistroPendiente = mongoose.model('RegistroPendiente', registroPendienteSchema);
 
 const seccionSchema = new mongoose.Schema({
   id: { type: Number, unique: true },
@@ -2488,30 +2503,38 @@ app.post('/api/auth/registro', async (req, res) => {
       return res.status(400).json({ error: 'Email y contraseña son requeridos.' });
     }
 
-    const existe = await Usuario.findOne({ email });
+    const usuarioExistente = await Usuario.findOne({ email });
 
-    if (existe) {
+    if (usuarioExistente?.verificado) {
       return res.status(409).json({ error: 'Ya existe un usuario con ese email.' });
+    }
+
+    // Libera emails de registros incompletos del flujo anterior (Usuario sin verificar).
+    if (usuarioExistente && !usuarioExistente.verificado) {
+      await Usuario.deleteOne({ _id: usuarioExistente._id });
     }
 
     const codigoVerificacion = generarCodigoVerificacion();
     const codigoVerificacionExpira = generarExpiracionCodigo(10);
     const passwordHasheada = await bcrypt.hash(password, 10);
 
-    const nuevoUsuario = await new Usuario({
-      email,
-      password: passwordHasheada,
-      rol: 'cliente',
-      verificado: false,
-      codigoVerificacion,
-      codigoVerificacionExpira,
-    }).save();
+    await RegistroPendiente.findOneAndUpdate(
+      { email },
+      {
+        email,
+        password: passwordHasheada,
+        codigoVerificacion,
+        codigoVerificacionExpira,
+        creadoEn: new Date(),
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
 
     try {
       const nombreTienda = await obtenerNombreTienda();
       await enviarCodigoVerificacion(email, codigoVerificacion, nombreTienda);
     } catch (mailError) {
-      await Usuario.findByIdAndDelete(nuevoUsuario._id);
+      await RegistroPendiente.deleteOne({ email });
       console.error('Error al enviar email de verificación:', mailError);
       return res.status(503).json({ error: 'No se pudo enviar el código de verificación. Intentá nuevamente.' });
     }
@@ -2519,7 +2542,7 @@ app.post('/api/auth/registro', async (req, res) => {
     res.status(201).json({
       ok: true,
       mensaje: 'Registro iniciado. Revisá tu correo para obtener el código de verificación.',
-      usuario: sanitizarUsuario(nuevoUsuario),
+      email,
     });
   } catch (error) {
     console.error('Error en registro:', error);
@@ -2536,33 +2559,49 @@ app.post('/api/auth/confirmar', async (req, res) => {
       return res.status(400).json({ error: 'Email y código son requeridos.' });
     }
 
-    const usuario = await Usuario.findOne({ email });
+    const usuarioExistente = await Usuario.findOne({ email });
 
-    if (!usuario) {
+    if (usuarioExistente?.verificado) {
+      if (usuarioExistente.rol === 'admin') {
+        const token = generarTokenAdmin(usuarioExistente);
+        return res.json({ token, usuario: sanitizarUsuario(usuarioExistente) });
+      }
+
+      const token = generarTokenCliente(usuarioExistente);
+      return res.json({ token, usuario: sanitizarUsuario(usuarioExistente) });
+    }
+
+    const pendiente = await RegistroPendiente.findOne({ email });
+
+    if (!pendiente) {
       return res.status(401).json({ error: 'Código inválido o expirado.' });
     }
 
-    if (usuario.verificado) {
-      if (usuario.rol === 'admin') {
-        const token = generarTokenAdmin(usuario);
-        return res.json({ token, usuario: sanitizarUsuario(usuario) });
-      }
-
-      const token = generarTokenCliente(usuario);
-      return res.json({ token, usuario: sanitizarUsuario(usuario) });
-    }
-
-    const codigoValido = usuario.codigoVerificacion === codigo;
-    const noExpirado = usuario.codigoVerificacionExpira && usuario.codigoVerificacionExpira > new Date();
+    const codigoValido = pendiente.codigoVerificacion === codigo;
+    const noExpirado =
+      pendiente.codigoVerificacionExpira && pendiente.codigoVerificacionExpira > new Date();
 
     if (!codigoValido || !noExpirado) {
       return res.status(401).json({ error: 'Código inválido o expirado.' });
     }
 
-    usuario.verificado = true;
-    usuario.codigoVerificacion = undefined;
-    usuario.codigoVerificacionExpira = undefined;
-    await usuario.save();
+    let usuario;
+
+    try {
+      usuario = await new Usuario({
+        email: pendiente.email,
+        password: pendiente.password,
+        rol: 'cliente',
+        verificado: true,
+      }).save();
+    } catch (createError) {
+      if (createError?.code === 11000) {
+        return res.status(409).json({ error: 'Ya existe un usuario con ese email.' });
+      }
+      throw createError;
+    }
+
+    await RegistroPendiente.deleteOne({ _id: pendiente._id });
 
     setImmediate(async () => {
       try {
@@ -2572,14 +2611,6 @@ app.post('/api/auth/confirmar', async (req, res) => {
         logError('EMAIL_BIENVENIDA', mailError, { email });
       }
     });
-
-    if (usuario.rol === 'admin') {
-      const token = generarTokenAdmin(usuario);
-      return res.json({
-        token,
-        usuario: sanitizarUsuario(usuario),
-      });
-    }
 
     const token = generarTokenCliente(usuario);
     return res.json({
