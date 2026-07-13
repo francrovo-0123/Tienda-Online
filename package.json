@@ -4,7 +4,7 @@
   "description": "Tienda online de camisetas de fútbol - Jersey Store",
   "private": true,
   "engines": {
-    "node": "22.x"
+    "node": "24.x"
   },
   "scripts": {
     "start": "npm --prefix server start",
