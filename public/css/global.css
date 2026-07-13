@@ -1456,6 +1456,48 @@ body.admin-active {
   text-overflow: ellipsis;
 }
 
+#admin-view .kpi-top-productos {
+  list-style: none;
+  margin: 0.35rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  width: 100%;
+}
+
+#admin-view .kpi-top-productos__item {
+  display: grid;
+  grid-template-columns: 1.25rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--admin-text-primary);
+}
+
+#admin-view .kpi-top-productos__rank {
+  font-weight: 700;
+  color: #2563eb;
+}
+
+#admin-view .kpi-top-productos__nombre {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+#admin-view .kpi-top-productos__stock {
+  color: var(--admin-text-secondary);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+#admin-view .kpi-top-productos__empty {
+  font-size: 0.8125rem;
+  color: var(--admin-text-secondary);
+}
+
 #admin-view .kpi-card__hint {
   margin-top: 0.35rem;
   font-size: 0.75rem;
@@ -1638,6 +1680,107 @@ body.admin-active {
 #admin-view .status-select--rechazado {
   color: #7f1d1d;
   background-color: #fecaca;
+}
+
+#admin-view .pedido-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+
+#admin-view .badge-amarillo {
+  color: #854d0e;
+  background-color: #fef08a;
+}
+
+#admin-view .badge-naranja {
+  color: #9a3412;
+  background-color: #fed7aa;
+}
+
+#admin-view .badge-azul {
+  color: #1e3a8a;
+  background-color: #bfdbfe;
+}
+
+#admin-view .badge-verde {
+  color: #14532d;
+  background-color: #bbf7d0;
+}
+
+#admin-view .admin-table__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+#admin-view .btn-notificar-despacho {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-family: var(--font-family);
+  color: #1e3a8a;
+  background-color: #eff6ff;
+  border: none;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: var(--box-shadow);
+  transition:
+    color var(--admin-transition),
+    background-color var(--admin-transition),
+    opacity var(--admin-transition);
+}
+
+#admin-view .btn-notificar-despacho svg {
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+}
+
+#admin-view .btn-notificar-despacho:hover:not(:disabled) {
+  color: #ffffff;
+  background-color: #2563eb;
+}
+
+#admin-view .btn-notificar-despacho:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+#admin-view .btn-etiqueta-envio {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-family: var(--font-family);
+  color: #374151;
+  background-color: #f3f4f6;
+  border: none;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: var(--box-shadow);
+  transition:
+    color var(--admin-transition),
+    background-color var(--admin-transition);
+}
+
+#admin-view .btn-etiqueta-envio:hover {
+  color: #ffffff;
+  background-color: #111827;
 }
 
 #admin-view .btn-detail {
@@ -1833,6 +1976,13 @@ body.admin-active {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   border-radius: var(--radius-pill);
+}
+
+#admin-view .detail-estado-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
 }
 
 #admin-view .detail-badge--pendiente {

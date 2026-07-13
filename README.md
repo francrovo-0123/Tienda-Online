@@ -52,17 +52,17 @@ Tienda online de camisetas de fútbol con catálogo, carrito de compras, seguimi
    JWT_SECRET=tu_secreto_jwt_seguro
    ADMIN_INICIAL_EMAIL=admin@tudominio.com
    ADMIN_INICIAL_PASS=tu_contraseña_segura
-   SMTP_HOST=smtp.gmail.com
+   # Brevo (recomendado)
+   SMTP_HOST=smtp-relay.brevo.com
    SMTP_PORT=587
-   SMTP_USER=tu_correo@gmail.com
-   SMTP_PASS=tu_contraseña_de_aplicacion
+   SMTP_USER=xxxxxxxx@smtp-brevo.com
+   SMTP_PASS=tu_clave_smtp_de_brevo
+   SMTP_FROM=tu_email_verificado@tudominio.com
    NOMBRE_TIENDA=Jersey Store
    ```
 
-   > El remitente (`from`) se fuerza a `"NOMBRE_TIENDA" <SMTP_USER>` para evitar rechazos anti-spam.
-   > No uses `SMTP_FROM` con un dominio distinto al usuario autenticado.
-   >
-   > **Gmail:** activá verificación en 2 pasos y generá una [Contraseña de aplicación](https://myaccount.google.com/apppasswords).
+   > **Brevo:** `SMTP_USER` es solo el login SMTP (`…@smtp-brevo.com`). El remitente visible va en `SMTP_FROM` y debe estar verificado en Brevo → Senders.
+   > **Gmail:** `SMTP_HOST=smtp.gmail.com`, `SMTP_USER`/`SMTP_FROM` = tu Gmail, y una [Contraseña de aplicación](https://myaccount.google.com/apppasswords).
    > **Puerto 465:** SSL (`secure: true`). **587 / 2525:** STARTTLS (`requireTLS: true`).
 
 4. Iniciar el servidor:

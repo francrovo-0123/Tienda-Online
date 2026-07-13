@@ -1,4 +1,4 @@
-{
+﻿{
   "name": "jerseys-store-server",
   "version": "1.0.0",
   "description": "Backend API para Jersey Store",
@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "limpiar-usuarios": "node scripts/limpiar-usuarios-prueba.js"
+    "limpiar-usuarios": "node scripts/limpiar-usuarios-prueba.js",
+    "reset-db": "node scripts/resetDb.js"
   },
   "keywords": [
     "express",
@@ -21,6 +22,7 @@
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.5.2",
     "jsonwebtoken": "^9.0.3",
     "mercadopago": "^3.2.0",
     "mongoose": "^9.7.3",

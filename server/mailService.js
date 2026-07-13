@@ -16,6 +16,10 @@ function obtenerPuertoSmtp() {
   return Number.isFinite(puerto) && puerto > 0 ? puerto : 587;
 }
 
+function esLoginSmtpBrevo(user) {
+  return /@smtp-brevo\.com$/i.test(String(user || '').trim());
+}
+
 function construirOpcionesTransporte() {
   const host = String(process.env.SMTP_HOST || '').trim();
   const user = String(process.env.SMTP_USER || '').trim();
@@ -25,6 +29,13 @@ function construirOpcionesTransporte() {
   if (!host || !user || !pass) {
     throw new Error(
       'SMTP incompleto: definí SMTP_HOST, SMTP_PORT, SMTP_USER y SMTP_PASS en el archivo .env.'
+    );
+  }
+
+  if (esLoginSmtpBrevo(user) && !String(process.env.SMTP_FROM || '').trim()) {
+    throw new Error(
+      'Brevo: SMTP_USER es el login (…@smtp-brevo.com), no el remitente. ' +
+        'Definí SMTP_FROM con un email verificado en Brevo (Senders).'
     );
   }
 
@@ -54,30 +65,71 @@ function obtenerTransporter() {
   return transporter;
 }
 
+function resetTransporter() {
+  transporter = null;
+}
+
+/**
+ * Remitente visible del correo.
+ * - Brevo: SMTP_USER = login SMTP; SMTP_FROM = sender verificado (obligatorio).
+ * - Gmail/otros: SMTP_FROM opcional; por defecto SMTP_USER.
+ */
 function formatearRemitente(nombreTienda) {
   const nombre = String(nombreTienda || NOMBRE_TIENDA_DEFECTO || 'Jersey Store').trim();
   const user = String(process.env.SMTP_USER || '').trim();
+  const fromEnv = String(process.env.SMTP_FROM || '').trim();
 
   if (!user) {
-    throw new Error('SMTP_USER no está definido. El remitente debe coincidir con la cuenta SMTP autenticada.');
+    throw new Error('SMTP_USER no está definido.');
   }
 
-  // Obligatorio: from = cuenta autenticada (Gmail/Outlook rechazan remitentes distintos).
-  return `"${nombre.replace(/"/g, '')}" <${user}>`;
+  const emailFrom = fromEnv || user;
+
+  if (esLoginSmtpBrevo(emailFrom)) {
+    throw new Error(
+      'El remitente no puede ser el login @smtp-brevo.com. Definí SMTP_FROM con un email verificado en Brevo.'
+    );
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailFrom)) {
+    throw new Error(`Remitente SMTP inválido: "${emailFrom}". Revisá SMTP_FROM o SMTP_USER.`);
+  }
+
+  return `"${nombre.replace(/"/g, '')}" <${emailFrom}>`;
+}
+
+function logSmtpError(contexto, error, meta = {}) {
+  console.error(
+    JSON.stringify({
+      timestamp: new Date().toISOString(),
+      nivel: 'error',
+      contexto,
+      mensaje: error?.message || String(error),
+      code: error?.code,
+      command: error?.command,
+      response: error?.response,
+      responseCode: error?.responseCode,
+      ...meta,
+    })
+  );
 }
 
 async function verificarConexionSmtp() {
   try {
     const transport = obtenerTransporter();
     await transport.verify();
+    const from = formatearRemitente(NOMBRE_TIENDA_DEFECTO);
     console.log(`  ✓ SMTP verificado  →  ${process.env.SMTP_HOST}:${obtenerPuertoSmtp()}`);
+    console.log(`  ✓ Remitente        →  ${from}`);
     return true;
   } catch (error) {
+    resetTransporter();
     console.error('═══════════════════════════════════════════════════════════');
     console.error('ERROR SMTP: No se pudo verificar la conexión al servidor de correo.');
     console.error(`  Host: ${process.env.SMTP_HOST || '(no definido)'}`);
     console.error(`  Port: ${process.env.SMTP_PORT || '(no definido)'}`);
     console.error(`  User: ${process.env.SMTP_USER || '(no definido)'}`);
+    console.error(`  From: ${process.env.SMTP_FROM || '(no definido — usar SMTP_FROM con Brevo)'}`);
     console.error(`  Detalle: ${error?.message || error}`);
     if (error?.response) {
       console.error(`  Respuesta servidor: ${error.response}`);
@@ -85,7 +137,8 @@ async function verificarConexionSmtp() {
     if (error?.code) {
       console.error(`  Código: ${error.code}`);
     }
-    console.error('  Revisá SMTP_HOST, SMTP_PORT, SMTP_USER y SMTP_PASS en .env.');
+    console.error('  Brevo: SMTP_HOST=smtp-relay.brevo.com, SMTP_USER=login@smtp-brevo.com,');
+    console.error('         SMTP_PASS=clave SMTP, SMTP_FROM=email verificado en Senders.');
     console.error('  Gmail: usá una Contraseña de aplicación (no la contraseña normal).');
     console.error('═══════════════════════════════════════════════════════════');
     return false;
@@ -110,20 +163,25 @@ async function enviarMail({ to, subject, html, text, replyTo, nombreTienda }) {
       replyTo: replyTo || undefined,
     });
 
-    return { ok: true, info };
-  } catch (error) {
-    console.error(
+    console.log(
       JSON.stringify({
         timestamp: new Date().toISOString(),
-        nivel: 'error',
+        nivel: 'info',
         contexto: 'SMTP_SEND_MAIL',
-        mensaje: error?.message || String(error),
-        code: error?.code,
-        response: error?.response,
+        mensaje: 'Email encolado correctamente',
+        messageId: info?.messageId,
+        response: info?.response,
+        accepted: info?.accepted,
+        rejected: info?.rejected,
+        from,
         to,
         subject,
       })
     );
+
+    return { ok: true, info };
+  } catch (error) {
+    logSmtpError('SMTP_SEND_MAIL', error, { to, subject });
     return { ok: false, error };
   }
 }
@@ -370,6 +428,145 @@ async function enviarMensajeContacto({ nombre, email, mensaje, adminEmail, nombr
   return resultado;
 }
 
+function urlSeguimientoEnvio(codigoSeguimiento) {
+  const base = String(process.env.URL_SEGUIMIENTO_ENVIO || '').trim();
+  const codigo = String(codigoSeguimiento || '').trim();
+
+  if (base) {
+    try {
+      const url = new URL(base);
+      if (codigo) url.searchParams.set('q', codigo);
+      return url.toString();
+    } catch {
+      // URL mal formada en .env: caer al buscador genérico.
+    }
+  }
+
+  if (!codigo) return 'https://www.google.com/search?q=seguimiento+envio';
+  return `https://www.google.com/search?q=${encodeURIComponent(codigo)}`;
+}
+
+function bloqueHtmlSeguimiento(codigoSeguimiento) {
+  const codigo = String(codigoSeguimiento || '').trim();
+  if (!codigo) return '';
+
+  const codigoEsc = escapeHtml(codigo);
+  const href = escapeHtml(urlSeguimientoEnvio(codigo));
+
+  return `
+    <div style="margin:0 0 24px;padding:20px;background:linear-gradient(135deg,#ecfdf5 0%,#f0fdf4 100%);border-radius:10px;border:1px solid #a7f3d0;text-align:center;">
+      <p style="margin:0 0 6px;color:#047857;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Código de seguimiento</p>
+      <p style="margin:0 0 8px;color:#064e3b;font-size:15px;line-height:1.5;">Tu código de seguimiento es:</p>
+      <p style="margin:0 0 18px;color:#065f46;font-size:22px;font-weight:800;letter-spacing:1.5px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;">${codigoEsc}</p>
+      <a href="${href}" target="_blank" rel="noopener noreferrer"
+         style="display:inline-block;padding:12px 22px;background:#059669;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;border-radius:8px;">
+        Seguir mi envío
+      </a>
+      <p style="margin:14px 0 0;color:#6b7280;font-size:12px;line-height:1.5;">
+        También podés copiar el código y pegarlo en el sitio del correo o transportista.
+      </p>
+    </div>`;
+}
+
+function plantillaDespacho({ nombreComprador, numeroPedido, nombreTienda, codigoSeguimiento }) {
+  const tienda = nombreTienda || NOMBRE_TIENDA_DEFECTO;
+  const nombre = escapeHtml(nombreComprador || 'Cliente');
+  const pedido = escapeHtml(numeroPedido || '');
+
+  const cuerpoHtml = `
+    <h1 style="margin:0 0 12px;color:#111827;font-size:20px;font-weight:700;">¡Tu pedido fue despachado!</h1>
+    <p style="margin:0 0 16px;color:#4b5563;font-size:15px;line-height:1.6;">
+      Hola <strong>${nombre}</strong>, te informamos que tu pedido de camisetas ya salió de nuestro depósito y está en camino.
+    </p>
+    <div style="margin:0 0 24px;padding:16px 20px;background:#f3f4f6;border-radius:8px;border-left:4px solid #111827;">
+      <p style="margin:0 0 4px;color:#6b7280;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;">Número de pedido</p>
+      <p style="margin:0;color:#111827;font-size:18px;font-weight:700;">${pedido}</p>
+    </div>
+    ${bloqueHtmlSeguimiento(codigoSeguimiento)}
+    <p style="margin:0 0 16px;color:#4b5563;font-size:15px;line-height:1.6;">
+      En los próximos días deberías recibirlo en la dirección indicada al momento de la compra.
+      Si tenés alguna consulta sobre el envío, no dudes en contactarnos.
+    </p>
+    <p style="margin:0;color:#6b7280;font-size:13px;line-height:1.5;">
+      Gracias por confiar en ${escapeHtml(tienda)}.
+    </p>`;
+
+  return envoltorioPlantilla({
+    nombreTienda: tienda,
+    titulo: `Pedido despachado ${numeroPedido || ''}`.trim(),
+    cuerpoHtml,
+  });
+}
+
+/**
+ * Notifica al comprador que su pedido de camisetas fue despachado.
+ * @param {string} [codigoSeguimiento] Código de tracking del transportista (opcional).
+ * @throws {Error} si falta el email o si el envío SMTP falla.
+ */
+async function enviarMailDespacho(
+  emailComprador,
+  nombreComprador,
+  numeroPedido,
+  nombreTienda,
+  codigoSeguimiento
+) {
+  const email = String(emailComprador || '').trim();
+  const nombre = String(nombreComprador || 'Cliente').trim();
+  const pedido = String(numeroPedido || '').trim();
+  const tienda = nombreTienda || NOMBRE_TIENDA_DEFECTO;
+  const tracking = String(codigoSeguimiento || '').trim();
+
+  if (!email) {
+    throw new Error('No se puede notificar el despacho: falta el email del comprador.');
+  }
+
+  if (!pedido) {
+    throw new Error('No se puede notificar el despacho: falta el número de pedido.');
+  }
+
+  const lineasTexto = [
+    `¡Tu pedido fue despachado! — ${tienda}`,
+    '',
+    `Hola ${nombre},`,
+    '',
+    `Tu pedido de camisetas ${pedido} ya fue despachado y está en camino.`,
+  ];
+
+  if (tracking) {
+    lineasTexto.push(
+      '',
+      `Tu código de seguimiento es: ${tracking}`,
+      `Seguir mi envío: ${urlSeguimientoEnvio(tracking)}`
+    );
+  }
+
+  lineasTexto.push(
+    '',
+    'En los próximos días deberías recibirlo en la dirección indicada al momento de la compra.',
+    '',
+    `Gracias por confiar en ${tienda}.`
+  );
+
+  const resultado = await enviarMail({
+    to: email,
+    nombreTienda: tienda,
+    subject: `Tu pedido ${pedido} fue despachado — ${tienda}`,
+    html: plantillaDespacho({
+      nombreComprador: nombre,
+      numeroPedido: pedido,
+      nombreTienda: tienda,
+      codigoSeguimiento: tracking || undefined,
+    }),
+    text: lineasTexto.join('\n'),
+  });
+
+  if (!resultado.ok) {
+    throw resultado.error || new Error('No se pudo enviar el email de despacho.');
+  }
+
+  return resultado;
+}
+
 module.exports = {
   verificarConexionSmtp,
   enviarMail,
@@ -377,5 +574,7 @@ module.exports = {
   enviarBienvenida,
   enviarConfirmacionCompra,
   enviarMensajeContacto,
+  enviarMailDespacho,
   formatearRemitente,
+  resetTransporter,
 };

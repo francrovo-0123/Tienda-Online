@@ -1,4 +1,4 @@
-{
+﻿{
   "name": "jerseys-store",
   "version": "1.0.0",
   "description": "Tienda online de camisetas de fútbol - Jersey Store",
@@ -8,7 +8,8 @@
   },
   "scripts": {
     "start": "npm --prefix server start",
-    "install:server": "npm --prefix server install"
+    "install:server": "npm --prefix server install",
+    "reset-db": "npm --prefix server run reset-db"
   },
   "keywords": [
     "ecommerce",

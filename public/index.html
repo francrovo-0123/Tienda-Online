@@ -12,7 +12,7 @@
   <link rel="stylesheet" href="css/header.css?v=6.6">
   <link rel="stylesheet" href="css/main.css?v=4.7">
   <link rel="stylesheet" href="css/footer.css?v=4.0">
-  <link rel="stylesheet" href="css/cart.css?v=2.8">
+  <link rel="stylesheet" href="css/cart.css?v=2.9">
 </head>
 <body>
 
@@ -556,8 +556,50 @@
             </div>
 
             <div class="checkout-form__field">
-              <label for="checkout-direccion" class="checkout-form__label">Dirección de entrega</label>
-              <textarea id="checkout-direccion" class="checkout-form__input checkout-form__textarea" required placeholder="Calle, número, piso, localidad" rows="2" autocomplete="street-address"></textarea>
+              <label for="checkout-direccion" class="checkout-form__label">Calle y número</label>
+              <textarea id="checkout-direccion" class="checkout-form__input checkout-form__textarea" required placeholder="Ej: Av. Corrientes 1234, Piso 3" rows="2" autocomplete="street-address"></textarea>
+            </div>
+
+            <div class="checkout-form__row">
+              <div class="checkout-form__field">
+                <label for="checkout-localidad" class="checkout-form__label">Localidad</label>
+                <input type="text" id="checkout-localidad" class="checkout-form__input" required placeholder="Ej: Palermo" autocomplete="address-level2">
+              </div>
+              <div class="checkout-form__field">
+                <label for="checkout-codigo-postal" class="checkout-form__label">Código postal</label>
+                <input type="text" id="checkout-codigo-postal" class="checkout-form__input" required placeholder="Ej: 1425" autocomplete="postal-code" maxlength="8" inputmode="text">
+              </div>
+            </div>
+
+            <div class="checkout-form__field">
+              <label for="checkout-provincia" class="checkout-form__label">Provincia</label>
+              <select id="checkout-provincia" class="checkout-form__input checkout-form__select" required autocomplete="address-level1">
+                <option value="">Seleccioná provincia</option>
+                <option value="Buenos Aires">Buenos Aires</option>
+                <option value="CABA">CABA</option>
+                <option value="Catamarca">Catamarca</option>
+                <option value="Chaco">Chaco</option>
+                <option value="Chubut">Chubut</option>
+                <option value="Córdoba">Córdoba</option>
+                <option value="Corrientes">Corrientes</option>
+                <option value="Entre Ríos">Entre Ríos</option>
+                <option value="Formosa">Formosa</option>
+                <option value="Jujuy">Jujuy</option>
+                <option value="La Pampa">La Pampa</option>
+                <option value="La Rioja">La Rioja</option>
+                <option value="Mendoza">Mendoza</option>
+                <option value="Misiones">Misiones</option>
+                <option value="Neuquén">Neuquén</option>
+                <option value="Río Negro">Río Negro</option>
+                <option value="Salta">Salta</option>
+                <option value="San Juan">San Juan</option>
+                <option value="San Luis">San Luis</option>
+                <option value="Santa Cruz">Santa Cruz</option>
+                <option value="Santa Fe">Santa Fe</option>
+                <option value="Santiago del Estero">Santiago del Estero</option>
+                <option value="Tierra del Fuego">Tierra del Fuego</option>
+                <option value="Tucumán">Tucumán</option>
+              </select>
             </div>
 
             <label class="checkout-guardar-datos">
@@ -571,9 +613,36 @@
             <p class="checkout-section__hint">Pagá con tarjeta, dinero en cuenta u otros medios a través de Mercado Pago.</p>
           </div>
 
-          <div class="checkout-form__summary">
-            <span>Total a pagar</span>
-            <strong id="checkout-summary-total">$ 0</strong>
+          <div class="checkout-section checkout-cupon" id="checkout-cupon">
+            <h3 class="checkout-section__title">Cupón de descuento</h3>
+            <div class="checkout-cupon__row">
+              <input
+                type="text"
+                id="input-cupon"
+                class="checkout-form__input"
+                placeholder="Código de descuento"
+                autocomplete="off"
+                maxlength="40"
+                aria-label="Código de descuento"
+              >
+              <button type="button" id="btn-aplicar-cupon" class="checkout-cupon__btn">Aplicar</button>
+            </div>
+            <p class="checkout-cupon__msg" id="checkout-cupon-msg" hidden></p>
+          </div>
+
+          <div class="checkout-form__summary" id="checkout-summary">
+            <div class="checkout-form__summary-row checkout-form__summary-row--muted" id="checkout-summary-subtotal-row" hidden>
+              <span>Subtotal</span>
+              <span id="checkout-summary-subtotal">$ 0</span>
+            </div>
+            <div class="checkout-form__summary-row checkout-form__summary-row--discount" id="checkout-summary-descuento-row" hidden>
+              <span id="checkout-summary-descuento-label">Descuento</span>
+              <span id="checkout-summary-descuento">−$ 0</span>
+            </div>
+            <div class="checkout-form__summary-row checkout-form__summary-row--total">
+              <span>Total a pagar</span>
+              <strong id="checkout-summary-total">$ 0</strong>
+            </div>
           </div>
 
           <button type="submit" class="checkout-form__submit" id="checkout-submit-btn">Pagar con Mercado Pago</button>
@@ -667,9 +736,9 @@
               </svg>
             </div>
             <div class="kpi-card__content">
-              <p class="kpi-card__label">Total Facturado</p>
+              <p class="kpi-card__label">Facturación del mes</p>
               <p class="kpi-card__value" id="kpi-facturado">$ 0</p>
-              <p class="kpi-card__hint">Últimos 30 días</p>
+              <p class="kpi-card__hint">Pedidos cobrados este mes</p>
             </div>
           </article>
           <article class="kpi-card kpi-card--activos">
@@ -679,21 +748,23 @@
               </svg>
             </div>
             <div class="kpi-card__content">
-              <p class="kpi-card__label">Pedidos Activos</p>
+              <p class="kpi-card__label">Pendientes</p>
               <p class="kpi-card__value kpi-card__value--warning" id="kpi-activos">0</p>
-              <p class="kpi-card__hint">Pendientes de gestión</p>
+              <p class="kpi-card__hint">Listos para empaquetar</p>
             </div>
           </article>
           <article class="kpi-card kpi-card--buscado">
             <div class="kpi-card__icon" aria-hidden="true">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 013 3h-15a3 3 0 013-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 01-.982-3.172M9.497 14.25a7.454 7.454 0 00.981-3.172M15.75 10.5a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z"/>
               </svg>
             </div>
             <div class="kpi-card__content">
-              <p class="kpi-card__label">Producto Más Buscado</p>
-              <p class="kpi-card__value kpi-card__value--text" id="kpi-mas-buscado">—</p>
-              <p class="kpi-card__hint">Según búsquedas en tienda</p>
+              <p class="kpi-card__label">Top 3 más vendidas</p>
+              <ol class="kpi-top-productos" id="kpi-top-productos" aria-label="Top 3 camisetas más vendidas">
+                <li class="kpi-top-productos__empty">Cargando…</li>
+              </ol>
+              <p class="kpi-card__hint">Según unidades vendidas</p>
             </div>
           </article>
         </section>
@@ -1343,6 +1414,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
   <script src="js/api.js"></script>
-  <script src="js/app.js?v=11.2"></script>
+  <script src="js/app.js?v=11.3"></script>
 </body>
 </html>

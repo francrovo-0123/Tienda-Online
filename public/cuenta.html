@@ -167,8 +167,48 @@
               <input type="tel" id="cuenta-perfil-telefono" class="cuenta-form__input" autocomplete="tel" placeholder="Ej: 11 2345 6789">
             </div>
             <div class="cuenta-form__field">
-              <label for="cuenta-perfil-direccion" class="cuenta-form__label">Dirección de entrega</label>
-              <textarea id="cuenta-perfil-direccion" class="cuenta-form__textarea" autocomplete="street-address" placeholder="Calle, número, piso, localidad"></textarea>
+              <label for="cuenta-perfil-direccion" class="cuenta-form__label">Calle y número</label>
+              <textarea id="cuenta-perfil-direccion" class="cuenta-form__textarea" autocomplete="street-address" placeholder="Ej: Av. Corrientes 1234, Piso 3"></textarea>
+            </div>
+            <div class="cuenta-form__row">
+              <div class="cuenta-form__field">
+                <label for="cuenta-perfil-localidad" class="cuenta-form__label">Localidad</label>
+                <input type="text" id="cuenta-perfil-localidad" class="cuenta-form__input" autocomplete="address-level2" placeholder="Ej: Palermo">
+              </div>
+              <div class="cuenta-form__field">
+                <label for="cuenta-perfil-codigo-postal" class="cuenta-form__label">Código postal</label>
+                <input type="text" id="cuenta-perfil-codigo-postal" class="cuenta-form__input" autocomplete="postal-code" placeholder="Ej: 1425" maxlength="8">
+              </div>
+            </div>
+            <div class="cuenta-form__field">
+              <label for="cuenta-perfil-provincia" class="cuenta-form__label">Provincia</label>
+              <select id="cuenta-perfil-provincia" class="cuenta-form__input cuenta-form__select" autocomplete="address-level1">
+                <option value="">Seleccioná provincia</option>
+                <option value="Buenos Aires">Buenos Aires</option>
+                <option value="CABA">CABA</option>
+                <option value="Catamarca">Catamarca</option>
+                <option value="Chaco">Chaco</option>
+                <option value="Chubut">Chubut</option>
+                <option value="Córdoba">Córdoba</option>
+                <option value="Corrientes">Corrientes</option>
+                <option value="Entre Ríos">Entre Ríos</option>
+                <option value="Formosa">Formosa</option>
+                <option value="Jujuy">Jujuy</option>
+                <option value="La Pampa">La Pampa</option>
+                <option value="La Rioja">La Rioja</option>
+                <option value="Mendoza">Mendoza</option>
+                <option value="Misiones">Misiones</option>
+                <option value="Neuquén">Neuquén</option>
+                <option value="Río Negro">Río Negro</option>
+                <option value="Salta">Salta</option>
+                <option value="San Juan">San Juan</option>
+                <option value="San Luis">San Luis</option>
+                <option value="Santa Cruz">Santa Cruz</option>
+                <option value="Santa Fe">Santa Fe</option>
+                <option value="Santiago del Estero">Santiago del Estero</option>
+                <option value="Tierra del Fuego">Tierra del Fuego</option>
+                <option value="Tucumán">Tucumán</option>
+              </select>
             </div>
             <p class="cuenta-form__error hidden" id="cuenta-perfil-error"></p>
             <div class="cuenta-form__actions">

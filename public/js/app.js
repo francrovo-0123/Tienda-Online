@@ -219,22 +219,28 @@ const CARRITO_LEGACY_KEY = 'carrito';
 const CARRITO_USUARIO_PREFIX = 'carrito_usuario_';
 const CHECKOUT_PERFIL_KEY = 'jerseys_checkout_perfiles';
 const SEARCH_STATS_KEY = 'jerseys_busquedas_stats';
-const ESTADOS_PEDIDO = [
-  'Pendiente de pago',
-  'pendiente_pago',
-  'Aprobado',
-  'Preparación de pedido',
-  'Enviado',
-  'Entregado',
-  'Rechazado',
-  'cancelado',
-];
+/** Cupón validado en checkout: { codigo, descuentoPorcentaje } | null */
+let cuponAplicado = null;
+const ESTADOS_PEDIDO = ['pendiente_pago', 'listo_empaquetar', 'despachado', 'entregado'];
+const ETIQUETAS_ESTADO_PEDIDO = {
+  pendiente_pago: 'Pendiente de pago',
+  listo_empaquetar: 'Listo para empaquetar',
+  despachado: 'Despachado',
+  entregado: 'Entregado',
+  cancelado: 'Cancelado',
+};
 const ESTADOS_PEDIDO_LEGACY = {
-  Pendiente: 'Pendiente de pago',
-  'En Preparación': 'Preparación de pedido',
-  Listo: 'Entregado',
-  pagado: 'Aprobado',
-  confirmado: 'Aprobado',
+  'Pendiente de pago': 'pendiente_pago',
+  Pendiente: 'pendiente_pago',
+  Aprobado: 'listo_empaquetar',
+  'Preparación de pedido': 'listo_empaquetar',
+  'En Preparación': 'listo_empaquetar',
+  Enviado: 'despachado',
+  Entregado: 'entregado',
+  Listo: 'entregado',
+  pagado: 'listo_empaquetar',
+  confirmado: 'listo_empaquetar',
+  Rechazado: 'cancelado',
 };
 const CLUB_NAV_ESCUDO_MAX = 68;
 const TALLES_DISPONIBLES = ['S', 'M', 'L', 'XL', 'XXL'];
@@ -275,6 +281,7 @@ let pedidos = [];
 let datosRegistroTemporal = {};
 let modalDetalleSeccionSuspendido = false;
 let estadisticasAdmin = null;
+let metricasDashboard = null;
 
 async function cargarConfiguracionTienda() {
   try {
@@ -648,28 +655,103 @@ async function cargarPedidos() {
 function obtenerClaseEstado(estado) {
   const estadoNormalizado = normalizarEstadoPedidoCliente(estado);
   const mapa = {
-    'Pendiente de pago': 'pendiente',
     pendiente_pago: 'pendiente',
-    Aprobado: 'aprobado',
-    'Preparación de pedido': 'preparacion',
-    Enviado: 'enviado',
-    Entregado: 'entregado',
-    Rechazado: 'rechazado',
+    listo_empaquetar: 'preparacion',
+    despachado: 'enviado',
+    entregado: 'entregado',
     cancelado: 'rechazado',
   };
   return mapa[estadoNormalizado] || 'pendiente';
 }
 
+/** Clases de color para badges del panel de pedidos admin. */
+function obtenerClaseBadgeEstado(estado) {
+  const estadoNormalizado = normalizarEstadoPedidoCliente(estado);
+  const mapa = {
+    pendiente_pago: 'badge-amarillo',
+    listo_empaquetar: 'badge-naranja',
+    despachado: 'badge-azul',
+    entregado: 'badge-verde',
+  };
+  return mapa[estadoNormalizado] || 'badge-amarillo';
+}
+
+function escaparTextoHtml(texto) {
+  return String(texto ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function crearBadgeEstadoPedido(estado) {
+  const clase = obtenerClaseBadgeEstado(estado);
+  const etiqueta = obtenerEtiquetaEstado(estado);
+  return `<span class="pedido-badge ${clase}">${escaparTextoHtml(etiqueta)}</span>`;
+}
+
+function crearBotonNotificarDespacho(pedidoId, estado) {
+  const puedeNotificar = normalizarEstadoPedidoCliente(estado) === 'listo_empaquetar';
+  const idSeguro = escaparAtributoHtml(pedidoId);
+  return `
+    <button
+      type="button"
+      class="btn-notificar-despacho"
+      data-order-id="${idSeguro}"
+      title="Notificar despacho por email"
+      aria-label="Notificar despacho del pedido ${idSeguro}"
+      ${puedeNotificar ? '' : 'disabled'}
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75"/>
+      </svg>
+      <span class="btn-notificar-despacho__texto">Notificar</span>
+    </button>
+  `;
+}
+
+function crearBotonEtiquetaEnvio(pedidoId) {
+  const idSeguro = escaparAtributoHtml(pedidoId);
+  return `
+    <button
+      type="button"
+      class="btn-etiqueta-envio"
+      data-order-id="${idSeguro}"
+      title="Imprimir etiqueta de envío"
+      aria-label="Imprimir etiqueta de envío del pedido ${idSeguro}"
+    >
+      <span aria-hidden="true">🖨️</span>
+      <span class="btn-etiqueta-envio__texto">Etiqueta</span>
+    </button>
+  `;
+}
+
+/**
+ * Abre la etiqueta de envío en una pestaña nueva (HTML listo para Ctrl+P).
+ * El JWT va en query porque window.open no puede enviar Authorization.
+ */
+function abrirEtiquetaEnvio(pedidoId) {
+  if (!pedidoId) return;
+
+  const token = localStorage.getItem(ADMIN_TOKEN_KEY);
+  if (!token || !tokenJwtVigente(token)) {
+    mostrarToast('Sesión de administrador requerida para imprimir la etiqueta.', 'error');
+    return;
+  }
+
+  const url = `/api/admin/pedidos/${encodeURIComponent(pedidoId)}/etiqueta-envio?token=${encodeURIComponent(token)}`;
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
+
 function obtenerEtiquetaEstado(estado) {
-  return normalizarEstadoPedidoCliente(estado);
+  const normalizado = normalizarEstadoPedidoCliente(estado);
+  return ETIQUETAS_ESTADO_PEDIDO[normalizado] || normalizado;
 }
 
 function normalizarEstadoPedidoCliente(estado) {
   const valor = String(estado || '').trim();
-  if (valor === 'pendiente_pago') return 'Pendiente de pago';
-  if (valor === 'cancelado') return 'Cancelado';
-  if (ESTADOS_PEDIDO.includes(valor)) return valor;
-  return ESTADOS_PEDIDO_LEGACY[valor] || 'Pendiente de pago';
+  if (ESTADOS_PEDIDO.includes(valor) || valor === 'cancelado') return valor;
+  return ESTADOS_PEDIDO_LEGACY[valor] || 'pendiente_pago';
 }
 
 async function cargarSecciones() {
@@ -3885,6 +3967,145 @@ function calcularTotal() {
   return carrito.reduce((total, item) => total + item.precio * item.cantidad, 0);
 }
 
+function redondearMontoCheckout(valor) {
+  return Math.round((Number(valor) + Number.EPSILON) * 100) / 100;
+}
+
+function calcularTotalConCupon() {
+  const subtotal = redondearMontoCheckout(calcularTotal());
+  if (!cuponAplicado?.descuentoPorcentaje) {
+    return { subtotal, descuentoMonto: 0, totalFinal: subtotal };
+  }
+
+  const pct = Number(cuponAplicado.descuentoPorcentaje);
+  const totalFinal = Math.max(0, redondearMontoCheckout(subtotal * (1 - pct / 100)));
+  return {
+    subtotal,
+    descuentoMonto: redondearMontoCheckout(subtotal - totalFinal),
+    totalFinal,
+  };
+}
+
+function obtenerCodigoCuponCheckout() {
+  return cuponAplicado?.codigo
+    ? String(cuponAplicado.codigo).trim().toUpperCase()
+    : '';
+}
+
+/**
+ * Body compartido para POST /api/pagar y POST /api/pedidos.
+ * El servidor revalida el cupón; el % del cliente es solo preview UI.
+ */
+function construirBodyCheckout(cliente, items, extras = {}) {
+  const body = {
+    cliente,
+    items,
+    ...extras,
+  };
+
+  const codigoCupon = obtenerCodigoCuponCheckout();
+  if (codigoCupon) {
+    body.codigoCupon = codigoCupon;
+  }
+
+  return body;
+}
+
+function setMensajeCuponCheckout(texto, tipo) {
+  const msg = document.getElementById('checkout-cupon-msg');
+  if (!msg) return;
+
+  if (!texto) {
+    msg.hidden = true;
+    msg.textContent = '';
+    msg.classList.remove('is-error', 'is-success');
+    return;
+  }
+
+  msg.hidden = false;
+  msg.textContent = texto;
+  msg.classList.toggle('is-error', tipo === 'error');
+  msg.classList.toggle('is-success', tipo === 'success');
+}
+
+function limpiarCuponCheckout() {
+  cuponAplicado = null;
+  const input = document.getElementById('input-cupon');
+  if (input) input.value = '';
+  setMensajeCuponCheckout('', null);
+  actualizarTotalCheckoutUI();
+}
+
+function actualizarTotalCheckoutUI() {
+  const { subtotal, descuentoMonto, totalFinal } = calcularTotalConCupon();
+  const summaryTotal = document.getElementById('checkout-summary-total');
+  const subtotalRow = document.getElementById('checkout-summary-subtotal-row');
+  const subtotalEl = document.getElementById('checkout-summary-subtotal');
+  const descuentoRow = document.getElementById('checkout-summary-descuento-row');
+  const descuentoEl = document.getElementById('checkout-summary-descuento');
+  const descuentoLabel = document.getElementById('checkout-summary-descuento-label');
+
+  if (summaryTotal) summaryTotal.textContent = formatearPrecio(totalFinal);
+
+  const hayDescuento = Boolean(cuponAplicado && descuentoMonto > 0);
+
+  if (subtotalRow) subtotalRow.hidden = !hayDescuento;
+  if (descuentoRow) descuentoRow.hidden = !hayDescuento;
+  if (subtotalEl) subtotalEl.textContent = formatearPrecio(subtotal);
+  if (descuentoEl) descuentoEl.textContent = `−${formatearPrecio(descuentoMonto)}`;
+  if (descuentoLabel && cuponAplicado) {
+    descuentoLabel.textContent = `Descuento (${cuponAplicado.codigo} −${cuponAplicado.descuentoPorcentaje}%)`;
+  }
+}
+
+async function aplicarCuponCheckout() {
+  const input = document.getElementById('input-cupon');
+  const btn = document.getElementById('btn-aplicar-cupon');
+  const codigo = String(input?.value || '').trim().toUpperCase();
+
+  if (!codigo) {
+    cuponAplicado = null;
+    setMensajeCuponCheckout('Ingresá un código de cupón.', 'error');
+    actualizarTotalCheckoutUI();
+    return;
+  }
+
+  if (input) input.value = codigo;
+  if (btn) btn.disabled = true;
+
+  try {
+    const respuesta = await apiFetch('/api/cupones/validar', {
+      method: 'POST',
+      body: JSON.stringify({ codigo }),
+    });
+
+    const descuentoPorcentaje = Number(respuesta?.descuentoPorcentaje);
+    if (!respuesta?.valido || !Number.isFinite(descuentoPorcentaje) || descuentoPorcentaje < 1) {
+      throw new Error('El código de cupón ingresado no es válido o ya ha expirado');
+    }
+
+    cuponAplicado = {
+      codigo: String(respuesta.codigo || codigo).trim().toUpperCase(),
+      descuentoPorcentaje,
+    };
+
+    setMensajeCuponCheckout(
+      `Cupón ${cuponAplicado.codigo} aplicado (−${descuentoPorcentaje}%).`,
+      'success'
+    );
+    actualizarTotalCheckoutUI();
+  } catch (error) {
+    cuponAplicado = null;
+    setMensajeCuponCheckout(
+      error?.message || 'El código de cupón ingresado no es válido o ya ha expirado',
+      'error'
+    );
+    actualizarTotalCheckoutUI();
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 function obtenerCantidadTotal() {
   return carrito.reduce((total, item) => total + item.cantidad, 0);
 }
@@ -4029,25 +4250,47 @@ function obtenerPerfilesEntrega() {
 
 function cargarPerfilEntrega(email) {
   const perfiles = obtenerPerfilesEntrega();
-  return perfiles[normalizarEmail(email)] || { nombre: '', telefono: '', direccion: '' };
+  return perfiles[normalizarEmail(email)] || {
+    nombre: '',
+    telefono: '',
+    direccion: '',
+    localidad: '',
+    provincia: '',
+    codigoPostal: '',
+  };
+}
+
+function normalizarDatosEntrega(datos = {}) {
+  return {
+    nombre: String(datos.nombre || '').trim(),
+    telefono: String(datos.telefono || '').trim(),
+    direccion: String(datos.direccion || '').trim(),
+    localidad: String(datos.localidad || '').trim(),
+    provincia: String(datos.provincia || '').trim(),
+    codigoPostal: String(datos.codigoPostal || '').trim().toUpperCase(),
+  };
 }
 
 function guardarPerfilEntrega(email, datos) {
   const perfiles = obtenerPerfilesEntrega();
-  perfiles[normalizarEmail(email)] = {
-    nombre: String(datos.nombre || '').trim(),
-    telefono: String(datos.telefono || '').trim(),
-    direccion: String(datos.direccion || '').trim(),
-  };
+  perfiles[normalizarEmail(email)] = normalizarDatosEntrega(datos);
   localStorage.setItem(CHECKOUT_PERFIL_KEY, JSON.stringify(perfiles));
 }
 
 function perfilEntregaCompleto(perfil) {
+  const datos = normalizarDatosEntrega(perfil);
   return Boolean(
-    perfil?.nombre?.trim() &&
-    perfil?.telefono?.trim() &&
-    perfil?.direccion?.trim()
+    datos.nombre &&
+    datos.telefono &&
+    datos.direccion &&
+    datos.localidad &&
+    datos.provincia &&
+    datos.codigoPostal
   );
+}
+
+function esCodigoPostalValido(codigoPostal) {
+  return /^[A-Z]?\d{4}[A-Z]{0,3}$/i.test(String(codigoPostal || '').trim());
 }
 
 async function obtenerPerfilEntregaCompleto(email) {
@@ -4056,11 +4299,14 @@ async function obtenerPerfilEntregaCompleto(email) {
 
   try {
     const respuesta = await apiFetch('/api/auth/perfil');
-    const perfil = {
+    const perfil = normalizarDatosEntrega({
       nombre: respuesta.usuario?.nombre || '',
       telefono: respuesta.usuario?.telefono || '',
       direccion: respuesta.usuario?.direccion || '',
-    };
+      localidad: respuesta.usuario?.localidad || '',
+      provincia: respuesta.usuario?.provincia || '',
+      codigoPostal: respuesta.usuario?.codigoPostal || '',
+    });
     if (perfilEntregaCompleto(perfil)) {
       guardarPerfilEntrega(email, perfil);
       return perfil;
@@ -4074,12 +4320,16 @@ async function obtenerPerfilEntregaCompleto(email) {
 
 async function guardarPerfilEntregaEnServidor(email, datos) {
   try {
+    const normalizados = normalizarDatosEntrega(datos);
     await apiFetch('/api/auth/perfil', {
       method: 'PUT',
       body: JSON.stringify({
-        nombre: datos.nombre,
-        telefono: datos.telefono,
-        direccion: datos.direccion,
+        nombre: normalizados.nombre,
+        telefono: normalizados.telefono,
+        direccion: normalizados.direccion,
+        localidad: normalizados.localidad,
+        provincia: normalizados.provincia,
+        codigoPostal: normalizados.codigoPostal,
       }),
     });
   } catch {
@@ -4088,13 +4338,20 @@ async function guardarPerfilEntregaEnServidor(email, datos) {
 }
 
 function aplicarPerfilCheckout(perfil) {
+  const datos = normalizarDatosEntrega(perfil);
   const nombreInput = document.getElementById('checkout-nombre');
   const telefonoInput = document.getElementById('checkout-telefono');
   const direccionInput = document.getElementById('checkout-direccion');
+  const localidadInput = document.getElementById('checkout-localidad');
+  const provinciaInput = document.getElementById('checkout-provincia');
+  const codigoPostalInput = document.getElementById('checkout-codigo-postal');
 
-  if (nombreInput) nombreInput.value = perfil?.nombre || '';
-  if (telefonoInput) telefonoInput.value = perfil?.telefono || '';
-  if (direccionInput) direccionInput.value = perfil?.direccion || '';
+  if (nombreInput) nombreInput.value = datos.nombre;
+  if (telefonoInput) telefonoInput.value = datos.telefono;
+  if (direccionInput) direccionInput.value = datos.direccion;
+  if (localidadInput) localidadInput.value = datos.localidad;
+  if (provinciaInput) provinciaInput.value = datos.provincia;
+  if (codigoPostalInput) codigoPostalInput.value = datos.codigoPostal;
 }
 
 function renderizarResumenCheckout() {
@@ -4130,13 +4387,11 @@ function renderizarResumenCheckout() {
 
 async function prepararCheckoutModal(sesion) {
   const cuentaEmail = document.getElementById('checkout-cuenta-email');
-  const summaryTotal = document.getElementById('checkout-summary-total');
   const submitBtn = document.getElementById('checkout-submit-btn');
   const hint = document.getElementById('checkout-datos-hint');
   const guardarCheckbox = document.getElementById('checkout-guardar-datos');
 
   if (cuentaEmail) cuentaEmail.textContent = sesion.email;
-  if (summaryTotal) summaryTotal.textContent = formatearPrecio(calcularTotal());
   if (submitBtn) {
     submitBtn.disabled = false;
     submitBtn.textContent = 'Pagar con Mercado Pago';
@@ -4145,7 +4400,14 @@ async function prepararCheckoutModal(sesion) {
     hint.textContent = 'Completá tus datos de entrega para continuar.';
   }
 
+  // Reset cupón al abrir el checkout (preview UI; el servidor revalida al pagar).
+  cuponAplicado = null;
+  const inputCupon = document.getElementById('input-cupon');
+  if (inputCupon) inputCupon.value = '';
+  setMensajeCuponCheckout('', null);
+
   renderizarResumenCheckout();
+  actualizarTotalCheckoutUI();
 
   const perfil = await obtenerPerfilEntregaCompleto(sesion.email);
   aplicarPerfilCheckout(perfil);
@@ -4159,6 +4421,7 @@ function cerrarCheckout() {
   modal?.classList.remove('is-open');
   modal?.setAttribute('aria-hidden', 'true');
   document.body.classList.remove('checkout-open');
+  limpiarCuponCheckout();
 }
 
 async function procesarPedido(event) {
@@ -4176,6 +4439,9 @@ async function procesarPedido(event) {
   const nombre = document.getElementById('checkout-nombre').value.trim();
   const telefono = document.getElementById('checkout-telefono').value.trim();
   const direccion = document.getElementById('checkout-direccion').value.trim();
+  const localidad = document.getElementById('checkout-localidad')?.value.trim() || '';
+  const provincia = document.getElementById('checkout-provincia')?.value.trim() || '';
+  const codigoPostal = (document.getElementById('checkout-codigo-postal')?.value || '').trim().toUpperCase();
 
   if (nombre.length <= 2) {
     mostrarToast('Por favor, ingresá tu nombre completo.', 'error');
@@ -4189,40 +4455,55 @@ async function procesarPedido(event) {
   }
 
   if (!direccion) {
-    mostrarToast('Por favor, ingresá la dirección de entrega.', 'error');
+    mostrarToast('Por favor, ingresá la calle y número de entrega.', 'error');
+    return;
+  }
+
+  if (!localidad) {
+    mostrarToast('Por favor, ingresá la localidad.', 'error');
+    return;
+  }
+
+  if (!provincia) {
+    mostrarToast('Por favor, seleccioná la provincia.', 'error');
+    return;
+  }
+
+  if (!esCodigoPostalValido(codigoPostal)) {
+    mostrarToast('Ingresá un código postal válido (ej: 1425 o C1425ABC).', 'error');
     return;
   }
 
   const submitBtn = document.getElementById('checkout-submit-btn');
   const guardarDatos = document.getElementById('checkout-guardar-datos')?.checked;
+  const datosEntrega = {
+    nombre,
+    telefono: telefonoSoloNumeros,
+    direccion,
+    localidad,
+    provincia,
+    codigoPostal,
+  };
 
   submitBtn?.setAttribute('disabled', 'true');
   if (submitBtn) submitBtn.textContent = 'Redirigiendo a Mercado Pago…';
 
   try {
     if (guardarDatos) {
-      guardarPerfilEntrega(sesion.email, { nombre, telefono: telefonoSoloNumeros, direccion });
-      await guardarPerfilEntregaEnServidor(sesion.email, {
-        nombre,
-        telefono: telefonoSoloNumeros,
-        direccion,
-      });
+      guardarPerfilEntrega(sesion.email, datosEntrega);
+      await guardarPerfilEntregaEnServidor(sesion.email, datosEntrega);
     }
+
+    const cliente = { ...datosEntrega };
+    const items = carrito.map((item) => ({
+      productoId: item.id,
+      talle: item.talle,
+      cantidad: item.cantidad,
+    }));
 
     const respuestaPago = await apiFetch('/api/pagar', {
       method: 'POST',
-      body: JSON.stringify({
-        cliente: {
-          nombre,
-          telefono: telefonoSoloNumeros,
-          direccion,
-        },
-        items: carrito.map((item) => ({
-          productoId: item.id,
-          talle: item.talle,
-          cantidad: item.cantidad,
-        })),
-      }),
+      body: JSON.stringify(construirBodyCheckout(cliente, items)),
     });
 
     if (!respuestaPago?.init_point) {
@@ -4230,6 +4511,7 @@ async function procesarPedido(event) {
     }
 
     carrito = [];
+    cuponAplicado = null;
     guardarCarritoEnLocalStorage();
     actualizarCarritoUI();
     cerrarCheckout();
@@ -4244,7 +4526,18 @@ async function procesarPedido(event) {
   }
 }
 
-function enviarAWhatsApp({ idPedido, nombre, telefono, direccion, metodoPago, productos, total }) {
+function enviarAWhatsApp({
+  idPedido,
+  nombre,
+  telefono,
+  direccion,
+  localidad,
+  provincia,
+  codigoPostal,
+  metodoPago,
+  productos,
+  total,
+}) {
   const emojiCarrito = `\u{1F6D2}`;
   const emojiCliente = `\u{1F464}`;
   const emojiTelefono = `\u{1F4DE}`;
@@ -4253,8 +4546,10 @@ function enviarAWhatsApp({ idPedido, nombre, telefono, direccion, metodoPago, pr
   const emojiDetalle = `\u{1F4E6}`;
   const emojiTotal = `\u{1F4B0}`;
 
-  const textoEntrega = direccion
-    ? `Envío a domicilio (${direccion})`
+  const textoEntrega = [direccion, localidad, provincia, codigoPostal]
+    .filter(Boolean)
+    .length
+    ? `Envío a domicilio (${[direccion, localidad, provincia, codigoPostal].filter(Boolean).join(', ')})`
     : 'Retiro en local';
 
   const itemsDetalle = productos
@@ -4341,7 +4636,7 @@ function renderizarPedidos(pedidosFiltrados) {
 
         return `
           <tr>
-            <td class="orders-table__id">${pedido.id}</td>
+            <td class="orders-table__id">#${pedido.numeroPedido || pedido.id}</td>
             <td class="orders-table__date">${formatearFecha(pedido.fecha)}</td>
             <td class="orders-table__status">
               <span
@@ -4441,17 +4736,24 @@ function actualizarUiCuenta() {
 }
 
 function rellenarFormularioPerfil(perfil) {
+  const datos = normalizarDatosEntrega(perfil);
   const emailInput = document.getElementById('cuenta-perfil-email');
   const nombreInput = document.getElementById('cuenta-perfil-nombre');
   const telefonoInput = document.getElementById('cuenta-perfil-telefono');
   const direccionInput = document.getElementById('cuenta-perfil-direccion');
+  const localidadInput = document.getElementById('cuenta-perfil-localidad');
+  const provinciaInput = document.getElementById('cuenta-perfil-provincia');
+  const codigoPostalInput = document.getElementById('cuenta-perfil-codigo-postal');
   const prefPedidos = document.getElementById('cuenta-pref-pedidos');
   const prefPromos = document.getElementById('cuenta-pref-promos');
 
   if (emailInput) emailInput.value = perfil?.email || '';
-  if (nombreInput) nombreInput.value = perfil?.nombre || '';
-  if (telefonoInput) telefonoInput.value = perfil?.telefono || '';
-  if (direccionInput) direccionInput.value = perfil?.direccion || '';
+  if (nombreInput) nombreInput.value = datos.nombre;
+  if (telefonoInput) telefonoInput.value = datos.telefono;
+  if (direccionInput) direccionInput.value = datos.direccion;
+  if (localidadInput) localidadInput.value = datos.localidad;
+  if (provinciaInput) provinciaInput.value = datos.provincia;
+  if (codigoPostalInput) codigoPostalInput.value = datos.codigoPostal;
   if (prefPedidos) prefPedidos.checked = perfil?.preferencias?.emailsPedidos !== false;
   if (prefPromos) prefPromos.checked = perfil?.preferencias?.emailsPromos !== false;
 }
@@ -4482,9 +4784,14 @@ async function cargarPerfilUsuario() {
     const local = cargarPerfilEntrega(sesion.email);
     const perfil = {
       ...usuario,
-      nombre: usuario.nombre || local.nombre,
-      telefono: usuario.telefono || local.telefono,
-      direccion: usuario.direccion || local.direccion,
+      ...normalizarDatosEntrega({
+        nombre: usuario.nombre || local.nombre,
+        telefono: usuario.telefono || local.telefono,
+        direccion: usuario.direccion || local.direccion,
+        localidad: usuario.localidad || local.localidad,
+        provincia: usuario.provincia || local.provincia,
+        codigoPostal: usuario.codigoPostal || local.codigoPostal,
+      }),
     };
 
     rellenarFormularioPerfil(perfil);
@@ -4504,8 +4811,21 @@ async function guardarPerfilUsuario(event) {
   const nombre = document.getElementById('cuenta-perfil-nombre')?.value.trim() || '';
   const telefono = document.getElementById('cuenta-perfil-telefono')?.value.trim() || '';
   const direccion = document.getElementById('cuenta-perfil-direccion')?.value.trim() || '';
+  const localidad = document.getElementById('cuenta-perfil-localidad')?.value.trim() || '';
+  const provincia = document.getElementById('cuenta-perfil-provincia')?.value.trim() || '';
+  const codigoPostal = (document.getElementById('cuenta-perfil-codigo-postal')?.value || '').trim().toUpperCase();
   const errorEl = document.getElementById('cuenta-perfil-error');
   const btn = document.getElementById('cuenta-perfil-guardar');
+
+  if (codigoPostal && !esCodigoPostalValido(codigoPostal)) {
+    if (errorEl) {
+      errorEl.textContent = 'Ingresá un código postal válido (ej: 1425 o C1425ABC).';
+      errorEl.classList.remove('hidden');
+    }
+    return;
+  }
+
+  const datosEntrega = { nombre, telefono, direccion, localidad, provincia, codigoPostal };
 
   btn?.setAttribute('disabled', 'true');
   errorEl?.classList.add('hidden');
@@ -4513,10 +4833,10 @@ async function guardarPerfilUsuario(event) {
   try {
     const respuesta = await apiFetch('/api/auth/perfil', {
       method: 'PUT',
-      body: JSON.stringify({ nombre, telefono, direccion }),
+      body: JSON.stringify(datosEntrega),
     });
 
-    guardarPerfilEntrega(sesion.email, { nombre, telefono, direccion });
+    guardarPerfilEntrega(sesion.email, datosEntrega);
     rellenarFormularioPerfil(respuesta.usuario);
     actualizarResumenCuenta(respuesta.usuario);
     mostrarToast('Perfil actualizado.');
@@ -4779,9 +5099,18 @@ function inicializarCarrito() {
 function inicializarCheckout() {
   const modalClose = document.getElementById('checkout-modal-close');
   const modalOverlay = document.getElementById('checkout-modal-overlay');
+  const btnAplicarCupon = document.getElementById('btn-aplicar-cupon');
+  const inputCupon = document.getElementById('input-cupon');
 
   modalClose?.addEventListener('click', cerrarCheckout);
   modalOverlay?.addEventListener('click', cerrarCheckout);
+  btnAplicarCupon?.addEventListener('click', aplicarCuponCheckout);
+  inputCupon?.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      aplicarCuponCheckout();
+    }
+  });
 }
 
 /* ── Página de información ── */
@@ -5389,7 +5718,7 @@ async function solicitarRegistro(event) {
     const emailVerificacion = document.getElementById('auth-verificacion-email');
     if (emailVerificacion) emailVerificacion.textContent = email;
 
-    mostrarToast('Te enviamos un código de 6 dígitos. Revisá tu bandeja de Mailtrap.');
+    mostrarToast('Te enviamos un código de 6 dígitos. Revisá tu correo (y spam).');
     cambiarVistaAuth('verificacion');
   } catch (error) {
     if (error.message.includes('Ya existe')) {
@@ -5407,6 +5736,8 @@ async function confirmarRegistro() {
     .getElementById('verification-code-input')
     ?.value.trim();
   const errorEl = document.getElementById('auth-verificacion-error');
+  const submitBtn = document.getElementById('btn-confirmar-registro');
+  const textoOriginal = submitBtn?.textContent?.trim() || 'Verificar y Activar';
 
   if (!codigoIngresado || !/^\d{6}$/.test(codigoIngresado)) {
     errorEl?.classList.remove('hidden');
@@ -5421,6 +5752,11 @@ async function confirmarRegistro() {
   }
 
   errorEl?.classList.add('hidden');
+
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Verificando...';
+  }
 
   try {
     const respuesta = await apiFetch('/api/auth/confirmar', {
@@ -5438,6 +5774,11 @@ async function confirmarRegistro() {
   } catch (error) {
     errorEl?.classList.remove('hidden');
     mostrarToast(error?.message || 'Código inválido o expirado.', 'error');
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = textoOriginal;
+    }
   }
 }
 
@@ -5763,14 +6104,64 @@ function renderizarGraficoVentasAdmin(stats = estadisticasAdmin) {
   });
 }
 
-function actualizarMetricasAdmin(stats = estadisticasAdmin) {
-  const facturadoEl = document.getElementById('kpi-facturado');
-  const activosEl = document.getElementById('kpi-activos');
-  const masBuscadoEl = document.getElementById('kpi-mas-buscado');
+function actualizarMetricasAdmin() {
+  return cargarMetricasDashboard();
+}
 
-  if (facturadoEl) facturadoEl.textContent = formatearPrecio(stats?.totalFacturado ?? 0);
-  if (activosEl) activosEl.textContent = stats?.pedidosActivos ?? 0;
-  if (masBuscadoEl) masBuscadoEl.textContent = obtenerProductoMasBuscado();
+function renderizarTopProductosDashboard(topProductos = []) {
+  const listaEl = document.getElementById('kpi-top-productos');
+  if (!listaEl) return;
+
+  if (!Array.isArray(topProductos) || topProductos.length === 0) {
+    listaEl.innerHTML = '<li class="kpi-top-productos__empty">Sin datos de ventas aún</li>';
+    return;
+  }
+
+  listaEl.innerHTML = topProductos
+    .slice(0, 3)
+    .map((producto, indice) => {
+      const nombre = escaparTextoHtml(producto?.nombre || 'Sin nombre');
+      const stock = Number(producto?.stock);
+      const stockTexto = Number.isFinite(stock) ? `${stock} u.` : '—';
+      return `
+        <li class="kpi-top-productos__item">
+          <span class="kpi-top-productos__rank">${indice + 1}</span>
+          <span class="kpi-top-productos__nombre" title="${nombre}">${nombre}</span>
+          <span class="kpi-top-productos__stock">${escaparTextoHtml(stockTexto)}</span>
+        </li>
+      `;
+    })
+    .join('');
+}
+
+/**
+ * Carga métricas del dashboard admin desde /api/admin/metricas
+ * y actualiza facturación mensual, pendientes y Top 3.
+ */
+async function cargarMetricasDashboard() {
+  const facturadoEl = document.getElementById('kpi-facturado');
+  const pendientesEl = document.getElementById('kpi-activos');
+  const listaTopEl = document.getElementById('kpi-top-productos');
+
+  try {
+    metricasDashboard = await apiFetch('/api/admin/metricas');
+
+    if (facturadoEl) {
+      facturadoEl.textContent = formatearPrecio(metricasDashboard?.totalFacturado ?? 0);
+    }
+    if (pendientesEl) {
+      pendientesEl.textContent = String(metricasDashboard?.pendientesContador ?? 0);
+    }
+    renderizarTopProductosDashboard(metricasDashboard?.topProductos || []);
+  } catch (error) {
+    metricasDashboard = null;
+    console.error('Error al cargar métricas del dashboard:', error);
+    if (facturadoEl) facturadoEl.textContent = formatearPrecio(0);
+    if (pendientesEl) pendientesEl.textContent = '0';
+    if (listaTopEl) {
+      listaTopEl.innerHTML = '<li class="kpi-top-productos__empty">No se pudieron cargar</li>';
+    }
+  }
 }
 
 async function cargarEstadisticasAdmin() {
@@ -5786,7 +6177,7 @@ function crearOpcionesEstado(estadoActual) {
   const actual = normalizarEstadoPedidoCliente(estadoActual);
   return ESTADOS_PEDIDO.map(
     (estado) =>
-      `<option value="${estado}"${estado === actual ? ' selected' : ''}>${estado}</option>`
+      `<option value="${estado}"${estado === actual ? ' selected' : ''}>${ETIQUETAS_ESTADO_PEDIDO[estado]}</option>`
   ).join('');
 }
 
@@ -5805,32 +6196,35 @@ function renderizarTablaPedidosAdmin(listaPedidos) {
 
   tbody.innerHTML = ordenados
     .map((pedido) => {
-      const claseEstado = obtenerClaseEstado(pedido.estado);
+      const idVisible = escaparTextoHtml(pedido.numeroPedido || pedido.id);
+      const idPedido = escaparAtributoHtml(pedido.id);
+      const nombreCliente = escaparTextoHtml(pedido.cliente?.nombre || '—');
+      const telefono = escaparTextoHtml(pedido.cliente?.telefono || '—');
+      const resumen = resumirProductos(pedido.productos);
+      const resumenSeguro = escaparTextoHtml(resumen);
+      const resumenAttr = escaparAtributoHtml(resumen);
+
       return `
-        <tr data-order-id="${pedido.id}">
-          <td><span class="admin-table__id">${pedido.id}</span></td>
+        <tr data-order-id="${idPedido}">
+          <td><span class="admin-table__id">#${idVisible}</span></td>
           <td>${formatearFechaCorta(pedido.fecha)}</td>
-          <td>${pedido.cliente?.nombre || '—'}</td>
-          <td>${pedido.cliente?.telefono || '—'}</td>
-          <td><span class="admin-table__products" title="${resumirProductos(pedido.productos)}">${resumirProductos(pedido.productos)}</span></td>
+          <td>${nombreCliente}</td>
+          <td>${telefono}</td>
+          <td><span class="admin-table__products" title="${resumenAttr}">${resumenSeguro}</span></td>
           <td class="admin-table__total">${formatearPrecio(pedido.total)}</td>
+          <td>${crearBadgeEstadoPedido(pedido.estado)}</td>
           <td>
-            <select
-              class="status-select status-select--${claseEstado}"
-              data-order-id="${pedido.id}"
-              aria-label="Cambiar estado de ${pedido.id}"
-            >
-              ${crearOpcionesEstado(pedido.estado)}
-            </select>
-          </td>
-          <td>
-            <button
-              class="btn-detail"
-              type="button"
-              data-order-id="${pedido.id}"
-            >
-              Ver detalle
-            </button>
+            <div class="admin-table__actions">
+              ${crearBotonEtiquetaEnvio(pedido.id)}
+              ${crearBotonNotificarDespacho(pedido.id, pedido.estado)}
+              <button
+                class="btn-detail"
+                type="button"
+                data-order-id="${idPedido}"
+              >
+                Ver detalle
+              </button>
+            </div>
           </td>
         </tr>
       `;
@@ -5838,11 +6232,60 @@ function renderizarTablaPedidosAdmin(listaPedidos) {
     .join('');
 }
 
+/**
+ * Notifica despacho al comprador y marca el pedido como despachado.
+ * Deshabilita el botón durante el request para evitar clics múltiples.
+ */
+async function notificarDespachoServidor(pedidoId, botonElemento) {
+  if (!pedidoId || !botonElemento || botonElemento.disabled) return;
+
+  const codigoIngresado = window.prompt(
+    'Ingresa el código de seguimiento del envío (deja en blanco si no aplica):',
+    ''
+  );
+
+  // Cancelar el diálogo → no enviar nada
+  if (codigoIngresado === null) return;
+
+  const codigoSeguimiento = codigoIngresado.trim();
+  const htmlOriginal = botonElemento.innerHTML;
+
+  botonElemento.disabled = true;
+  botonElemento.textContent = 'Enviando...';
+
+  try {
+    const respuesta = await apiFetch(`/api/admin/pedidos/${encodeURIComponent(pedidoId)}/notificar-despacho`, {
+      method: 'POST',
+      body: JSON.stringify({ codigoSeguimiento }),
+    });
+
+    const pedidoActualizado = respuesta?.pedido;
+    if (pedidoActualizado?.id) {
+      const indice = pedidos.findIndex((p) => p.id === pedidoActualizado.id);
+      if (indice >= 0) {
+        pedidos[indice] = { ...pedidos[indice], ...pedidoActualizado };
+      }
+    } else {
+      const local = pedidos.find((p) => p.id === pedidoId);
+      if (local) local.estado = 'despachado';
+    }
+
+    renderizarTablaPedidosAdmin(pedidos);
+    await cargarMetricasDashboard();
+    mostrarToast(respuesta?.mensaje || 'Notificación de despacho enviada.');
+  } catch (error) {
+    botonElemento.disabled = false;
+    botonElemento.innerHTML = htmlOriginal;
+    mostrarToast(error?.message || 'No se pudo notificar el despacho.', 'error');
+  }
+}
+
 async function cargarPanelAdmin() {
   await Promise.all([
     cargarPedidos(),
     cargarProductos({ todos: true }),
     cargarEstadisticasAdmin(),
+    cargarMetricasDashboard(),
   ]);
 
   const vacio = pedidos.length === 0;
@@ -5858,7 +6301,6 @@ async function cargarPanelAdmin() {
       : `${pedidos.length} pedido${pedidos.length !== 1 ? 's' : ''}`;
   }
 
-  actualizarMetricasAdmin(estadisticasAdmin);
   renderizarGraficoVentasAdmin(estadisticasAdmin);
   renderizarTablaPedidosAdmin(pedidos);
   actualizarContadorProductosAdmin();
@@ -6141,15 +6583,13 @@ async function cambiarEstadoPedidoAdmin(id, nuevoEstado) {
     });
 
     pedido.estado = nuevoEstado;
+    renderizarTablaPedidosAdmin(pedidos);
 
-    const select = document.querySelector(`.status-select[data-order-id="${id}"]`);
-    if (select) {
-      const clase = obtenerClaseEstado(nuevoEstado);
-      select.className = `status-select status-select--${clase}`;
-    }
+    const modalAbierto = document.getElementById('order-modal')?.classList.contains('is-open');
+    if (modalAbierto) abrirModalPedido(id);
 
-    await cargarEstadisticasAdmin();
-    actualizarMetricasAdmin(estadisticasAdmin);
+    await Promise.all([cargarEstadisticasAdmin(), cargarMetricasDashboard()]);
+    renderizarGraficoVentasAdmin(estadisticasAdmin);
   } catch (error) {
     mostrarToast(error?.message || 'No se pudo actualizar el estado del pedido.', 'error');
     cargarPanelAdmin();
@@ -6185,7 +6625,16 @@ function abrirModalPedido(id) {
     modalBody.innerHTML = `
       <div class="detail-section">
         <h3 class="detail-section__title">Estado</h3>
-        <span class="detail-badge detail-badge--${claseEstado}">${obtenerEtiquetaEstado(pedido.estado)}</span>
+        <div class="detail-estado-row">
+          ${crearBadgeEstadoPedido(pedido.estado)}
+          <select
+            class="status-select status-select--${claseEstado}"
+            data-order-id="${escaparAtributoHtml(pedido.id)}"
+            aria-label="Cambiar estado del pedido"
+          >
+            ${crearOpcionesEstado(pedido.estado)}
+          </select>
+        </div>
       </div>
 
       <div class="detail-section">
@@ -6193,15 +6642,27 @@ function abrirModalPedido(id) {
         <div class="detail-grid">
           <div class="detail-row">
             <span class="detail-row__label">Nombre</span>
-            <span class="detail-row__value">${pedido.cliente?.nombre || '—'}</span>
+            <span class="detail-row__value">${escaparTextoHtml(pedido.cliente?.nombre || '—')}</span>
           </div>
           <div class="detail-row">
             <span class="detail-row__label">Teléfono</span>
-            <span class="detail-row__value">${pedido.cliente?.telefono || '—'}</span>
+            <span class="detail-row__value">${escaparTextoHtml(pedido.cliente?.telefono || '—')}</span>
           </div>
           <div class="detail-row">
             <span class="detail-row__label">Dirección</span>
-            <span class="detail-row__value">${pedido.cliente?.direccion || '—'}</span>
+            <span class="detail-row__value">${escaparTextoHtml(pedido.cliente?.direccion || '—')}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-row__label">Localidad</span>
+            <span class="detail-row__value">${escaparTextoHtml(pedido.cliente?.localidad || '—')}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-row__label">Provincia</span>
+            <span class="detail-row__value">${escaparTextoHtml(pedido.cliente?.provincia || '—')}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-row__label">Código postal</span>
+            <span class="detail-row__value">${escaparTextoHtml(pedido.cliente?.codigoPostal || '—')}</span>
           </div>
         </div>
       </div>
@@ -6211,7 +6672,7 @@ function abrirModalPedido(id) {
         <div class="detail-grid">
           <div class="detail-row">
             <span class="detail-row__label">Método de pago</span>
-            <span class="detail-row__value">${pedido.metodoPago || '—'}</span>
+            <span class="detail-row__value">${escaparTextoHtml(pedido.metodoPago || '—')}</span>
           </div>
           <div class="detail-row">
             <span class="detail-row__label">Fecha</span>
@@ -6410,12 +6871,30 @@ function inicializarEventosAdmin() {
   productModalCancel?.addEventListener('click', cerrarModalProducto);
   productModalOverlay?.addEventListener('click', cerrarModalProducto);
 
+  const modalBody = document.getElementById('order-modal-body');
+  modalBody?.addEventListener('change', (e) => {
+    if (!e.target.matches('.status-select')) return;
+    cambiarEstadoPedidoAdmin(e.target.dataset.orderId, e.target.value);
+  });
+
   tbody?.addEventListener('change', (e) => {
     if (!e.target.matches('.status-select')) return;
     cambiarEstadoPedidoAdmin(e.target.dataset.orderId, e.target.value);
   });
 
   tbody?.addEventListener('click', (e) => {
+    const btnEtiqueta = e.target.closest('.btn-etiqueta-envio');
+    if (btnEtiqueta) {
+      abrirEtiquetaEnvio(btnEtiqueta.dataset.orderId);
+      return;
+    }
+
+    const btnNotificar = e.target.closest('.btn-notificar-despacho');
+    if (btnNotificar) {
+      notificarDespachoServidor(btnNotificar.dataset.orderId, btnNotificar);
+      return;
+    }
+
     const btn = e.target.closest('.btn-detail');
     if (!btn) return;
     abrirModalPedido(btn.dataset.orderId);
