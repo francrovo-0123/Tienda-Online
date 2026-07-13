@@ -226,6 +226,14 @@ body.admin-active {
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
+#admin-view .admin-sidebar__logo-img {
+  height: 40px;
+  width: auto;
+  max-width: 140px;
+  object-fit: contain;
+  filter: brightness(0) invert(1);
+}
+
 #admin-view .admin-sidebar__logo {
   font-size: 1.125rem;
   font-weight: 600;
@@ -2086,6 +2094,11 @@ body.modal-open {
   #admin-view .admin-sidebar__store span,
   #admin-view .admin-sidebar__logout span {
     display: none;
+  }
+
+  #admin-view .admin-sidebar__logo-img {
+    height: 28px;
+    max-width: 52px;
   }
 
   #admin-view .admin-sidebar__brand {

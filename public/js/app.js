@@ -328,6 +328,9 @@ function aplicarMarcaTienda() {
   document.querySelectorAll('.logo-text__store').forEach((el) => {
     el.textContent = sufijo;
   });
+  document.querySelectorAll('.logo-img[alt], .footer-logo-img[alt], .admin-sidebar__logo-img[alt]').forEach((el) => {
+    el.setAttribute('alt', nombre);
+  });
   document.querySelectorAll('.footer-logo').forEach((el) => {
     el.textContent = nombre;
   });
