@@ -3512,6 +3512,46 @@ function obtenerProductosIngresos() {
   return [...filtrados].sort((a, b) => Number(b.id) - Number(a.id)).slice(0, 12);
 }
 
+const STADIUM_CAROUSEL_IDS = [
+  'destacados-carousel',
+  'ofertas-carousel',
+  'stadium-carousel'
+];
+
+function obtenerCantidadTarjetasAScrollear() {
+  const ancho = window.innerWidth;
+  if (ancho >= 768) return 1; // En Desktop y Tablet avanza de a 1 tarjeta para un scroll más fluido
+  return 1; // En mobile se mantiene en 1 para acompañar el viewport chico
+}
+
+function actualizarVisibilidadFlechas(carouselId) {
+  const carousel = document.getElementById(carouselId);
+  if (!carousel) return;
+
+  const viewport = carousel.querySelector('.stadium-carousel__viewport');
+  const prev = document.getElementById(`${carouselId}-prev`);
+  const next = document.getElementById(`${carouselId}-next`);
+  if (!viewport) return;
+
+  const maxScroll = Math.max(0, viewport.scrollWidth - viewport.clientWidth);
+  const alInicio = viewport.scrollLeft <= 5;
+  const alFinal = viewport.scrollLeft >= maxScroll - 5 || maxScroll <= 5;
+
+  if (prev) {
+    prev.disabled = alInicio;
+    prev.setAttribute('aria-disabled', alInicio ? 'true' : 'false');
+  }
+
+  if (next) {
+    next.disabled = alFinal;
+    next.setAttribute('aria-disabled', alFinal ? 'true' : 'false');
+  }
+}
+
+function actualizarVisibilidadFlechasTodos() {
+  STADIUM_CAROUSEL_IDS.forEach(actualizarVisibilidadFlechas);
+}
+
 function renderizarCarruselProductos(trackId, lista, mensajeVacio) {
   const track = document.getElementById(trackId);
   if (!track) return;
@@ -3519,11 +3559,16 @@ function renderizarCarruselProductos(trackId, lista, mensajeVacio) {
   if (!lista.length) {
     track.innerHTML = `<p class="stadium-carousel__empty">${mensajeVacio}</p>`;
     track.setAttribute('aria-busy', 'false');
+    const carouselId = trackId.replace(/-track$/, '');
+    requestAnimationFrame(() => actualizarVisibilidadFlechas(carouselId));
     return;
   }
 
   track.innerHTML = lista.map(crearHtmlTarjetaProducto).join('');
   track.setAttribute('aria-busy', 'false');
+
+  const carouselId = trackId.replace(/-track$/, '');
+  requestAnimationFrame(() => actualizarVisibilidadFlechas(carouselId));
 }
 
 function renderizarCarruselesInicio() {
@@ -3554,17 +3599,33 @@ function inicializarCarruselHorizontal(trackId, prevId, nextId) {
   const next = document.getElementById(nextId);
   if (!track) return;
 
-  const scrollEl = track.closest('.stadium-carousel__viewport') || track;
+  const carouselId = trackId.replace(/-track$/, '');
+  const viewport = track.closest('.stadium-carousel__viewport') || track;
 
   const desplazar = (direccion) => {
+    // Recalcular en el click: cqw / gap cambian con resize y container queries.
     const card = track.querySelector('.product-card');
-    const gap = parseFloat(getComputedStyle(track).gap) || 16;
-    const paso = card ? card.offsetWidth + gap : 260;
-    scrollEl.scrollBy({ left: direccion * paso, behavior: 'smooth' });
+    const gap = parseFloat(getComputedStyle(track).gap) || 24;
+    const anchoTarjeta = card ? card.offsetWidth : 260;
+    const cantidad = obtenerCantidadTarjetasAScrollear();
+    const paso = (anchoTarjeta + gap) * cantidad;
+    const maxScroll = Math.max(0, viewport.scrollWidth - viewport.clientWidth);
+    const nuevoScrollLeft = Math.min(
+      maxScroll,
+      Math.max(0, viewport.scrollLeft + direccion * paso)
+    );
+
+    viewport.scrollTo({ left: nuevoScrollLeft, behavior: 'smooth' });
   };
 
   prev?.addEventListener('click', () => desplazar(-1));
   next?.addEventListener('click', () => desplazar(1));
+
+  viewport.addEventListener('scroll', () => actualizarVisibilidadFlechas(carouselId), {
+    passive: true
+  });
+
+  actualizarVisibilidadFlechas(carouselId);
 }
 
 function inicializarStadiumCarousel() {
@@ -3583,6 +3644,14 @@ function inicializarStadiumCarousel() {
     'stadium-carousel-prev',
     'stadium-carousel-next'
   );
+
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(actualizarVisibilidadFlechasTodos, 150);
+  });
+
+  actualizarVisibilidadFlechasTodos();
 }
 
 function inicializarHeroStage() {

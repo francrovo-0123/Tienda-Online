@@ -215,9 +215,15 @@
 .stadium-section__inner {
   position: relative;
   z-index: 1;
-  max-width: var(--max-width);
+}
+
+/* Contenedor premium ancho — estilo Adidas */
+.carousel-container-wide {
+  width: 100%;
+  max-width: 1440px;
   margin: 0 auto;
-  padding: 0 var(--space-md);
+  padding: 0 40px;
+  position: relative;
 }
 
 .stadium-section__title {
@@ -254,17 +260,17 @@
 /* ── Carrusel productos ── */
 .stadium-carousel {
   position: relative;
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
+  display: block;
   padding-top: 0.5rem;
   padding-bottom: 0.5rem;
 }
 
 .stadium-carousel__viewport {
-  flex: 1;
+  width: 100%;
   min-width: 0;
   margin: 0;
+  container-type: inline-size;
+  container-name: stadium-carousel;
   overflow-x: auto;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
@@ -282,16 +288,18 @@
 }
 
 .stadium-carousel__track {
+  --carousel-gap: 16px;
   display: flex;
-  gap: 1.25rem;
+  gap: var(--carousel-gap);
   width: max-content;
   min-width: 100%;
   margin: 0;
-  padding: 1rem 2rem 1rem 0.75rem;
+  padding: 1rem 0;
 }
 
 .stadium-carousel__track .product-card {
-  flex: 0 0 240px;
+  flex: 0 0 calc((100cqw - var(--carousel-gap)) / 1.65);
+  width: calc((100cqw - var(--carousel-gap)) / 1.65);
   margin: 0;
   scroll-snap-align: start;
   background: #fff;
@@ -302,45 +310,79 @@
   scroll-snap-align: end;
 }
 
-@media (min-width: 640px) {
+/* Tablet: 3 tarjetas visibles */
+@media (min-width: 768px) {
+  .stadium-carousel__track {
+    --carousel-gap: 24px;
+  }
+
   .stadium-carousel__track .product-card {
-    flex: 0 0 260px;
+    flex: 0 0 calc((100cqw - (2 * var(--carousel-gap))) / 3);
+    width: calc((100cqw - (2 * var(--carousel-gap))) / 3);
   }
 }
 
-@media (min-width: 1024px) {
+/* Desktop grande: 4 tarjetas visibles */
+@media (min-width: 1200px) {
   .stadium-carousel__viewport {
-    scroll-padding-inline: 1rem;
-  }
-
-  .stadium-carousel__track {
-    gap: 1.5rem;
-    padding-left: 1rem;
-    padding-right: 2rem;
+    scroll-padding-inline: 0;
   }
 
   .stadium-carousel__track .product-card {
-    flex: 0 0 280px;
+    flex: 0 0 calc((100cqw - (3 * var(--carousel-gap))) / 4);
+    width: calc((100cqw - (3 * var(--carousel-gap))) / 4);
   }
+}
+
+/* Imágenes del carrusel: proporción fija sin distorsión */
+.stadium-carousel__track .product-card__image-wrapper,
+.stadium-carousel__track .producto-imagen-contenedor {
+  aspect-ratio: 1 / 1;
+  background-color: #f8f8f8;
+}
+
+.stadium-carousel__track .product-card__image,
+.stadium-carousel__track .producto-imagen-contenedor img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center center;
 }
 
 .stadium-carousel__arrow {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 10;
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
   width: 36px;
   height: 36px;
+  margin-block: auto;
   color: #111;
   background: #fff;
   border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 50%;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
+  /* Sin transform: evita el salto del scale(0.97) global en :active */
+  transform: none;
   transition:
     background-color var(--transition-fast),
     color var(--transition-fast),
-    border-color var(--transition-fast);
+    border-color var(--transition-fast),
+    opacity var(--transition-fast);
+}
+
+.stadium-carousel__arrow--prev {
+  left: auto;
+  right: calc(100% + 8px);
+}
+
+.stadium-carousel__arrow--next {
+  left: calc(100% + 8px);
+  right: auto;
 }
 
 .stadium-carousel__arrow svg {
@@ -352,6 +394,11 @@
   color: #fff;
   background: #111;
   border-color: #111;
+}
+
+.stadium-carousel__arrow:active:not(:disabled),
+.stadium-carousel__arrow:focus-visible {
+  transform: none;
 }
 
 .stadium-carousel__arrow:disabled {
@@ -370,15 +417,35 @@
   text-shadow: none;
 }
 
-@media (max-width: 480px) {
+@media (max-width: 768px) {
+  /* Padding del contenedor es 16px: flechas más chicas y pegadas al borde exterior */
   .stadium-carousel__arrow {
     width: 30px;
     height: 30px;
   }
 
+  .stadium-carousel__arrow--prev {
+    right: calc(100% + 2px);
+  }
+
+  .stadium-carousel__arrow--next {
+    left: calc(100% + 2px);
+  }
+
   .stadium-carousel__arrow svg {
     width: 14px;
     height: 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  /* En mobile angosto las flechas quedan sobre el gutter; el swipe sigue siendo el control principal */
+  .stadium-carousel__arrow--prev {
+    right: calc(100% - 2px);
+  }
+
+  .stadium-carousel__arrow--next {
+    left: calc(100% - 2px);
   }
 }
 
@@ -1639,6 +1706,10 @@
 }
 
 @media (max-width: 768px) {
+  .carousel-container-wide {
+    padding: 0 16px;
+  }
+
   .stadium-section {
     padding-block: 0 var(--space-md);
   }
@@ -1690,19 +1761,14 @@
   }
 
   .stadium-carousel__track {
-    gap: 1rem;
+    gap: var(--carousel-gap, 16px);
     padding: 1rem 0;
-    scroll-padding-inline: 0.5rem;
+    scroll-padding-inline: 0;
   }
 
   .stadium-carousel__track::before,
   .stadium-carousel__track::after {
-    flex-basis: 0.5rem;
-  }
-
-  .stadium-carousel__track .product-card {
-    flex: 0 0 220px;
-    margin: 0;
+    display: none;
   }
 
   .product-detail-modal__dialog {
