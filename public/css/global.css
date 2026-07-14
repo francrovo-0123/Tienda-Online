@@ -183,7 +183,7 @@ button:active:not(:disabled) {
 .stadium-section,
 .products-section,
 .tracking-section {
-  scroll-margin-top: calc(var(--main-header-height, 70px) + 1rem);
+  scroll-margin-top: calc(var(--main-header-height, 70px) + 1.25rem);
 }
 
 /* ── Admin view (pantalla completa) ── */
@@ -231,7 +231,6 @@ body.admin-active {
   width: auto;
   max-width: 140px;
   object-fit: contain;
-  filter: brightness(0) invert(1);
 }
 
 #admin-view .admin-sidebar__logo {
@@ -3457,6 +3456,284 @@ body.auth-open {
   background: var(--admin-card-bg);
   border: 1px dashed var(--admin-border);
   border-radius: 12px;
+}
+
+#admin-view .admin-banners {
+  border: 1px solid var(--admin-border);
+  border-radius: 12px;
+  background: var(--admin-card-bg);
+  padding: 0;
+  overflow: hidden;
+}
+
+#admin-view .admin-banners__summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem 1rem;
+  padding: 0.95rem 1.1rem;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+#admin-view .admin-banners__summary::-webkit-details-marker {
+  display: none;
+}
+
+#admin-view .admin-banners__summary::after {
+  content: '▾';
+  margin-left: auto;
+  color: var(--admin-text-secondary);
+  transition: transform 0.2s ease;
+}
+
+#admin-view .admin-banners:not([open]) .admin-banners__summary::after {
+  transform: rotate(-90deg);
+}
+
+#admin-view .admin-banners__summary-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--admin-text-primary);
+}
+
+#admin-view .admin-banners__summary-hint {
+  font-size: 0.82rem;
+  color: var(--admin-text-secondary);
+}
+
+#admin-view .admin-banners__intro {
+  margin: 0;
+  padding: 0 1.1rem 0.85rem;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: var(--admin-text-secondary);
+}
+
+#admin-view .admin-banners__intro code {
+  font-size: 0.82rem;
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  background: #f3f4f6;
+}
+
+#admin-view .admin-banners__grid,
+#admin-view .admin-banners__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 0 1.1rem 1.15rem;
+}
+
+#admin-view .admin-banner-card {
+  display: grid;
+  grid-template-columns: minmax(140px, 200px) minmax(0, 1fr);
+  gap: 0.9rem 1.1rem;
+  padding: 0.95rem;
+  border: 1px solid var(--admin-border);
+  border-radius: 12px;
+  background: #fff;
+  align-items: start;
+}
+
+#admin-view .admin-banner-card__header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+#admin-view .admin-banner-card__title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 650;
+  color: var(--admin-text-primary);
+}
+
+#admin-view .admin-banner-card__status {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  background: #f3f4f6;
+  color: var(--admin-text-secondary);
+}
+
+#admin-view .admin-banner-card__status.is-active {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+#admin-view .admin-banner-card__preview {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 6;
+  border-radius: 8px;
+  overflow: hidden;
+  background-color: #f3f4f6;
+}
+
+#admin-view .admin-banner-card__preview-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+#admin-view .admin-banner-card__preview-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  color: #9ca3af;
+  text-align: center;
+  padding: 0.5rem;
+}
+
+#admin-view .admin-banner-card__fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  min-width: 0;
+}
+
+#admin-view .admin-banner-card__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+#admin-view .admin-banner-card__label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--admin-text-secondary);
+}
+
+#admin-view .admin-banner-card__hint {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #9ca3af;
+}
+
+#admin-view .admin-banner-card__input,
+#admin-view .admin-banner-card__file {
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--admin-border);
+  border-radius: 8px;
+  font-size: 0.875rem;
+  color: var(--admin-text-primary);
+  background: #fff;
+}
+
+#admin-view .admin-banner-card__input:focus,
+#admin-view .admin-banner-card__file:focus {
+  outline: none;
+  border-color: #111;
+  box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.08);
+}
+
+#admin-view .admin-banner-card__file {
+  padding: 0.4rem;
+}
+
+#admin-view .admin-banner-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.15rem;
+}
+
+#admin-view .admin-banner-card__progress {
+  display: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #e5e7eb;
+}
+
+#admin-view .admin-banner-card.is-loading .admin-banner-card__progress {
+  display: block;
+}
+
+#admin-view .admin-banner-card__progress-bar {
+  width: 40%;
+  height: 100%;
+  border-radius: inherit;
+  background: #111;
+  animation: admin-banner-progress 1s ease-in-out infinite;
+}
+
+@keyframes admin-banner-progress {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(280%); }
+}
+
+#admin-view .admin-banner-card__btn {
+  flex: 1 1 auto;
+  min-width: 110px;
+  padding: 0.55rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 0.15s ease, opacity 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+}
+
+#admin-view .admin-banner-card__btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+#admin-view .admin-banner-card__btn--save {
+  background: #111;
+  color: #fff;
+}
+
+#admin-view .admin-banner-card__btn--save:hover:not(:disabled) {
+  background: #333;
+}
+
+#admin-view .admin-banner-card__btn--delete {
+  background: #fff;
+  color: #b91c1c;
+  border-color: #fecaca;
+}
+
+#admin-view .admin-banner-card__btn--delete:hover:not(:disabled) {
+  background: #fef2f2;
+}
+
+#admin-view .admin-banner-card__spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: admin-banner-spin 0.7s linear infinite;
+}
+
+@keyframes admin-banner-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 720px) {
+  #admin-view .admin-banner-card {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 640px) {

@@ -9,6 +9,7 @@ const express = require('express');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const fs = require('fs');
+const multer = require('multer');
 const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
@@ -174,11 +175,73 @@ const limitadorContacto = rateLimit({
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
+const DATA_DIR = path.join(__dirname, '..', 'data');
+const BANNERS_DIR = path.join(PUBLIC_DIR, 'images', 'banners');
+const BANNERS_JSON_PATH = path.join(DATA_DIR, 'banners.json');
+const MAX_BANNERS = 3;
+
 app.get('/favicon.ico', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'favicon.ico')));
 app.get('/favicon.svg', (_req, res) => res.type('image/svg+xml').sendFile(path.join(PUBLIC_DIR, 'favicon.svg')));
 app.get('/favicon.png', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'favicon.png')));
 
 app.use(express.static(PUBLIC_DIR));
+
+const BANNERS_POR_DEFECTO = [
+  {
+    index: 0,
+    imagenUrl: 'https://images.unsplash.com/photo-1517466787929-bc90951d0974?auto=format&fit=crop&w=1920&q=80',
+    enlace: '',
+    titulo: 'CAMISETAS DE FÚTBOL',
+    activo: true,
+  },
+  {
+    index: 1,
+    imagenUrl: 'https://images.unsplash.com/photo-1551958219-acbc608c6377?auto=format&fit=crop&w=1920&q=80',
+    enlace: '',
+    titulo: 'CLUBES ARGENTINOS',
+    activo: true,
+  },
+  {
+    index: 2,
+    imagenUrl: 'https://images.unsplash.com/photo-1579952363873-27f3bade9f55?auto=format&fit=crop&w=1920&q=80',
+    enlace: '',
+    titulo: 'SELECCIONES & RETRO',
+    activo: true,
+  },
+];
+
+function asegurarDirectoriosBanners() {
+  for (const dir of [DATA_DIR, BANNERS_DIR]) {
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+  }
+}
+
+const almacenamientoBanners = multer.diskStorage({
+  destination(_req, _file, cb) {
+    asegurarDirectoriosBanners();
+    cb(null, BANNERS_DIR);
+  },
+  filename(_req, file, cb) {
+    const ext = path.extname(file.originalname || '').toLowerCase() || '.jpg';
+    const indexRaw = _req.body?.index ?? _req.body?.slot;
+    const index = String(indexRaw ?? 'x').replace(/\D/g, '');
+    cb(null, `banner-${index || 'x'}-${Date.now()}${ext}`);
+  },
+});
+
+const uploadBanner = multer({
+  storage: almacenamientoBanners,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter(_req, file, cb) {
+    if (!file.mimetype || !file.mimetype.startsWith('image/')) {
+      cb(new Error('Solo se permiten archivos de imagen.'));
+      return;
+    }
+    cb(null, true);
+  },
+});
 
 const productoItemPedidoSchema = new mongoose.Schema(
   {
@@ -291,6 +354,7 @@ const pedidoSchema = new mongoose.Schema({
   pago: { type: String, default: 'Efectivo' },
   productos: [productoItemPedidoSchema],
   total: { type: Number, default: 0 },
+  costoEnvio: { type: Number, default: 0, min: 0 },
   estado: {
     type: String,
     enum: ESTADOS_PEDIDO_SCHEMA,
@@ -1613,6 +1677,7 @@ function formatearPedido(pedido) {
     },
     productos: (datos.productos || []).map(formatearItemPedido),
     total: datos.total,
+    costoEnvio: Number(datos.costoEnvio) || 0,
     metodoPago: datos.pago,
     fecha: datos.fecha instanceof Date ? datos.fecha.toISOString() : datos.fecha,
     estado: normalizarEstadoPedido(datos.estado),
@@ -1641,6 +1706,97 @@ function formatearConfiguracion(config) {
     cloudinaryUploadPreset: String(datos.cloudinaryUploadPreset || '').trim(),
     afipLink: String(datos.afipLink || '').trim(),
   };
+}
+
+function parsearIndiceBanner(valor) {
+  const index = Number(valor);
+  if (!Number.isInteger(index) || index < 0 || index >= MAX_BANNERS) {
+    return null;
+  }
+  return index;
+}
+
+function normalizarBanner(banner, indexFallback = 0) {
+  const datos = banner && typeof banner === 'object' ? banner : {};
+  const index = parsearIndiceBanner(datos.index ?? datos.slot ?? indexFallback);
+  const indexFinal = index === null ? indexFallback : index;
+
+  return {
+    index: indexFinal,
+    imagenUrl: String(datos.imagenUrl || datos.imagen_url || datos.imagen || '').trim(),
+    enlace: String(datos.enlace || datos.link || '').trim(),
+    titulo: String(datos.titulo || '').trim(),
+    activo: datos.activo !== false,
+  };
+}
+
+function completarListaBanners(lista = []) {
+  const porIndex = new Map();
+
+  (Array.isArray(lista) ? lista : []).forEach((banner, position) => {
+    const normalizado = normalizarBanner(banner, position);
+    porIndex.set(normalizado.index, normalizado);
+  });
+
+  return Array.from({ length: MAX_BANNERS }, (_, index) => (
+    porIndex.get(index) || { ...BANNERS_POR_DEFECTO[index], index }
+  ));
+}
+
+function leerBannersDesdeJson() {
+  asegurarDirectoriosBanners();
+
+  try {
+    if (!fs.existsSync(BANNERS_JSON_PATH)) {
+      escribirBannersEnJson(BANNERS_POR_DEFECTO);
+      return completarListaBanners(BANNERS_POR_DEFECTO);
+    }
+
+    const crudo = JSON.parse(fs.readFileSync(BANNERS_JSON_PATH, 'utf8'));
+    const lista = Array.isArray(crudo) ? crudo : crudo?.banners;
+    if (!Array.isArray(lista)) {
+      escribirBannersEnJson(BANNERS_POR_DEFECTO);
+      return completarListaBanners(BANNERS_POR_DEFECTO);
+    }
+
+    return completarListaBanners(lista);
+  } catch (error) {
+    console.warn('No se pudo leer data/banners.json:', error.message);
+    return completarListaBanners(BANNERS_POR_DEFECTO);
+  }
+}
+
+function escribirBannersEnJson(banners) {
+  asegurarDirectoriosBanners();
+  const lista = completarListaBanners(banners);
+  fs.writeFileSync(BANNERS_JSON_PATH, `${JSON.stringify(lista, null, 2)}\n`, 'utf8');
+  return lista;
+}
+
+function esUrlImagenLocalBanner(url) {
+  return typeof url === 'string' && url.startsWith('/images/banners/');
+}
+
+function eliminarArchivoBannerLocal(url) {
+  if (!esUrlImagenLocalBanner(url)) return;
+  const nombre = path.basename(url);
+  if (!nombre || nombre.includes('..')) return;
+  const ruta = path.join(BANNERS_DIR, nombre);
+  if (fs.existsSync(ruta)) {
+    try {
+      fs.unlinkSync(ruta);
+    } catch (error) {
+      console.warn('No se pudo eliminar imagen de banner:', error.message);
+    }
+  }
+}
+
+function obtenerBannersActuales() {
+  return leerBannersDesdeJson();
+}
+
+function guardarBanners(banners) {
+  return escribirBannersEnJson(banners);
 }
 
 async function migrarNombreTiendaSiCorresponde(config) {
@@ -2628,6 +2784,165 @@ app.put('/api/config', verificarJWT, esAdmin, async (req, res) => {
   }
 });
 
+// ── Banners de la Home (data/banners.json + Multer) ──
+
+app.get('/api/banners', (_req, res) => {
+  try {
+    const banners = obtenerBannersActuales().filter((banner) => banner.activo && banner.imagenUrl);
+    res.json({ banners });
+  } catch (error) {
+    console.error('Error al obtener banners:', error);
+    res.status(500).json({ error: 'Error interno del servidor.' });
+  }
+});
+
+app.get('/api/admin/banners', verificarAdminJWT, (_req, res) => {
+  try {
+    res.json({ banners: obtenerBannersActuales() });
+  } catch (error) {
+    console.error('Error al obtener banners admin:', error);
+    res.status(500).json({ error: 'Error interno del servidor.' });
+  }
+});
+
+app.post('/api/admin/banners', verificarAdminJWT, (req, res) => {
+  uploadBanner.single('imagen')(req, res, (errorMulter) => {
+    if (errorMulter) {
+      const mensaje = errorMulter.code === 'LIMIT_FILE_SIZE'
+        ? 'La imagen supera el máximo de 5 MB.'
+        : (errorMulter.message || 'No se pudo procesar la imagen.');
+      return res.status(400).json({ error: mensaje });
+    }
+
+    try {
+      const index = parsearIndiceBanner(req.body?.index ?? req.body?.slot);
+      if (index === null) {
+        if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        return res.status(400).json({
+          error: 'El índice del banner debe ser 0, 1 o 2.',
+        });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ error: 'Debés subir una imagen para el banner.' });
+      }
+
+      const enlace = String(req.body?.enlace || '').trim();
+      const titulo = String(req.body?.titulo || '').trim();
+      const imagenUrl = `/images/banners/${req.file.filename}`;
+      const banners = obtenerBannersActuales();
+      const actual = banners.find((banner) => banner.index === index);
+
+      if (actual?.imagenUrl) {
+        eliminarArchivoBannerLocal(actual.imagenUrl);
+      }
+
+      const actualizado = {
+        index,
+        imagenUrl,
+        enlace: enlace || actual?.enlace || '',
+        titulo: titulo || actual?.titulo || '',
+        activo: true,
+      };
+
+      const lista = banners.map((banner) => (banner.index === index ? actualizado : banner));
+      const guardados = guardarBanners(lista);
+
+      res.json({
+        ok: true,
+        mensaje: `Banner ${index + 1} guardado correctamente.`,
+        banner: actualizado,
+        banners: guardados,
+      });
+    } catch (error) {
+      console.error('Error al guardar banner:', error);
+      if (req.file?.path && fs.existsSync(req.file.path)) {
+        try { fs.unlinkSync(req.file.path); } catch { /* ignore */ }
+      }
+      res.status(500).json({ error: 'Error interno del servidor.' });
+    }
+  });
+});
+
+app.post('/api/admin/banners/link', verificarAdminJWT, (req, res) => {
+  try {
+    const index = parsearIndiceBanner(req.body?.index ?? req.body?.slot);
+    if (index === null) {
+      return res.status(400).json({ error: 'El índice del banner debe ser 0, 1 o 2.' });
+    }
+
+    const enlace = String(req.body?.enlace || req.body?.link || '').trim();
+    const titulo = req.body?.titulo !== undefined
+      ? String(req.body.titulo || '').trim()
+      : undefined;
+
+    const banners = obtenerBannersActuales();
+    const actual = banners.find((banner) => banner.index === index);
+
+    if (!actual?.imagenUrl) {
+      return res.status(400).json({
+        error: 'Ese banner todavía no tiene imagen. Subí una imagen antes de guardar el enlace.',
+      });
+    }
+
+    const actualizado = {
+      ...actual,
+      index,
+      enlace,
+      titulo: titulo !== undefined ? titulo : actual.titulo,
+      activo: true,
+    };
+
+    const lista = banners.map((banner) => (banner.index === index ? actualizado : banner));
+    const guardados = guardarBanners(lista);
+
+    res.json({
+      ok: true,
+      mensaje: `Enlace del banner ${index + 1} actualizado.`,
+      banner: actualizado,
+      banners: guardados,
+    });
+  } catch (error) {
+    console.error('Error al actualizar enlace de banner:', error);
+    res.status(500).json({ error: 'Error interno del servidor.' });
+  }
+});
+
+app.delete('/api/admin/banners/:index', verificarAdminJWT, (req, res) => {
+  try {
+    const index = parsearIndiceBanner(req.params.index);
+    if (index === null) {
+      return res.status(400).json({ error: 'El índice del banner debe ser 0, 1 o 2.' });
+    }
+
+    const banners = obtenerBannersActuales();
+    const actual = banners.find((banner) => banner.index === index);
+    if (actual?.imagenUrl) {
+      eliminarArchivoBannerLocal(actual.imagenUrl);
+    }
+
+    const vacio = {
+      index,
+      imagenUrl: '',
+      enlace: '',
+      titulo: '',
+      activo: false,
+    };
+
+    const lista = banners.map((banner) => (banner.index === index ? vacio : banner));
+    const guardados = guardarBanners(lista);
+
+    res.json({
+      ok: true,
+      mensaje: `Banner ${index + 1} eliminado.`,
+      banners: guardados,
+    });
+  } catch (error) {
+    console.error('Error al eliminar banner:', error);
+    res.status(500).json({ error: 'Error interno del servidor.' });
+  }
+});
+
 // ── Secciones ──
 
 app.get('/api/secciones', async (_req, res) => {
@@ -3354,9 +3669,21 @@ app.post('/api/pedidos', verificarClienteJWT, async (req, res) => {
       aplicacionCupon?.montoBase
     );
 
+    const envio = resolverCostoEnvioCheckout({
+      codigoPostal: datosEntrega.codigoPostal,
+      items,
+      totalProductos: totalFinal,
+    });
+    if (!envio.ok) {
+      await revertirDecrementosStock(decrementosRealizados);
+      return res.status(envio.status).json({ error: envio.error });
+    }
+
     if (esTransferencia) {
       ({ totalFinal } = aplicarDescuentoTransferenciaAlTotal(totalFinal));
     }
+
+    totalFinal = redondearMonto(totalFinal + envio.costoEnvio);
 
     let nuevoPedido;
 
@@ -3375,6 +3702,7 @@ app.post('/api/pedidos', verificarClienteJWT, async (req, res) => {
         pago: esTransferencia ? 'Transferencia' : (metodoPago || 'Efectivo'),
         productos: productosPedido,
         total: totalFinal,
+        costoEnvio: envio.costoEnvio,
         estado: esTransferencia ? ESTADO_PEDIDO_INICIAL : 'listo_empaquetar',
         fecha: new Date(),
       }).save();
@@ -3454,11 +3782,23 @@ app.post('/api/pagar', verificarClienteJWT, async (req, res) => {
     }
 
     const { productosPedido, totalPedido, decrementosRealizados } = resultadoItems;
-    const { totalFinal } = aplicarDescuentoCuponAlTotal(
+    let { totalFinal } = aplicarDescuentoCuponAlTotal(
       totalPedido,
       resultadoCupon.cupon,
       aplicacionCupon?.montoBase
     );
+
+    const envio = resolverCostoEnvioCheckout({
+      codigoPostal: datosEntrega.codigoPostal,
+      items,
+      totalProductos: totalFinal,
+    });
+    if (!envio.ok) {
+      await revertirDecrementosStock(decrementosRealizados);
+      return res.status(envio.status).json({ error: envio.error });
+    }
+
+    totalFinal = redondearMonto(totalFinal + envio.costoEnvio);
     const pedidoId = generarIdPedido();
     const nombreCliente = String(cliente.nombre).trim();
     const partesNombre = nombreCliente.split(/\s+/).filter(Boolean);
@@ -3546,6 +3886,7 @@ app.post('/api/pagar', verificarClienteJWT, async (req, res) => {
         pago: 'Mercado Pago',
         productos: productosPedido,
         total: totalFinal,
+        costoEnvio: envio.costoEnvio,
         estado: ESTADO_PEDIDO_MP_PENDIENTE,
         mercadopagoPreferenceId: String(preferenceResponse.id),
         expiraEn: new Date(Date.now() + 30 * 60 * 1000),
@@ -4027,6 +4368,99 @@ app.patch('/api/admin/cupones/:id', verificarAdminJWT, async (req, res) => {
   } catch (error) {
     logError('ADMIN_ACTUALIZAR_CUPON', error, { ruta: req.path, metodo: req.method });
     res.status(500).json({ error: 'Error interno del servidor.' });
+  }
+});
+
+/**
+ * Simulación de tarifas Correo Argentino desde origen Tandil (CP 7000).
+ * Extra por bulto si el carrito supera 3 prendas.
+ */
+const MONTO_ENVIO_GRATIS = 85000;
+
+function calcularTarifaEnvioSimulada(codigoPostalDestino, carrito) {
+  const cp = String(codigoPostalDestino || '').trim();
+  if (!/^\d{4}$/.test(cp)) {
+    return { ok: false, status: 400, error: 'El código postal debe tener exactamente 4 dígitos.' };
+  }
+
+  const cantidadPrendas = (Array.isArray(carrito) ? carrito : []).reduce((suma, item) => {
+    const cantidad = Math.max(1, Math.floor(Number(item?.cantidad) || 1));
+    return suma + cantidad;
+  }, 0);
+
+  // Peso estimado (~0.3 kg por remera) — referencia para la simulación de bulto.
+  const pesoEstimadoKg = Math.round(cantidadPrendas * 0.3 * 100) / 100;
+
+  let costoBase;
+  let tiempo;
+
+  if (cp === '7000') {
+    costoBase = 1200;
+    tiempo = '1 a 2 días hábiles';
+  } else {
+    const prefijo = cp.charAt(0);
+    if (prefijo === '7' || prefijo === '1') {
+      costoBase = 4500;
+      tiempo = '2 a 4 días hábiles';
+    } else if (prefijo === '2' || prefijo === '3' || prefijo === '5' || prefijo === '6') {
+      costoBase = 5500;
+      tiempo = '3 a 5 días hábiles';
+    } else {
+      costoBase = 7200;
+      tiempo = '4 a 7 días hábiles';
+    }
+  }
+
+  const extraBulto = cantidadPrendas > 3 ? 800 : 0;
+  const totalCosto = costoBase + extraBulto;
+
+  return {
+    ok: true,
+    costo: totalCosto,
+    tiempo,
+    meta: { cantidadPrendas, pesoEstimadoKg, costoBase, extraBulto },
+  };
+}
+
+/** Recalcula envío en servidor (no confiar en el monto del cliente). */
+function resolverCostoEnvioCheckout({ codigoPostal, items, totalProductos }) {
+  const carrito = (Array.isArray(items) ? items : []).map((item) => ({
+    id: item?.productoId ?? item?.id,
+    cantidad: Math.max(1, Math.floor(Number(item?.cantidad) || 1)),
+  }));
+
+  const tarifa = calcularTarifaEnvioSimulada(codigoPostal, carrito);
+  if (!tarifa.ok) {
+    return tarifa;
+  }
+
+  const envioGratis = redondearMonto(totalProductos) >= MONTO_ENVIO_GRATIS;
+  return {
+    ok: true,
+    costoEnvio: envioGratis ? 0 : tarifa.costo,
+    envioGratis,
+    tiempo: tarifa.tiempo,
+  };
+}
+
+app.post('/api/calcular-envio', limitadorAuth, (req, res) => {
+  try {
+    const codigoPostalDestino = req.body?.codigoPostalDestino;
+    const carrito = req.body?.carrito;
+
+    const resultado = calcularTarifaEnvioSimulada(codigoPostalDestino, carrito);
+    if (!resultado.ok) {
+      return res.status(resultado.status).json({ ok: false, error: resultado.error });
+    }
+
+    res.json({
+      ok: true,
+      costo: resultado.costo,
+      tiempo: resultado.tiempo,
+    });
+  } catch (error) {
+    logError('CALCULAR_ENVIO', error, { ruta: req.path, metodo: req.method });
+    res.status(500).json({ ok: false, error: 'Error interno del servidor.' });
   }
 });
 

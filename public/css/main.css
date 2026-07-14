@@ -35,8 +35,7 @@
 .hero-slide__media {
   position: absolute;
   inset: 0;
-  background-size: cover;
-  background-position: center center;
+  overflow: hidden;
   transform: scale(1.04);
   transition: transform 6s ease;
 }
@@ -45,30 +44,35 @@
   transform: scale(1);
 }
 
+.hero-slide__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center center;
+}
+
 .hero-slide__media::after {
   content: '';
   position: absolute;
   inset: 0;
+  pointer-events: none;
   background:
     linear-gradient(180deg, rgba(0, 0, 0, 0.2) 0%, rgba(0, 0, 0, 0.25) 40%, rgba(0, 0, 0, 0.62) 100%);
 }
 
-.hero-slide__media--camisetas {
-  background-image:
-    linear-gradient(180deg, rgba(0, 0, 0, 0.2) 0%, rgba(0, 0, 0, 0.45) 100%),
-    url('https://images.unsplash.com/photo-1517466787929-bc90951d0974?auto=format&fit=crop&w=1600&q=80');
+.hero-slide__link {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: block;
+  text-decoration: none;
+  color: inherit;
 }
 
-.hero-slide__media--clubes {
-  background-image:
-    linear-gradient(180deg, rgba(0, 0, 0, 0.25) 0%, rgba(0, 0, 0, 0.5) 100%),
-    url('https://images.unsplash.com/photo-1551958219-acbc608c6377?auto=format&fit=crop&w=1600&q=80');
-}
-
-.hero-slide__media--selecciones {
-  background-image:
-    linear-gradient(180deg, rgba(0, 0, 0, 0.2) 0%, rgba(0, 0, 0, 0.5) 100%),
-    url('https://images.unsplash.com/photo-1579952363873-27f3bade9f55?auto=format&fit=crop&w=1600&q=80');
+.hero-slide__link:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: -4px;
 }
 
 .hero-slide__overlay {
@@ -273,12 +277,13 @@
   container-name: stadium-carousel;
   overflow-x: auto;
   overflow-y: hidden;
-  -webkit-overflow-scrolling: touch;
+  -webkit-overflow-scrolling: touch; /* scroll táctil nativo iOS */
   scroll-behavior: smooth;
   scroll-snap-type: x mandatory;
   scroll-padding-inline: 0.75rem;
   overscroll-behavior-x: contain;
   touch-action: pan-x pan-y;
+  will-change: scroll-position; /* capa compositor para scroll JS/táctil a 60 FPS */
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
@@ -295,6 +300,8 @@
   min-width: 100%;
   margin: 0;
   padding: 1rem 0;
+  transform: translate3d(0, 0, 0); /* fuerza capa GPU del track */
+  backface-visibility: hidden;
 }
 
 .stadium-carousel__track .product-card {
@@ -304,6 +311,9 @@
   scroll-snap-align: start;
   background: #fff;
   border: 1px solid rgba(0, 0, 0, 0.06);
+  transform: translate3d(0, 0, 0); /* capa compuesta independiente por tarjeta */
+  backface-visibility: hidden;
+  will-change: transform;
 }
 
 .stadium-carousel__track .product-card:last-child {
@@ -543,6 +553,12 @@
   color: var(--color-text);
 }
 
+/* Al filtrar por escudo/club: ocultar portada para enfocar la colección completa */
+body.is-coleccion-filtrada #nuevos-ingresos,
+body.is-coleccion-filtrada .offer-marquee--alt {
+  display: none;
+}
+
 .dropdown-categorias,
 .dropdown-orden,
 .dropdown-genero {
@@ -724,8 +740,10 @@
   border-radius: 0;
   overflow: hidden;
   box-shadow: none;
-  transition:
-    opacity 0.3s ease;
+  /* Solo props compositables: evita reflow en hover/animación */
+  transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.3s ease;
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -733,7 +751,7 @@
   .product-card:focus-within {
     border-color: transparent;
     box-shadow: none;
-    transform: none;
+    transform: translate3d(0, 0, 0); /* mantiene la capa GPU en hover */
   }
 }
 
@@ -776,7 +794,10 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: opacity 0.4s ease-in-out, transform 0.4s ease-in-out;
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  /* Solo transform + opacity: hover sin layout thrashing */
+  transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.3s ease;
 }
 
 .img-primaria {

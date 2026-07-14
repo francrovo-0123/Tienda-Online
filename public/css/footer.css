@@ -66,8 +66,6 @@
   width: auto;
   max-width: 200px;
   object-fit: contain;
-  /* Negro sobre blanco → blanco sobre el footer oscuro */
-  filter: brightness(0) invert(1);
 }
 
 .footer-logo {

@@ -268,6 +268,10 @@ const CLIENTE_TOKEN_KEY = 'cliente_jwt_token';
 const CARRITO_LEGACY_KEY = 'carrito';
 const CARRITO_USUARIO_PREFIX = 'carrito_usuario_';
 const MONTO_ENVIO_GRATIS = 85000;
+/** Cotiza y suma envío al total cuando el CP es válido. */
+const ENVIO_EN_CHECKOUT_ACTIVO = true;
+/** Costo de envío calculado en checkout. Expuesto para checkout.js */
+window.costoEnvioActual = 0;
 const CHECKOUT_PERFIL_KEY = 'jerseys_checkout_perfiles';
 const SEARCH_STATS_KEY = 'jerseys_busquedas_stats';
 /**
@@ -720,7 +724,7 @@ function renderizarSkeletonProductos(container) {
 }
 
 function solicitarRenderizadoProductos(opciones = {}) {
-  const { delay = 0, skeleton = true } = opciones;
+  const { delay = 0, skeleton = true, onReady } = opciones;
   const token = ++renderProductosToken;
 
   if (skeleton && debeMostrarSkeletonTienda()) {
@@ -731,6 +735,7 @@ function solicitarRenderizadoProductos(opciones = {}) {
     if (token !== renderProductosToken) return;
     renderizarStadiumCarousel();
     renderizarProductos();
+    onReady?.();
   };
 
   if (delay > 0) {
@@ -3166,6 +3171,10 @@ function actualizarUiFiltroColeccion() {
     (categoriaFiltroActiva !== 'todos'
       ? obtenerLigaRepresentativaSeccion(categoriaFiltroActiva)
       : '');
+  const filtroActivo =
+    filtroSoloOfertas || categoriaFiltroActiva !== 'todos' || Boolean(ligaFiltroActiva);
+
+  document.body.classList.toggle('is-coleccion-filtrada', filtroActivo);
 
   if (filtroSoloOfertas) {
     titulo && (titulo.textContent = 'Ofertas');
@@ -3244,6 +3253,21 @@ function actualizarUiFiltroColeccion() {
   }
 }
 
+function scrollAColeccion() {
+  const coleccion = document.getElementById('coleccion');
+  if (!coleccion) return;
+
+  const headerAlto =
+    parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue('--main-header-height')
+    ) || 70;
+  const margen = 16;
+  const top =
+    coleccion.getBoundingClientRect().top + window.scrollY - (headerAlto + margen);
+
+  window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+}
+
 function aplicarFiltroColeccion(opciones = {}) {
   const equipo = opciones.equipo ?? 'todos';
   const liga = opciones.liga ?? '';
@@ -3255,11 +3279,16 @@ function aplicarFiltroColeccion(opciones = {}) {
 
   sincronizarFiltrosCategoriaUi();
   actualizarUiFiltroColeccion();
-  solicitarRenderizadoProductos({ skeleton: false });
 
-  if (scroll) {
-    document.getElementById('coleccion')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
+  solicitarRenderizadoProductos({
+    skeleton: false,
+    onReady: scroll
+      ? () => {
+          // Un frame extra: el layout ya ocultó la portada y midió #coleccion.
+          requestAnimationFrame(scrollAColeccion);
+        }
+      : undefined,
+  });
 }
 
 function inicializarEnlaceProductos() {
@@ -3411,8 +3440,10 @@ function filtrarPorOfertas() {
   sincronizarCarruselSeccionesActivo();
   sincronizarMenuMobileActivo();
   actualizarUiFiltroColeccion();
-  solicitarRenderizadoProductos({ skeleton: false });
-  document.getElementById('coleccion')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  solicitarRenderizadoProductos({
+    skeleton: false,
+    onReady: () => requestAnimationFrame(scrollAColeccion),
+  });
 }
 
 function obtenerContenedorScrollClubNav() {
@@ -3654,17 +3685,107 @@ function inicializarStadiumCarousel() {
   actualizarVisibilidadFlechasTodos();
 }
 
-function inicializarHeroStage() {
+let heroStageControlador = null;
+let bannersAdminCache = [];
+
+const BANNERS_HOME_FALLBACK = [
+  {
+    index: 0,
+    imagenUrl: 'https://images.unsplash.com/photo-1517466787929-bc90951d0974?auto=format&fit=crop&w=1920&q=80',
+    enlace: '',
+    titulo: 'CAMISETAS DE FÚTBOL',
+  },
+  {
+    index: 1,
+    imagenUrl: 'https://images.unsplash.com/photo-1551958219-acbc608c6377?auto=format&fit=crop&w=1920&q=80',
+    enlace: '',
+    titulo: 'CLUBES ARGENTINOS',
+  },
+  {
+    index: 2,
+    imagenUrl: 'https://images.unsplash.com/photo-1579952363873-27f3bade9f55?auto=format&fit=crop&w=1920&q=80',
+    enlace: '',
+    titulo: 'SELECCIONES & RETRO',
+  },
+];
+
+function formatearTituloHero(titulo) {
+  const texto = String(titulo || '').trim();
+  if (!texto) return '';
+  const partes = texto.split(/\s+/);
+  if (partes.length <= 1) return escaparHtmlTexto(texto);
+  const mitad = Math.ceil(partes.length / 2);
+  return `${escaparHtmlTexto(partes.slice(0, mitad).join(' '))}<br>${escaparHtmlTexto(partes.slice(mitad).join(' '))}`;
+}
+
+function renderizarSlidesHero(banners) {
+  const viewport = document.getElementById('hero-stage-viewport');
+  const dotsEl = document.getElementById('hero-stage-dots');
+  const counter = document.getElementById('hero-stage-counter');
+  if (!viewport) return [];
+
+  const lista = (Array.isArray(banners) ? banners : [])
+    .filter((banner) => banner?.imagenUrl)
+    .slice(0, 3);
+
+  if (!lista.length) {
+    viewport.innerHTML = '';
+    if (dotsEl) dotsEl.innerHTML = '';
+    if (counter) counter.textContent = '—';
+    viewport.setAttribute('aria-busy', 'false');
+    return [];
+  }
+
+  viewport.innerHTML = lista.map((banner, index) => {
+    const tituloHtml = formatearTituloHero(banner.titulo);
+    const aria = escaparHtmlTexto(banner.titulo || `Banner ${index + 1}`);
+    const imagen = escaparHtmlTexto(banner.imagenUrl);
+    const enlace = String(banner.enlace || '').trim();
+    const imgTag = `
+      <div class="hero-slide__media">
+        <img class="hero-slide__img" src="${imagen}" alt="${aria}" loading="${index === 0 ? 'eager' : 'lazy'}">
+      </div>
+      ${tituloHtml ? `<div class="hero-slide__overlay"><h2 class="hero-slide__title">${tituloHtml}</h2></div>` : ''}
+    `;
+
+    const contenido = enlace
+      ? `<a class="hero-slide__link" href="${escaparHtmlTexto(enlace)}">${imgTag}</a>`
+      : `<div class="hero-slide__link" role="group" aria-label="${aria}">${imgTag}</div>`;
+
+    return `
+      <article class="hero-slide${index === 0 ? ' is-active' : ''}" data-hero-index="${index}">
+        ${contenido}
+      </article>
+    `;
+  }).join('');
+
+  if (dotsEl) {
+    dotsEl.innerHTML = lista.map((_, index) => `
+      <button
+        type="button"
+        class="hero-stage__dot${index === 0 ? ' is-active' : ''}"
+        data-hero-goto="${index}"
+        aria-label="Slide ${index + 1}"
+        aria-selected="${index === 0 ? 'true' : 'false'}"
+      ></button>
+    `).join('');
+  }
+
+  viewport.setAttribute('aria-busy', 'false');
+  return Array.from(viewport.querySelectorAll('.hero-slide'));
+}
+
+function inicializarControlHeroStage() {
   const viewport = document.getElementById('hero-stage-viewport');
   const counter = document.getElementById('hero-stage-counter');
   const nextBtn = document.getElementById('hero-stage-next');
-  const dots = document.querySelectorAll('#hero-stage-dots [data-hero-goto]');
-  if (!viewport) return;
+  if (!viewport) return null;
 
   const slides = Array.from(viewport.querySelectorAll('.hero-slide'));
-  if (!slides.length) return;
+  const dots = Array.from(document.querySelectorAll('#hero-stage-dots [data-hero-goto]'));
+  if (!slides.length) return null;
 
-  let indice = Math.max(0, slides.findIndex((slide) => slide.classList.contains('is-active')));
+  let indice = 0;
   let timerId = null;
 
   const irA = (nuevoIndice) => {
@@ -3684,13 +3805,17 @@ function inicializarHeroStage() {
 
   const reiniciarAutoplay = () => {
     if (timerId) window.clearInterval(timerId);
-    timerId = window.setInterval(siguiente, 5500);
+    if (slides.length > 1) {
+      timerId = window.setInterval(siguiente, 5500);
+    }
   };
 
-  nextBtn?.addEventListener('click', () => {
+  const onNext = () => {
     siguiente();
     reiniciarAutoplay();
-  });
+  };
+
+  nextBtn?.addEventListener('click', onNext);
 
   dots.forEach((dot) => {
     dot.addEventListener('click', () => {
@@ -3702,21 +3827,63 @@ function inicializarHeroStage() {
   });
 
   let touchStartX = 0;
-  viewport.addEventListener('touchstart', (event) => {
+  const onTouchStart = (event) => {
     touchStartX = event.changedTouches?.[0]?.clientX || 0;
-  }, { passive: true });
-
-  viewport.addEventListener('touchend', (event) => {
+  };
+  const onTouchEnd = (event) => {
     const touchEndX = event.changedTouches?.[0]?.clientX || 0;
     const delta = touchEndX - touchStartX;
     if (Math.abs(delta) < 40) return;
     if (delta < 0) siguiente();
     else irA(indice - 1);
     reiniciarAutoplay();
-  }, { passive: true });
+  };
 
-  irA(indice);
+  viewport.addEventListener('touchstart', onTouchStart, { passive: true });
+  viewport.addEventListener('touchend', onTouchEnd, { passive: true });
+
+  irA(0);
   reiniciarAutoplay();
+
+  return {
+    destruir() {
+      if (timerId) window.clearInterval(timerId);
+      nextBtn?.removeEventListener('click', onNext);
+      viewport.removeEventListener('touchstart', onTouchStart);
+      viewport.removeEventListener('touchend', onTouchEnd);
+    },
+  };
+}
+
+async function cargarYRenderizarHeroBanners() {
+  const viewport = document.getElementById('hero-stage-viewport');
+  if (!viewport) return;
+
+  let banners = BANNERS_HOME_FALLBACK;
+
+  try {
+    const respuesta = await fetch(`${API_BASE}/api/banners`);
+    if (respuesta.ok) {
+      const datos = await respuesta.json();
+      if (Array.isArray(datos?.banners) && datos.banners.length) {
+        banners = datos.banners;
+      }
+    }
+  } catch (error) {
+    console.warn('No se pudieron cargar los banners dinámicos:', error);
+  }
+
+  if (heroStageControlador?.destruir) {
+    heroStageControlador.destruir();
+    heroStageControlador = null;
+  }
+
+  renderizarSlidesHero(banners);
+  heroStageControlador = inicializarControlHeroStage();
+}
+
+function inicializarHeroStage() {
+  cargarYRenderizarHeroBanners();
 }
 
 function inicializarNewsletter() {
@@ -3740,7 +3907,8 @@ function inicializarNewsletter() {
       return;
     }
 
-    feedback.textContent = '¡Listo! Te vamos a avisar con las próximas novedades.';
+    // Todavía no hay API de newsletter: no fingir suscripción exitosa.
+    feedback.textContent = 'Pronto vas a poder suscribirte. Mientras tanto escribinos por WhatsApp.';
     input.value = '';
   });
 }
@@ -5177,6 +5345,16 @@ function actualizarBarraEnvioGratis(totalCarrito, ids = {}) {
 
   if (!mensaje && !barra && !contenedor) return;
 
+  // Ocultar barra de “envío gratis” mientras el envío no se cobra en el checkout.
+  if (!ENVIO_EN_CHECKOUT_ACTIVO) {
+    if (contenedor) {
+      contenedor.hidden = true;
+      contenedor.classList.remove('contenedor-envio-gratis--completo');
+    }
+    if (barra) barra.style.width = '0%';
+    return;
+  }
+
   const total = Math.max(0, Number(totalCarrito) || 0);
   const vacio = carrito.length === 0;
   const alcanzado = !vacio && total >= MONTO_ENVIO_GRATIS;
@@ -5373,11 +5551,22 @@ function calcularDesgloseCheckout() {
   const totalConCupon = Number(totalFinal) || 0;
   const descuentoCupon = Number(descuentoMonto) || 0;
   const descuentoTransferencia = redondearMontoCheckout(totalConCupon * 0.10);
-  const totalTransferencia = Math.max(
+  const totalTransferenciaProductos = Math.max(
     0,
     redondearMontoCheckout(totalConCupon - descuentoTransferencia)
   );
   const totalAhorrado = redondearMontoCheckout(descuentoCupon + descuentoTransferencia);
+
+  // El total cobrado no incluye envío hasta que ENVIO_EN_CHECKOUT_ACTIVO esté activo.
+  let costoEnvio = 0;
+  let envioGratis = false;
+  if (ENVIO_EN_CHECKOUT_ACTIVO) {
+    const costoEnvioBruto = Math.max(0, Number(window.costoEnvioActual) || 0);
+    envioGratis = totalConCupon >= MONTO_ENVIO_GRATIS;
+    costoEnvio = envioGratis ? 0 : costoEnvioBruto;
+  }
+  const totalConEnvio = redondearMontoCheckout(totalConCupon + costoEnvio);
+  const totalTransferencia = redondearMontoCheckout(totalTransferenciaProductos + costoEnvio);
 
   return {
     subtotal,
@@ -5386,6 +5575,9 @@ function calcularDesgloseCheckout() {
     descuentoTransferencia,
     totalTransferencia,
     totalAhorrado,
+    costoEnvio,
+    envioGratis,
+    totalConEnvio,
     codigoCupon: obtenerCodigoCuponCheckout(),
   };
 }
@@ -5416,8 +5608,11 @@ function actualizarTotalCheckoutUI() {
     subtotal,
     descuentoCupon,
     totalConCupon,
+    totalConEnvio,
     totalTransferencia,
     totalAhorrado,
+    costoEnvio,
+    envioGratis,
     codigoCupon,
   } = desglose;
   const summaryTotal = document.getElementById('checkout-summary-total');
@@ -5427,12 +5622,28 @@ function actualizarTotalCheckoutUI() {
   const descuentoEl = document.getElementById('checkout-summary-descuento');
   const descuentoLabel = document.getElementById('checkout-summary-descuento-label');
 
-  if (summaryTotal) summaryTotal.textContent = formatearPrecio(totalConCupon);
+  const esPaginaCheckout = document.body?.dataset?.page === 'checkout';
+  const totalAMostrar = esPaginaCheckout ? totalConEnvio : totalConCupon;
+  if (summaryTotal) summaryTotal.textContent = formatearPrecio(totalAMostrar);
 
   const hayDescuento = Boolean(cuponAplicado && descuentoCupon > 0);
 
-  if (subtotalRow) subtotalRow.hidden = !hayDescuento;
+  // En la página dedicada el subtotal siempre es visible; en el modal solo con cupón.
+  if (subtotalRow) subtotalRow.hidden = esPaginaCheckout ? false : !hayDescuento;
   if (descuentoRow) descuentoRow.hidden = !hayDescuento;
+
+  const envioEl = document.getElementById('checkout-summary-envio');
+  if (envioEl) {
+    if (!ENVIO_EN_CHECKOUT_ACTIVO) {
+      envioEl.textContent = 'A coordinar';
+    } else if (envioGratis) {
+      envioEl.textContent = '¡Gratis!';
+    } else if (costoEnvio > 0) {
+      envioEl.textContent = formatearPrecio(costoEnvio);
+    } else {
+      envioEl.textContent = 'A coordinar';
+    }
+  }
   if (subtotalEl) subtotalEl.textContent = formatearPrecio(subtotal);
   if (descuentoEl) descuentoEl.textContent = `−${formatearPrecio(descuentoCupon)}`;
   if (descuentoLabel) {
@@ -5670,13 +5881,20 @@ function abrirCheckout() {
     return;
   }
 
+  // Flujo dedicado: página multi-step (si existe modal legacy, se abre como fallback).
+  cerrarMiniCart();
+  if (document.body?.dataset?.page !== 'checkout') {
+    window.location.href = 'checkout.html';
+    return;
+  }
+
   prepararCheckoutModal(sesion);
 
   const modal = document.getElementById('checkout-modal');
-  modal?.classList.add('is-open');
-  modal?.setAttribute('aria-hidden', 'false');
+  if (!modal) return;
+  modal.classList.add('is-open');
+  modal.setAttribute('aria-hidden', 'false');
   document.body.classList.add('checkout-open');
-  cerrarMiniCart();
 }
 
 function obtenerPerfilesEntrega() {
@@ -5802,19 +6020,41 @@ function renderizarResumenCheckout() {
     return;
   }
 
+  const esPagina = container.classList.contains('checkout-resumen--page');
+
   const itemsHtml = carrito
     .map((item) => {
       const nombreBase = escaparHtmlTexto(item.nombre || 'Producto');
       const variante = item.variante ? ` ${escaparHtmlTexto(item.variante)}` : '';
-      const talleParte = item.talle ? ` — Talle ${escaparHtmlTexto(item.talle)}` : '';
-      const nombre = `${nombreBase}${variante}${talleParte}`;
+      const nombre = `${nombreBase}${variante}`;
+      const talleTexto = item.talle ? `Talle ${escaparHtmlTexto(item.talle)}` : '';
       const precio = Number(item.precio);
       const cantidad = Math.max(1, Math.floor(Number(item.cantidad) || 1));
       const subtotalItem = Number.isFinite(precio) ? precio * cantidad : 0;
+      const imagen = String(item.imagen || '').trim();
 
+      if (esPagina) {
+        const thumb = imagen
+          ? `<img class="checkout-resumen__thumb" src="${escaparAtributoHtml(imagen)}" alt="" loading="lazy" width="64" height="64">`
+          : `<span class="checkout-resumen__thumb checkout-resumen__thumb--placeholder" aria-hidden="true"></span>`;
+
+        return `
+          <li class="checkout-resumen__item">
+            ${thumb}
+            <div class="checkout-resumen__meta">
+              <span class="checkout-resumen__name">${nombre}</span>
+              ${talleTexto ? `<span class="checkout-resumen__talle">${talleTexto}</span>` : ''}
+              <span class="checkout-resumen__qty">Cant. ${cantidad}</span>
+            </div>
+            <span class="checkout-resumen__price">${formatearPrecio(subtotalItem)}</span>
+          </li>
+        `;
+      }
+
+      const nombreCompleto = talleTexto ? `${nombre} — ${talleTexto}` : nombre;
       return `
         <li class="checkout-resumen__item">
-          <span class="checkout-resumen__name">${nombre}</span>
+          <span class="checkout-resumen__name">${nombreCompleto}</span>
           <span class="checkout-resumen__qty">x${cantidad}</span>
           <span class="checkout-resumen__price">${formatearPrecio(subtotalItem)}</span>
         </li>
@@ -5842,7 +6082,10 @@ async function prepararCheckoutModal(sesion) {
   if (cuentaEmail) cuentaEmail.textContent = sesion.email;
   if (submitBtn) {
     submitBtn.disabled = false;
-    submitBtn.textContent = 'Pagar con Mercado Pago';
+    submitBtn.textContent =
+      document.body?.dataset?.page === 'checkout'
+        ? 'Finalizar pedido'
+        : 'Pagar con Mercado Pago';
   }
   if (transferBtn) {
     transferBtn.disabled = false;
@@ -5950,20 +6193,75 @@ function validarFormularioCheckout() {
   };
 }
 
+/** Evita doble click / doble submit en Mercado Pago y Transferencia. */
+let checkoutPedidoEnProceso = false;
+
+function etiquetaSubmitCheckoutDefault() {
+  if (document.body?.dataset?.page === 'checkout') {
+    const metodo =
+      document.querySelector('input[name="metodo-pago"]:checked')?.value ||
+      'mercadopago';
+    return metodo === 'transferencia' ? 'Finalizar por WhatsApp' : 'Finalizar pedido';
+  }
+  return 'Pagar con Mercado Pago';
+}
+
+function bloquearBotonesCheckout(textoProcesando = 'Procesando...') {
+  const submitBtn = document.getElementById('checkout-submit-btn');
+  const transferBtn = document.getElementById('checkout-transferencia-btn');
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.setAttribute('aria-busy', 'true');
+    submitBtn.textContent = textoProcesando;
+  }
+  if (transferBtn) {
+    transferBtn.disabled = true;
+    transferBtn.setAttribute('aria-busy', 'true');
+    transferBtn.textContent = textoProcesando;
+  }
+  return { submitBtn, transferBtn };
+}
+
+function desbloquearBotonesCheckout(submitBtn, transferBtn) {
+  if (submitBtn) {
+    submitBtn.disabled = false;
+    submitBtn.removeAttribute('aria-busy');
+    submitBtn.textContent = etiquetaSubmitCheckoutDefault();
+  }
+  if (transferBtn) {
+    transferBtn.disabled = false;
+    transferBtn.removeAttribute('aria-busy');
+    transferBtn.textContent = 'Coordinar por WhatsApp';
+  }
+}
+
+/** Precio seguro para WhatsApp (sin NBSP / símbolos raros de Intl). */
+function formatearPrecioWhatsApp(valor) {
+  const numero = Number(valor);
+  if (!Number.isFinite(numero)) return '$ 0,00';
+
+  const partes = new Intl.NumberFormat('es-AR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(numero);
+
+  return `$ ${String(partes).replace(/[\u00A0\u202F\u2007\u2009]/g, ' ')}`;
+}
+
 async function procesarPedido(event) {
   event.preventDefault();
+  if (checkoutPedidoEnProceso) return;
+
   const validacion = validarFormularioCheckout();
   if (!validacion.ok) return;
 
   const { sesion, datosEntrega, guardarDatos } = validacion;
-  const submitBtn = document.getElementById('checkout-submit-btn');
-  const transferBtn = document.getElementById('checkout-transferencia-btn');
-
-  submitBtn?.setAttribute('disabled', 'true');
-  transferBtn?.setAttribute('disabled', 'true');
-  if (submitBtn) submitBtn.textContent = 'Redirigiendo a Mercado Pago…';
+  checkoutPedidoEnProceso = true;
+  const { submitBtn, transferBtn } = bloquearBotonesCheckout('Procesando...');
 
   try {
+    if (submitBtn) submitBtn.textContent = 'Redirigiendo a Mercado Pago...';
+
     if (guardarDatos) {
       guardarPerfilEntrega(sesion.email, datosEntrega);
       await guardarPerfilEntregaEnServidor(sesion.email, datosEntrega);
@@ -5991,17 +6289,18 @@ async function procesarPedido(event) {
     cerrarCheckout();
     cerrarMiniCart();
     document.getElementById('checkout-form')?.reset();
+    if (typeof limpiarCheckoutPasoGuardado === 'function') limpiarCheckoutPasoGuardado();
     window.location.href = respuestaPago.init_point;
   } catch (error) {
     mostrarToast(error?.message || 'No se pudo iniciar el pago. Intentá de nuevo.', 'error');
-  } finally {
-    submitBtn?.removeAttribute('disabled');
-    transferBtn?.removeAttribute('disabled');
-    if (submitBtn) submitBtn.textContent = 'Pagar con Mercado Pago';
+    checkoutPedidoEnProceso = false;
+    desbloquearBotonesCheckout(submitBtn, transferBtn);
   }
 }
 
 async function procesarPedidoTransferencia() {
+  if (checkoutPedidoEnProceso) return;
+
   const validacion = validarFormularioCheckout();
   if (!validacion.ok) return;
 
@@ -6011,12 +6310,8 @@ async function procesarPedidoTransferencia() {
   }
 
   const { sesion, datosEntrega, guardarDatos } = validacion;
-  const submitBtn = document.getElementById('checkout-submit-btn');
-  const transferBtn = document.getElementById('checkout-transferencia-btn');
-
-  submitBtn?.setAttribute('disabled', 'true');
-  transferBtn?.setAttribute('disabled', 'true');
-  if (transferBtn) transferBtn.textContent = 'Creando pedido…';
+  checkoutPedidoEnProceso = true;
+  const { submitBtn, transferBtn } = bloquearBotonesCheckout('Procesando...');
 
   try {
     if (guardarDatos) {
@@ -6054,13 +6349,18 @@ async function procesarPedidoTransferencia() {
     cerrarCheckout();
     cerrarMiniCart();
     document.getElementById('checkout-form')?.reset();
+    if (typeof limpiarCheckoutPasoGuardado === 'function') limpiarCheckoutPasoGuardado();
     mostrarToast('Pedido creado. Coordiná la transferencia por WhatsApp.');
+    if (document.body?.dataset?.page === 'checkout') {
+      window.location.href = 'index.html';
+      return;
+    }
+    checkoutPedidoEnProceso = false;
+    desbloquearBotonesCheckout(submitBtn, transferBtn);
   } catch (error) {
     mostrarToast(error?.message || 'No se pudo crear el pedido. Intentá de nuevo.', 'error');
-  } finally {
-    submitBtn?.removeAttribute('disabled');
-    transferBtn?.removeAttribute('disabled');
-    if (transferBtn) transferBtn.textContent = 'Coordinar por WhatsApp';
+    checkoutPedidoEnProceso = false;
+    desbloquearBotonesCheckout(submitBtn, transferBtn);
   }
 }
 
@@ -6075,43 +6375,40 @@ function abrirWhatsAppTransferencia({
   productos,
   total,
 }) {
-  const emojiCarrito = `\u{1F6D2}`;
-  const emojiCliente = `\u{1F464}`;
-  const emojiTelefono = `\u{1F4DE}`;
-  const emojiEntrega = `\u{1F4CD}`;
-  const emojiPago = `\u{1F4B3}`;
-  const emojiDetalle = `\u{1F4E6}`;
-  const emojiTotal = `\u{1F4B0}`;
-
-  const textoEntrega = [direccion, localidad, provincia, codigoPostal]
+  const lineaDireccion = [direccion, localidad, provincia, codigoPostal]
+    .map((v) => String(v || '').trim())
     .filter(Boolean)
-    .length
-    ? `Envío a domicilio (${[direccion, localidad, provincia, codigoPostal].filter(Boolean).join(', ')})`
-    : 'Retiro en local';
+    .join(', ');
 
   const itemsDetalle = (productos || [])
     .map((item) => {
-      const nombreLinea = item.talle
-        ? `${item.cantidad}x ${item.nombre} - Talle ${item.talle}`
-        : `${item.cantidad}x ${item.nombre}`;
-      return `• ${nombreLinea} (${formatearPrecio(item.precio)})`;
+      const cant = Math.max(1, Number(item.cantidad) || 1);
+      const nombreItem = String(item.nombre || 'Producto').trim();
+      const talle = item.talle ? ` | Talle ${item.talle}` : '';
+      const precioLinea = formatearPrecioWhatsApp(item.precio);
+      return `- ${cant}x ${nombreItem}${talle} (${precioLinea})`;
     })
     .join('\n');
 
-  const mensaje =
-`${emojiCarrito} *NUEVO PEDIDO: ${idPedido}*
----------------------------------
-${emojiCliente} *Cliente:* ${nombre}
-${emojiTelefono} *Teléfono:* ${telefono}
-${emojiEntrega} *Entrega:* ${textoEntrega}
-${emojiPago} *Pago:* Transferencia bancaria (-10%)
----------------------------------
-${emojiDetalle} *Detalle del Pedido:*
-${itemsDetalle}
----------------------------------
-${emojiTotal} *Total a Pagar: ${formatearPrecio(total)}*`;
+  // Plantilla con \n reales → encodeURIComponent las convierte a %0A
+  const mensaje = [
+    `*NUEVO PEDIDO: ${idPedido}*`,
+    `------------------------------`,
+    `*Datos de entrega*`,
+    `Nombre: ${String(nombre || '').trim()}`,
+    `Telefono: ${String(telefono || '').trim()}`,
+    `Direccion: ${lineaDireccion || 'Retiro en local'}`,
+    `------------------------------`,
+    `*Pago:* Transferencia bancaria (-10%)`,
+    `------------------------------`,
+    `*Detalle del Pedido*`,
+    itemsDetalle || '- Sin items',
+    `------------------------------`,
+    `*Total a Pagar: ${formatearPrecioWhatsApp(total)}*`,
+  ].join('\n');
 
-  const url = `https://wa.me/${WHATSAPP_NUMERO}?text=${encodeURIComponent(mensaje)}`;
+  const textoCodificado = encodeURIComponent(mensaje);
+  const url = `https://wa.me/${WHATSAPP_NUMERO}?text=${textoCodificado}`;
   window.open(url, '_blank', 'noopener,noreferrer');
 }
 
@@ -6434,9 +6731,9 @@ async function cambiarPasswordCuenta(event) {
 
   errorEl?.classList.add('hidden');
 
-  if (passwordNueva.length < 6) {
+  if (passwordNueva.length < 8) {
     if (errorEl) {
-      errorEl.textContent = 'La nueva contraseña debe tener al menos 6 caracteres.';
+      errorEl.textContent = 'La nueva contraseña debe tener al menos 8 caracteres.';
       errorEl.classList.remove('hidden');
     }
     return;
@@ -7475,7 +7772,7 @@ const ADMIN_PANELS = {
   },
   portada: {
     title: 'Gestión de Portada',
-    subtitle: 'Definí Destacados y En Oferta de la página de inicio',
+    subtitle: 'Banners del inicio, Destacados y En Oferta',
   },
   configuracion: {
     title: 'Configuración',
@@ -7515,6 +7812,7 @@ function cambiarPanelAdmin(panel) {
 
   if (panel === 'portada') {
     renderizarGestionPortada();
+    cargarBannersAdmin();
   }
 
   if (panel === 'dashboard') {
@@ -8316,6 +8614,241 @@ function actualizarContadorPortada() {
   countEl.textContent = `${visibles} producto${visibles !== 1 ? 's' : ''} · ${destacados} destacados · ${ofertas} en oferta`;
 }
 
+function slotsBannersAdminCompletos(lista = []) {
+  const porIndex = new Map(
+    (Array.isArray(lista) ? lista : []).map((banner) => {
+      const index = Number(banner.index ?? banner.slot);
+      return [Number.isInteger(index) ? index : -1, banner];
+    })
+  );
+
+  return [0, 1, 2].map((index) => {
+    const actual = porIndex.get(index);
+    return {
+      index,
+      imagenUrl: String(actual?.imagenUrl || '').trim(),
+      enlace: String(actual?.enlace || '').trim(),
+      titulo: String(actual?.titulo || '').trim(),
+      activo: actual?.activo !== false && Boolean(actual?.imagenUrl),
+    };
+  });
+}
+
+function setBannerCardLoading(card, cargando, textoBoton = 'Guardar Banner') {
+  if (!card) return;
+  const btnGuardar = card.querySelector('[data-banner-guardar]');
+  const btnEliminar = card.querySelector('[data-banner-eliminar]');
+
+  card.classList.toggle('is-loading', cargando);
+
+  if (btnGuardar) {
+    btnGuardar.disabled = cargando;
+    btnGuardar.innerHTML = cargando
+      ? '<span class="admin-banner-card__spinner" aria-hidden="true"></span> Subiendo…'
+      : textoBoton;
+  }
+
+  if (btnEliminar) {
+    btnEliminar.disabled = cargando || btnEliminar.dataset.wasDisabled === '1';
+  }
+}
+
+function renderizarGestionBanners(banners) {
+  const grid = document.getElementById('admin-banners-grid');
+  if (!grid) return;
+
+  bannersAdminCache = slotsBannersAdminCompletos(banners);
+
+  grid.innerHTML = bannersAdminCache.map((banner) => {
+    const nro = banner.index + 1;
+    const preview = banner.imagenUrl
+      ? `<img class="admin-banner-card__preview-img" src="${escaparHtmlTexto(banner.imagenUrl)}" alt="Vista previa banner ${nro}">`
+      : '<span class="admin-banner-card__preview-empty">Sin imagen</span>';
+
+    return `
+      <article class="admin-banner-card" data-banner-index="${banner.index}">
+        <div class="admin-banner-card__header">
+          <h3 class="admin-banner-card__title">Banner ${nro}</h3>
+          <span class="admin-banner-card__status${banner.activo ? ' is-active' : ''}">
+            ${banner.activo ? 'Activo' : 'Vacío'}
+          </span>
+        </div>
+        <div class="admin-banner-card__preview">${preview}</div>
+        <div class="admin-banner-card__fields">
+          <div class="admin-banner-card__field">
+            <label class="admin-banner-card__label" for="banner-imagen-${banner.index}">Imagen del banner</label>
+            <input
+              type="file"
+              id="banner-imagen-${banner.index}"
+              class="admin-banner-card__file"
+              accept="image/*"
+              data-banner-file="${banner.index}"
+            >
+            <p class="admin-banner-card__hint">Recomendado: 1920×600 px (JPG o WebP, máx. 5 MB)</p>
+          </div>
+          <div class="admin-banner-card__field">
+            <label class="admin-banner-card__label" for="banner-titulo-${banner.index}">Título (opcional)</label>
+            <input
+              type="text"
+              id="banner-titulo-${banner.index}"
+              class="admin-banner-card__input"
+              value="${escaparHtmlTexto(banner.titulo)}"
+              placeholder="Ej: CAMISETAS DE FÚTBOL"
+              maxlength="80"
+              data-banner-titulo="${banner.index}"
+            >
+          </div>
+          <div class="admin-banner-card__field">
+            <label class="admin-banner-card__label" for="banner-enlace-${banner.index}">Enlace de redirección</label>
+            <input
+              type="text"
+              id="banner-enlace-${banner.index}"
+              class="admin-banner-card__input"
+              value="${escaparHtmlTexto(banner.enlace)}"
+              placeholder="Ej: /productos?categoria=retro"
+              maxlength="300"
+              data-banner-enlace="${banner.index}"
+            >
+          </div>
+          <div class="admin-banner-card__progress" aria-hidden="true">
+            <div class="admin-banner-card__progress-bar"></div>
+          </div>
+          <div class="admin-banner-card__actions">
+            <button type="button" class="admin-banner-card__btn admin-banner-card__btn--save" data-banner-guardar="${banner.index}">
+              Guardar Banner
+            </button>
+            <button
+              type="button"
+              class="admin-banner-card__btn admin-banner-card__btn--delete"
+              data-banner-eliminar="${banner.index}"
+              data-was-disabled="${banner.activo ? '0' : '1'}"
+              ${banner.activo ? '' : 'disabled'}
+            >
+              Eliminar
+            </button>
+          </div>
+        </div>
+      </article>
+    `;
+  }).join('');
+}
+
+async function cargarBannersAdmin() {
+  const grid = document.getElementById('admin-banners-grid');
+  if (!grid) return;
+
+  grid.innerHTML = '<p class="admin-portada__hint">Cargando banners…</p>';
+
+  try {
+    const datos = await apiFetch('/api/admin/banners');
+    renderizarGestionBanners(datos?.banners || []);
+  } catch (error) {
+    console.error(error);
+    grid.innerHTML = '<p class="admin-portada__hint">No se pudieron cargar los banners.</p>';
+    mostrarToast(error.message || 'Error al cargar banners.', 'error');
+  }
+}
+
+async function guardarBannerAdmin(index) {
+  const card = document.querySelector(`.admin-banner-card[data-banner-index="${index}"]`);
+  if (!card) return;
+
+  const fileInput = card.querySelector(`[data-banner-file="${index}"]`);
+  const tituloInput = card.querySelector(`[data-banner-titulo="${index}"]`);
+  const enlaceInput = card.querySelector(`[data-banner-enlace="${index}"]`);
+  const archivo = fileInput?.files?.[0] || null;
+  const actual = bannersAdminCache.find((banner) => banner.index === Number(index));
+  const enlace = String(enlaceInput?.value || '').trim();
+  const titulo = String(tituloInput?.value || '').trim();
+
+  if (!archivo && !actual?.imagenUrl) {
+    mostrarToast('Elegí una imagen para el banner.', 'error');
+    return;
+  }
+
+  setBannerCardLoading(card, true);
+
+  try {
+    let datos;
+
+    if (archivo) {
+      const formData = new FormData();
+      formData.append('index', String(index));
+      formData.append('enlace', enlace);
+      formData.append('titulo', titulo);
+      formData.append('imagen', archivo);
+
+      datos = await apiFetch('/api/admin/banners', {
+        method: 'POST',
+        body: formData,
+      });
+    } else {
+      datos = await apiFetch('/api/admin/banners/link', {
+        method: 'POST',
+        body: JSON.stringify({ index: Number(index), enlace, titulo }),
+      });
+    }
+
+    renderizarGestionBanners(datos?.banners || []);
+    mostrarToast(datos?.mensaje || `Banner ${Number(index) + 1} guardado.`);
+    cargarYRenderizarHeroBanners();
+  } catch (error) {
+    console.error(error);
+    mostrarToast(error.message || 'No se pudo guardar el banner.', 'error');
+    setBannerCardLoading(card, false);
+  }
+}
+
+async function eliminarBannerAdmin(index) {
+  const nro = Number(index) + 1;
+  if (!window.confirm(`¿Eliminar el banner ${nro} del carrusel de inicio?`)) return;
+
+  const card = document.querySelector(`.admin-banner-card[data-banner-index="${index}"]`);
+  setBannerCardLoading(card, true, 'Eliminar');
+
+  try {
+    const datos = await apiFetch(`/api/admin/banners/${index}`, { method: 'DELETE' });
+    renderizarGestionBanners(datos?.banners || []);
+    mostrarToast(datos?.mensaje || `Banner ${nro} eliminado.`);
+    cargarYRenderizarHeroBanners();
+  } catch (error) {
+    console.error(error);
+    mostrarToast(error.message || 'No se pudo eliminar el banner.', 'error');
+    setBannerCardLoading(card, false);
+  }
+}
+
+function inicializarGestionBannersAdmin() {
+  const grid = document.getElementById('admin-banners-grid');
+  if (!grid || grid.dataset.bannersBound === '1') return;
+  grid.dataset.bannersBound = '1';
+
+  grid.addEventListener('change', (event) => {
+    const input = event.target.closest('[data-banner-file]');
+    if (!input?.files?.[0]) return;
+    const index = input.dataset.bannerFile;
+    const card = grid.querySelector(`.admin-banner-card[data-banner-index="${index}"]`);
+    const preview = card?.querySelector('.admin-banner-card__preview');
+    if (!preview) return;
+
+    const url = URL.createObjectURL(input.files[0]);
+    preview.innerHTML = `<img class="admin-banner-card__preview-img" src="${url}" alt="Vista previa">`;
+  });
+
+  grid.addEventListener('click', (event) => {
+    const btnGuardar = event.target.closest('[data-banner-guardar]');
+    if (btnGuardar) {
+      guardarBannerAdmin(btnGuardar.dataset.bannerGuardar);
+      return;
+    }
+
+    const btnEliminar = event.target.closest('[data-banner-eliminar]');
+    if (btnEliminar) {
+      eliminarBannerAdmin(btnEliminar.dataset.bannerEliminar);
+    }
+  });
+}
+
 function renderizarGestionPortada() {
   const grid = document.getElementById('admin-portada-grid');
   const emptyEl = document.getElementById('admin-portada-empty');
@@ -8845,6 +9378,7 @@ function inicializarEventosAdmin() {
       toggle
     );
   });
+  inicializarGestionBannersAdmin();
   document.getElementById('producto-stock-talles')?.addEventListener('input', actualizarTotalStockFormulario);
   document.getElementById('producto-categoria-tipo')?.addEventListener('change', alCambiarCategoriaTipoProducto);
   document.getElementById('producto-categoria')?.addEventListener('change', (event) => {
@@ -8982,6 +9516,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     inicializarAutenticacion();
     inicializarBuscadorPedidos();
     await cargarConfiguracionTienda();
+    return;
+  }
+
+  if (pagina === 'checkout') {
+    await cargarConfiguracionTienda();
+    inicializarCheckout();
+    if (typeof inicializarPaginaCheckout === 'function') {
+      await inicializarPaginaCheckout();
+    }
     return;
   }
 

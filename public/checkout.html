@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="Jersey Store — finalizá tu compra de forma segura.">
+  <title>Checkout — Jersey Store</title>
+  <link rel="icon" href="/favicon.ico" sizes="32x32">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/favicon.png">
+  <link rel="stylesheet" href="css/global.css?v=4.4">
+  <link rel="stylesheet" href="css/header.css?v=6.7">
+  <link rel="stylesheet" href="css/cart.css?v=3.1">
+  <link rel="stylesheet" href="css/checkout.css?v=1.1">
+  <link rel="stylesheet" href="css/footer.css?v=4.0">
+</head>
+<body data-page="checkout">
+
+  <header class="checkout-topbar" role="banner">
+    <div class="checkout-topbar__inner">
+      <a href="index.html" class="checkout-topbar__back" aria-label="Volver a la tienda">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5"/>
+        </svg>
+        <span>Seguir comprando</span>
+      </a>
+      <a href="index.html#inicio" class="checkout-topbar__logo" aria-label="Jersey Store — Inicio">
+        <img src="/logo.png" alt="Jersey Store" width="160" height="66" decoding="async">
+      </a>
+      <span class="checkout-topbar__secure" aria-hidden="true">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z"/>
+        </svg>
+        Compra segura
+      </span>
+    </div>
+  </header>
+
+  <main class="checkout-page" id="checkout-page">
+    <nav class="checkout-progress" aria-label="Progreso del checkout">
+      <ol class="checkout-progress__list" id="checkout-progress-list">
+        <li class="checkout-progress__step is-active" data-step="1">
+          <span class="checkout-progress__num">1</span>
+          <span class="checkout-progress__label">Entrega</span>
+        </li>
+        <li class="checkout-progress__connector" aria-hidden="true"></li>
+        <li class="checkout-progress__step" data-step="2">
+          <span class="checkout-progress__num">2</span>
+          <span class="checkout-progress__label">Pago</span>
+        </li>
+        <li class="checkout-progress__connector" aria-hidden="true"></li>
+        <li class="checkout-progress__step" data-step="3">
+          <span class="checkout-progress__num">3</span>
+          <span class="checkout-progress__label">Confirmación</span>
+        </li>
+      </ol>
+    </nav>
+
+    <div class="checkout-layout">
+      <!-- Columna izquierda: flujo de pasos -->
+      <section class="checkout-flow" aria-label="Pasos del checkout">
+        <form class="checkout-form checkout-form--page" id="checkout-form" novalidate>
+
+          <div class="checkout-account" id="checkout-account">
+            <span class="checkout-account__label">Comprando con</span>
+            <strong id="checkout-cuenta-email" class="checkout-account__email"></strong>
+          </div>
+
+          <!-- Paso 1: Entrega -->
+          <fieldset class="checkout-step is-active" id="paso-1" data-paso="1" aria-labelledby="paso-1-title">
+            <legend class="checkout-step__legend" id="paso-1-title">
+              <span class="checkout-step__index">1</span>
+              Datos de entrega
+            </legend>
+            <p class="checkout-section__hint" id="checkout-datos-hint">Completá tus datos de entrega para continuar.</p>
+
+            <div class="checkout-step__body">
+              <div class="checkout-form__field">
+                <label for="checkout-nombre" class="checkout-form__label">Nombre completo</label>
+                <input type="text" id="checkout-nombre" class="checkout-form__input" required placeholder="Tu nombre" autocomplete="name">
+              </div>
+
+              <div class="checkout-form__field">
+                <label for="checkout-telefono" class="checkout-form__label">Teléfono</label>
+                <input type="tel" id="checkout-telefono" class="checkout-form__input" required placeholder="Ej: 11 2345 6789" autocomplete="tel">
+              </div>
+
+              <div class="checkout-form__field">
+                <label for="checkout-direccion" class="checkout-form__label">Calle y número</label>
+                <textarea id="checkout-direccion" class="checkout-form__input checkout-form__textarea" required placeholder="Ej: Av. Corrientes 1234, Piso 3" rows="2" autocomplete="street-address"></textarea>
+              </div>
+
+              <div class="checkout-form__row">
+                <div class="checkout-form__field">
+                  <label for="checkout-localidad" class="checkout-form__label">Localidad</label>
+                  <input type="text" id="checkout-localidad" class="checkout-form__input" required placeholder="Ej: Palermo" autocomplete="address-level2">
+                </div>
+                <div class="checkout-form__field">
+                  <label for="checkout-codigo-postal" class="checkout-form__label">Código postal</label>
+                  <input type="text" id="checkout-codigo-postal" class="checkout-form__input" required placeholder="Ej: 1425" autocomplete="postal-code" maxlength="8" inputmode="numeric">
+                  <p class="checkout-envio-estimado" id="checkout-envio-tiempo" hidden aria-live="polite"></p>
+                </div>
+              </div>
+
+              <div class="checkout-form__field">
+                <label for="checkout-provincia" class="checkout-form__label">Provincia</label>
+                <select id="checkout-provincia" class="checkout-form__input checkout-form__select" required autocomplete="address-level1">
+                  <option value="">Seleccioná provincia</option>
+                  <option value="Buenos Aires">Buenos Aires</option>
+                  <option value="CABA">CABA</option>
+                  <option value="Catamarca">Catamarca</option>
+                  <option value="Chaco">Chaco</option>
+                  <option value="Chubut">Chubut</option>
+                  <option value="Córdoba">Córdoba</option>
+                  <option value="Corrientes">Corrientes</option>
+                  <option value="Entre Ríos">Entre Ríos</option>
+                  <option value="Formosa">Formosa</option>
+                  <option value="Jujuy">Jujuy</option>
+                  <option value="La Pampa">La Pampa</option>
+                  <option value="La Rioja">La Rioja</option>
+                  <option value="Mendoza">Mendoza</option>
+                  <option value="Misiones">Misiones</option>
+                  <option value="Neuquén">Neuquén</option>
+                  <option value="Río Negro">Río Negro</option>
+                  <option value="Salta">Salta</option>
+                  <option value="San Juan">San Juan</option>
+                  <option value="San Luis">San Luis</option>
+                  <option value="Santa Cruz">Santa Cruz</option>
+                  <option value="Santa Fe">Santa Fe</option>
+                  <option value="Santiago del Estero">Santiago del Estero</option>
+                  <option value="Tierra del Fuego">Tierra del Fuego</option>
+                  <option value="Tucumán">Tucumán</option>
+                </select>
+              </div>
+
+              <label class="checkout-guardar-datos">
+                <input type="checkbox" id="checkout-guardar-datos">
+                <span>¿Querés guardar estos datos para futuras compras?</span>
+              </label>
+            </div>
+
+            <div class="checkout-step__actions">
+              <button type="button" class="checkout-btn checkout-btn--primary" id="btn-ir-paso-2" data-ir-paso="2">
+                Continuar al pago
+              </button>
+            </div>
+          </fieldset>
+
+          <!-- Paso 2: Método de pago -->
+          <fieldset class="checkout-step is-collapsed" id="paso-2" data-paso="2" aria-labelledby="paso-2-title" disabled>
+            <legend class="checkout-step__legend" id="paso-2-title">
+              <span class="checkout-step__index">2</span>
+              Método de pago
+            </legend>
+
+            <div class="checkout-step__body">
+              <p class="checkout-section__hint">Elegí cómo querés pagar tu pedido.</p>
+
+              <div class="checkout-pago-opciones" role="radiogroup" aria-label="Método de pago">
+                <label class="checkout-pago-card">
+                  <input type="radio" name="metodo-pago" value="transferencia" id="pago-transferencia" checked>
+                  <span class="checkout-pago-card__content">
+                    <span class="checkout-pago-card__title">Transferencia bancaria</span>
+                    <span class="checkout-pago-card__badge">−10%</span>
+                    <span class="checkout-pago-card__desc">Coordinás el pago por WhatsApp y ahorrás en el total.</span>
+                    <span class="checkout-pago-card__price" id="preview-total-transferencia">$ 0</span>
+                  </span>
+                </label>
+
+                <label class="checkout-pago-card">
+                  <input type="radio" name="metodo-pago" value="mercadopago" id="pago-mercadopago">
+                  <span class="checkout-pago-card__content">
+                    <span class="checkout-pago-card__title">Mercado Pago</span>
+                    <span class="checkout-pago-card__desc">Tarjeta, dinero en cuenta u otros medios. Checkout seguro.</span>
+                    <span class="checkout-pago-card__price" id="preview-total-mercadopago">$ 0</span>
+                  </span>
+                </label>
+              </div>
+            </div>
+
+            <div class="checkout-step__actions checkout-step__actions--split">
+              <button type="button" class="checkout-btn checkout-btn--ghost" id="btn-volver-paso-1" data-ir-paso="1">
+                Volver
+              </button>
+              <button type="button" class="checkout-btn checkout-btn--primary" id="btn-ir-paso-3" data-ir-paso="3">
+                Continuar a confirmación
+              </button>
+            </div>
+          </fieldset>
+
+          <!-- Paso 3: Confirmación -->
+          <fieldset class="checkout-step is-collapsed" id="paso-3" data-paso="3" aria-labelledby="paso-3-title" disabled>
+            <legend class="checkout-step__legend" id="paso-3-title">
+              <span class="checkout-step__index">3</span>
+              Confirmación
+            </legend>
+
+            <div class="checkout-step__body">
+              <div class="checkout-confirmacion" id="checkout-confirmacion">
+                <div class="checkout-confirmacion__block">
+                  <h3 class="checkout-confirmacion__heading">Entrega</h3>
+                  <p class="checkout-confirmacion__text" id="resumen-entrega-texto">—</p>
+                </div>
+                <div class="checkout-confirmacion__block">
+                  <h3 class="checkout-confirmacion__heading">Pago</h3>
+                  <p class="checkout-confirmacion__text" id="resumen-pago-texto">—</p>
+                </div>
+              </div>
+
+              <div class="checkout-section checkout-cupon" id="checkout-cupon">
+                <h3 class="checkout-section__title">Cupón de descuento</h3>
+                <div class="checkout-cupon__row">
+                  <input
+                    type="text"
+                    id="input-cupon"
+                    class="checkout-form__input"
+                    placeholder="Código de descuento"
+                    autocomplete="off"
+                    maxlength="40"
+                    aria-label="Código de descuento"
+                  >
+                  <button type="button" id="btn-aplicar-cupon" class="checkout-cupon__btn">Aplicar</button>
+                </div>
+                <p class="checkout-cupon__msg" id="checkout-cupon-msg" hidden></p>
+              </div>
+
+              <!-- Compatibilidad con actualizarTotalCheckoutUI / transferencia -->
+              <div id="contenedor-ahorro-transferencia" class="tarjeta-metodo-pago destacado-ahorro" hidden>
+                <div class="info-pago">
+                  <span class="metodo-etiqueta">TRANSFERENCIA BANCARIA (−10%)</span>
+                  <h3 class="monto-destacado" id="total-con-transferencia">$0,00</h3>
+                  <div class="pildora-ahorro" id="pildora-ahorro-total">
+                    <span>Ahorrás <strong id="monto-ahorrado-total">$0,00</strong> en total</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="checkout-step__actions checkout-step__actions--split">
+              <button type="button" class="checkout-btn checkout-btn--ghost" id="btn-volver-paso-2" data-ir-paso="2">
+                Volver
+              </button>
+              <button type="submit" class="checkout-btn checkout-btn--primary" id="checkout-submit-btn">
+                Finalizar pedido
+              </button>
+            </div>
+            <p class="checkout-form__note" id="checkout-finalize-note">
+              Al confirmar serás redirigido al medio de pago elegido.
+            </p>
+
+            <!-- Botón oculto para reutilizar listener de app.js (transferencia) -->
+            <button type="button" id="checkout-transferencia-btn" class="visually-hidden" tabindex="-1" aria-hidden="true">
+              Coordinar por WhatsApp
+            </button>
+          </fieldset>
+        </form>
+      </section>
+
+      <!-- Columna derecha: resumen sticky -->
+      <aside class="checkout-summary-panel" aria-label="Resumen del pedido">
+        <div class="checkout-summary-sticky">
+          <h2 class="checkout-summary-sticky__title">Resumen del pedido</h2>
+
+          <div class="checkout-resumen checkout-resumen--page" id="checkout-resumen" aria-label="Productos del pedido"></div>
+
+          <div class="contenedor-envio-gratis" id="contenedor-envio-gratis" hidden>
+            <p id="mensaje-envio-gratis">¡Te faltan $ 0,00 para conseguir envío gratis!</p>
+            <div class="barra-progreso-fondo">
+              <div id="barra-progreso-llenado" class="barra-progreso-llenado" style="width: 0%;"></div>
+            </div>
+          </div>
+
+          <div class="checkout-form__summary" id="checkout-summary">
+            <div class="checkout-form__summary-row" id="checkout-summary-subtotal-row">
+              <span>Subtotal</span>
+              <span id="checkout-summary-subtotal">$ 0</span>
+            </div>
+            <div class="checkout-form__summary-row checkout-form__summary-row--discount" id="checkout-summary-descuento-row" hidden>
+              <span id="checkout-summary-descuento-label">Descuento por cupón</span>
+              <span id="checkout-summary-descuento">−$ 0</span>
+            </div>
+            <div class="checkout-form__summary-row" id="checkout-summary-envio-row">
+              <span>Envío</span>
+              <span id="checkout-summary-envio">A coordinar</span>
+            </div>
+            <div class="checkout-form__summary-row checkout-form__summary-row--total">
+              <span>Total</span>
+              <strong id="checkout-summary-total">$ 0</strong>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <script src="js/api.js"></script>
+  <script src="js/app.js?v=12.4"></script>
+  <script src="js/checkout.js?v=1.4"></script>
+</body>
+</html>

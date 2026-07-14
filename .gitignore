@@ -25,3 +25,7 @@ desktop.ini
 *.swo
 .vercel
 .env*
+
+# Imágenes de banners subidas (se conservan .gitkeep y el JSON de config)
+public/images/banners/*
+!public/images/banners/.gitkeep
