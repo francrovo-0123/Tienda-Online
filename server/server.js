@@ -83,6 +83,27 @@ function resolverNgrokBin() {
 const NGROK_BIN = resolverNgrokBin();
 let APP_BASE_URL = String(process.env.APP_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
 let WEBHOOK_BASE_URL = String(process.env.WEBHOOK_BASE_URL || APP_BASE_URL).replace(/\/$/, '');
+
+function esHostLocal(url) {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '0.0.0.0';
+  } catch {
+    return true;
+  }
+}
+
+// En Vercel, si APP_BASE_URL quedó en localhost, usar la URL pública del deploy.
+if (process.env.VERCEL && esHostLocal(APP_BASE_URL)) {
+  const vercelUrl = String(process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL || '')
+    .replace(/\/$/, '');
+  if (vercelUrl) {
+    APP_BASE_URL = vercelUrl.startsWith('http') ? vercelUrl : `https://${vercelUrl}`;
+    if (esHostLocal(WEBHOOK_BASE_URL)) {
+      WEBHOOK_BASE_URL = APP_BASE_URL;
+    }
+  }
+}
 const ZONA_HORARIA_TIENDA = 'America/Argentina/Buenos_Aires';
 
 const mercadoPagoClient = new MercadoPagoConfig({ accessToken: MP_ACCESS_TOKEN });
@@ -3480,12 +3501,27 @@ app.post('/api/pagar', verificarClienteJWT, async (req, res) => {
     try {
       preferenceResponse = await preferenceClient.create({ body: preferenceBody });
     } catch (mpError) {
-      await revertirDecrementosStock(decrementosRealizados);
+      try {
+        await revertirDecrementosStock(decrementosRealizados);
+      } catch (revertError) {
+        logError('REVERTIR_STOCK_MP', revertError, { pedidoId });
+      }
+
+      const detalleMp = Array.isArray(mpError?.cause)
+        ? mpError.cause.map((c) => c?.description || c?.message || c?.code).filter(Boolean).join(' | ')
+        : (mpError?.message || '');
+
       logError('CREAR_PEDIDO_MP_PREFERENCE', mpError, {
         emailUsuario: email,
         pedidoId,
+        detalleMp,
       });
-      return res.status(502).json({ error: 'No se pudo iniciar el pago con Mercado Pago. Intentá nuevamente.' });
+
+      return res.status(502).json({
+        error: detalleMp
+          ? `No se pudo iniciar el pago con Mercado Pago: ${detalleMp}`
+          : 'No se pudo iniciar el pago con Mercado Pago. Intentá nuevamente.',
+      });
     }
 
     const initPoint = obtenerInitPointMercadoPago(preferenceResponse);

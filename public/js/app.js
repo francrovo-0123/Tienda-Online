@@ -434,6 +434,21 @@ async function subirImagenACloudinary(archivo) {
   return datos.secure_url;
 }
 
+function extraerMensajeErrorApi(datos, status) {
+  if (typeof datos?.error === 'string' && datos.error.trim()) return datos.error.trim();
+  if (typeof datos?.message === 'string' && datos.message.trim()) return datos.message.trim();
+  if (typeof datos?.error?.message === 'string' && datos.error.message.trim()) {
+    return datos.error.message.trim();
+  }
+  if (status === 502 || status === 504) {
+    return 'El servidor tardó demasiado en responder. Intentá de nuevo en unos segundos.';
+  }
+  if (status === 503) {
+    return 'Servicio temporalmente no disponible. Intentá de nuevo.';
+  }
+  return `Error en la petición al servidor (${status}).`;
+}
+
 async function apiFetch(ruta, opciones = {}) {
   const esFormData = opciones.body instanceof FormData;
   const headers = { ...opciones.headers };
@@ -442,20 +457,47 @@ async function apiFetch(ruta, opciones = {}) {
     headers['Content-Type'] = 'application/json';
   }
 
+  // ngrok free muestra un interstitial HTML que rompe el JSON de /api/*
+  if (/\.ngrok(-free)?\.(app|dev|io)$/i.test(window.location.hostname)) {
+    headers['ngrok-skip-browser-warning'] = 'true';
+  }
+
   const token = localStorage.getItem(ADMIN_TOKEN_KEY) || localStorage.getItem(CLIENTE_TOKEN_KEY);
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const respuesta = await fetch(`${API_BASE}${ruta}`, {
-    ...opciones,
-    headers,
-  });
+  let respuesta;
+  try {
+    respuesta = await fetch(`${API_BASE}${ruta}`, {
+      ...opciones,
+      headers,
+    });
+  } catch (error) {
+    throw new Error(
+      error?.message?.includes('Failed to fetch')
+        ? 'No se pudo conectar con el servidor. Revisá tu conexión e intentá de nuevo.'
+        : (error?.message || 'No se pudo completar la petición.')
+    );
+  }
 
-  const datos = await respuesta.json().catch(() => ({}));
+  const texto = await respuesta.text();
+  let datos = {};
+  if (texto) {
+    try {
+      datos = JSON.parse(texto);
+    } catch {
+      if (!respuesta.ok) {
+        throw new Error(extraerMensajeErrorApi({}, respuesta.status));
+      }
+      throw new Error('El servidor devolvió una respuesta inválida. Intentá de nuevo.');
+    }
+  }
 
   if (!respuesta.ok) {
-    const mensaje = String(datos.error || '');
+    const mensaje = String(
+      (typeof datos.error === 'string' && datos.error) || datos.message || ''
+    );
     const sesionExpirada =
       respuesta.status === 401
       && (
@@ -483,7 +525,7 @@ async function apiFetch(ruta, opciones = {}) {
     if (respuesta.status === 404 && !datos.error) {
       throw new Error('El servidor no reconoce esta acción. Reiniciá el servidor e intentá de nuevo.');
     }
-    throw new Error(datos.error || 'Error en la petición al servidor.');
+    throw new Error(extraerMensajeErrorApi(datos, respuesta.status));
   }
 
   return datos;
