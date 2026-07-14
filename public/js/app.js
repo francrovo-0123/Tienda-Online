@@ -5321,6 +5321,67 @@ function vaciarCarritoDeSesion() {
   actualizarCarritoUI();
 }
 
+/**
+ * Limpia carritos y sesión de cliente en el navegador para demos comerciales.
+ * Conserva el JWT de admin si estás logueado en el panel.
+ * Uso en consola: limpiarCarritoDemo()
+ */
+function limpiarCarritoDemo() {
+  const clavesLocal = [];
+  for (let i = 0; i < localStorage.length; i += 1) {
+    const key = localStorage.key(i);
+    if (!key) continue;
+    if (
+      key === CARRITO_LEGACY_KEY
+      || key.startsWith(CARRITO_USUARIO_PREFIX)
+      || key === CLIENTE_TOKEN_KEY
+      || key === CHECKOUT_PERFIL_KEY
+      || key === SEARCH_STATS_KEY
+    ) {
+      clavesLocal.push(key);
+    }
+  }
+  for (const key of clavesLocal) {
+    localStorage.removeItem(key);
+  }
+
+  try {
+    sessionStorage.removeItem('checkout_paso');
+  } catch {
+    /* ignore */
+  }
+
+  const sesion = obtenerSesionUsuario();
+  const mantenerAdmin = sesion?.rol === 'admin' && Boolean(localStorage.getItem(ADMIN_TOKEN_KEY));
+
+  if (!mantenerAdmin) {
+    try {
+      sessionStorage.removeItem(SESSION_USER_KEY);
+      localStorage.removeItem(SESSION_USER_KEY);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  carrito = [];
+  cuponAplicado = null;
+  if (typeof window !== 'undefined') {
+    window.costoEnvioActual = 0;
+  }
+
+  if (typeof actualizarCarritoUI === 'function') actualizarCarritoUI();
+  if (typeof actualizarUIUsuario === 'function') actualizarUIUsuario();
+
+  console.info('[demo] Carrito y sesión de cliente limpios. Listo para la reunión.');
+  return {
+    ok: true,
+    clavesBorradas: clavesLocal.length,
+    adminConservado: mantenerAdmin,
+  };
+}
+
+window.limpiarCarritoDemo = limpiarCarritoDemo;
+
 function calcularTotal() {
   const total = carrito.reduce((suma, item) => {
     const precio = Number(item.precio);
