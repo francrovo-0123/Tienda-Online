@@ -219,7 +219,15 @@ const CARRITO_LEGACY_KEY = 'carrito';
 const CARRITO_USUARIO_PREFIX = 'carrito_usuario_';
 const CHECKOUT_PERFIL_KEY = 'jerseys_checkout_perfiles';
 const SEARCH_STATS_KEY = 'jerseys_busquedas_stats';
-/** Cupón validado en checkout: { codigo, descuentoPorcentaje } | null */
+/**
+ * Cupón validado en checkout.
+ * @type {{
+ *   codigo: string,
+ *   descuentoPorcentaje: number,
+ *   idsElegibles: Array<string|number>|null,
+ *   montoAplicable: number|null
+ * } | null}
+ */
 let cuponAplicado = null;
 const ESTADOS_PEDIDO = ['pendiente_pago', 'listo_empaquetar', 'despachado', 'entregado'];
 const ETIQUETAS_ESTADO_PEDIDO = {
@@ -243,13 +251,23 @@ const ESTADOS_PEDIDO_LEGACY = {
   Rechazado: 'cancelado',
 };
 const CLUB_NAV_ESCUDO_MAX = 68;
-const TALLES_DISPONIBLES = ['S', 'M', 'L', 'XL', 'XXL'];
+const TALLES_ROPA_DISPONIBLES = ['S', 'M', 'L', 'XL', 'XXL'];
+const TALLES_CALZADO_DISPONIBLES = [
+  '35', '35.5', '36', '36.5', '37', '37.5', '38', '38.5',
+  '39', '39.5', '40', '40.5', '41', '41.5', '42', '42.5',
+  '43', '43.5', '44', '44.5', '45',
+];
+/** @deprecated Usar obtenerTallesDisponiblesPorTipo(); se mantiene para compatibilidad interna. */
+const TALLES_DISPONIBLES = TALLES_ROPA_DISPONIBLES;
 
 const seccionesEjemplo = [
-  { id: 1, nombre: 'Remeras', escudo: '' },
-  { id: 2, nombre: 'Camperas', escudo: '' },
-  { id: 3, nombre: 'Pantalones', escudo: '' },
+  { id: 1, nombre: 'Remeras', escudo: '', grupo: 'general', esFija: false, padreId: null },
+  { id: 2, nombre: 'Camperas', escudo: '', grupo: 'general', esFija: false, padreId: null },
+  { id: 3, nombre: 'Pantalones', escudo: '', grupo: 'general', esFija: false, padreId: null },
+  { id: 100, nombre: 'Calzado', escudo: '', grupo: 'calzado', esFija: true, padreId: null },
 ];
+
+const NOMBRE_SECCION_CALZADO = 'Calzado';
 
 let generoFiltroActivo = 'todos';
 let productos = [];
@@ -779,18 +797,96 @@ function contarProductosPorSeccion(nombreSeccion) {
   return productos.filter((producto) => producto.categoria === nombreSeccion).length;
 }
 
+function esSeccionCalzadoRaiz(seccion) {
+  if (!seccion) return false;
+  return Boolean(seccion.esFija) || (
+    String(seccion.nombre || '').toLowerCase() === NOMBRE_SECCION_CALZADO.toLowerCase()
+    && seccion.padreId == null
+  );
+}
+
+function esSubtipoCalzado(seccion) {
+  if (!seccion) return false;
+  return seccion.grupo === 'calzado' && seccion.padreId != null && !seccion.esFija;
+}
+
+function obtenerSeccionCalzadoRaiz() {
+  return secciones.find((seccion) => esSeccionCalzadoRaiz(seccion)) || null;
+}
+
+function obtenerSubtiposCalzado() {
+  const raiz = obtenerSeccionCalzadoRaiz();
+  if (!raiz) return [];
+  return secciones
+    .filter((seccion) => Number(seccion.padreId) === Number(raiz.id))
+    .sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), 'es'));
+}
+
+function obtenerSeccionesGenerales() {
+  return secciones
+    .filter((seccion) => !esSeccionCalzadoRaiz(seccion) && !esSubtipoCalzado(seccion))
+    .sort((a, b) => Number(a.id) - Number(b.id));
+}
+
+/** Secciones a las que se puede asignar un producto (excluye la raíz fija Calzado). */
+function obtenerSeccionesAsignables() {
+  return [
+    ...obtenerSeccionesGenerales(),
+    ...obtenerSubtiposCalzado(),
+  ];
+}
+
+function obtenerNombresCategoriasCalzado() {
+  const raiz = obtenerSeccionCalzadoRaiz();
+  const nombres = obtenerSubtiposCalzado().map((s) => s.nombre);
+  if (raiz) nombres.push(raiz.nombre);
+  return nombres;
+}
+
+function productoEsCalzadoPorSeccion(producto) {
+  const categoria = String(producto?.categoria || '').trim();
+  if (!categoria) return false;
+  return obtenerNombresCategoriasCalzado().some(
+    (nombre) => nombre.toLowerCase() === categoria.toLowerCase()
+  );
+}
+
+function seccionEsCalzadoPorNombre(nombre) {
+  const valor = String(nombre || '').trim().toLowerCase();
+  if (!valor) return false;
+  return obtenerNombresCategoriasCalzado().some((n) => n.toLowerCase() === valor);
+}
+
+function contarProductosCalzadoGrupo() {
+  const nombres = new Set(obtenerNombresCategoriasCalzado().map((n) => n.toLowerCase()));
+  return productos.filter((p) => nombres.has(String(p.categoria || '').toLowerCase())).length;
+}
+
 function renderizarSelectCategorias() {
   const select = document.getElementById('producto-categoria');
   if (!select) return;
 
-  const opciones = secciones
-    .map((seccion) => `<option value="${seccion.nombre}">${seccion.nombre}</option>`)
+  const valorActual = select.value;
+  const generales = obtenerSeccionesGenerales();
+  const subtipos = obtenerSubtiposCalzado();
+
+  const opcionesGenerales = generales
+    .map((seccion) => `<option value="${escaparAtributoHtml(seccion.nombre)}">${escaparHtmlTexto(seccion.nombre)}</option>`)
     .join('');
 
-  const valorActual = select.value;
-  select.innerHTML = `<option value="" disabled ${valorActual ? '' : 'selected'}>Seleccioná una sección</option>${opciones}`;
+  const opcionesCalzado = subtipos.length
+    ? `<optgroup label="Calzado">${subtipos
+      .map((seccion) => `<option value="${escaparAtributoHtml(seccion.nombre)}">${escaparHtmlTexto(seccion.nombre)}</option>`)
+      .join('')}</optgroup>`
+    : '';
 
-  if (valorActual && secciones.some((seccion) => seccion.nombre === valorActual)) {
+  select.innerHTML = `
+    <option value="" disabled ${valorActual ? '' : 'selected'}>Seleccioná una sección</option>
+    ${opcionesGenerales}
+    ${opcionesCalzado}
+  `;
+
+  if (valorActual && obtenerSeccionesAsignables().some((seccion) => seccion.nombre === valorActual)) {
     select.value = valorActual;
   }
 
@@ -802,15 +898,62 @@ function renderizarSelectCategoriasPreciosMasivo() {
   if (!select) return;
 
   const valorActual = select.value;
-  const opciones = secciones
-    .map((seccion) => `<option value="${seccion.nombre}">${seccion.nombre}</option>`)
+  const asignables = obtenerSeccionesAsignables();
+  const opciones = asignables
+    .map((seccion) => `<option value="${escaparAtributoHtml(seccion.nombre)}">${escaparHtmlTexto(seccion.nombre)}</option>`)
     .join('');
 
   select.innerHTML = `<option value="">Todas las categorías</option>${opciones}`;
 
-  if (valorActual && (valorActual === '' || secciones.some((seccion) => seccion.nombre === valorActual))) {
+  if (valorActual && (valorActual === '' || asignables.some((seccion) => seccion.nombre === valorActual))) {
     select.value = valorActual;
   }
+}
+
+function crearHtmlFilaSeccionAdmin(seccion, opciones = {}) {
+  const { anidada = false } = opciones;
+  const total = contarProductosPorSeccion(seccion.nombre);
+  const textoProductos = total === 1 ? '1 producto' : `${total} productos`;
+  const fija = esSeccionCalzadoRaiz(seccion);
+  const clases = [
+    'seccion-fila',
+    anidada ? 'seccion-fila--hija' : '',
+    fija ? 'seccion-fila--fija' : '',
+  ].filter(Boolean).join(' ');
+
+  const badgeFija = fija
+    ? '<span class="seccion-badge-fija" title="Sección fija del sistema">Fija</span>'
+    : '';
+
+  const btnEliminar = fija
+    ? ''
+    : `
+      <button
+        type="button"
+        class="btn-eliminar-seccion"
+        data-id="${seccion.id}"
+        title="Eliminar sección"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+        Eliminar
+      </button>
+    `;
+
+  return `
+    <div class="${clases}" data-id="${seccion.id}" role="button" tabindex="0" aria-label="Gestionar sección ${escaparAtributoHtml(seccion.nombre)}">
+      <div class="seccion-info">
+        ${
+          obtenerEscudoSeccion(seccion) && esUrlEscudoValida(obtenerEscudoSeccion(seccion))
+            ? `<img class="seccion-icono seccion-icono--img" src="${escaparAtributoHtml(optimizarUrlEscudo(obtenerEscudoSeccion(seccion)))}" alt="" width="28" height="28" loading="lazy">`
+            : `<span class="seccion-icono">${fija ? '👟' : anidada ? '↳' : '📁'}</span>`
+        }
+        <strong class="seccion-nombre">${escaparHtmlTexto(seccion.nombre)}</strong>
+        ${badgeFija}
+        <span class="seccion-badge-contador">${textoProductos}</span>
+      </div>
+      ${btnEliminar}
+    </div>
+  `;
 }
 
 function renderizarSeccionesAdmin() {
@@ -824,35 +967,48 @@ function renderizarSeccionesAdmin() {
 
   if (vacio) return;
 
-  lista.innerHTML = secciones
-    .map((seccion) => {
-      const total = contarProductosPorSeccion(seccion.nombre);
-      const textoProductos = total === 1 ? '1 producto' : `${total} productos`;
+  const generales = obtenerSeccionesGenerales();
+  const calzadoRaiz = obtenerSeccionCalzadoRaiz();
+  const subtipos = obtenerSubtiposCalzado();
+  const totalCalzado = contarProductosCalzadoGrupo();
 
-      return `
-        <div class="seccion-fila" data-id="${seccion.id}" role="button" tabindex="0" aria-label="Gestionar sección ${seccion.nombre}">
+  const htmlGenerales = generales.map((s) => crearHtmlFilaSeccionAdmin(s)).join('');
+
+  let htmlCalzado = '';
+  if (calzadoRaiz) {
+    const totalTexto = totalCalzado === 1 ? '1 producto' : `${totalCalzado} productos`;
+    const hijas = subtipos.map((s) => crearHtmlFilaSeccionAdmin(s, { anidada: true })).join('');
+
+    htmlCalzado = `
+      <div class="seccion-grupo seccion-grupo--calzado" data-id="${calzadoRaiz.id}">
+        <div class="seccion-fila seccion-fila--fija seccion-fila--grupo" data-id="${calzadoRaiz.id}" role="button" tabindex="0" aria-label="Gestionar sección Calzado">
           <div class="seccion-info">
             ${
-              obtenerEscudoSeccion(seccion) && esUrlEscudoValida(obtenerEscudoSeccion(seccion))
-                ? `<img class="seccion-icono seccion-icono--img" src="${escaparAtributoHtml(optimizarUrlEscudo(obtenerEscudoSeccion(seccion)))}" alt="" width="28" height="28" loading="lazy">`
-                : '<span class="seccion-icono">📁</span>'
+              obtenerEscudoSeccion(calzadoRaiz) && esUrlEscudoValida(obtenerEscudoSeccion(calzadoRaiz))
+                ? `<img class="seccion-icono seccion-icono--img" src="${escaparAtributoHtml(optimizarUrlEscudo(obtenerEscudoSeccion(calzadoRaiz)))}" alt="" width="28" height="28" loading="lazy">`
+                : '<span class="seccion-icono">👟</span>'
             }
-            <strong class="seccion-nombre">${seccion.nombre}</strong>
-            <span class="seccion-badge-contador">${textoProductos}</span>
+            <strong class="seccion-nombre">Calzado</strong>
+            <span class="seccion-badge-fija" title="Sección fija del sistema">Fija</span>
+            <span class="seccion-badge-contador">${totalTexto}</span>
           </div>
           <button
             type="button"
-            class="btn-eliminar-seccion"
-            data-id="${seccion.id}"
-            title="Eliminar sección"
+            class="btn-agregar-subtipo-calzado"
+            data-padre-id="${calzadoRaiz.id}"
+            title="Agregar tipo de calzado"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-            Eliminar
+            + Tipo
           </button>
         </div>
-      `;
-    })
-    .join('');
+        <div class="seccion-grupo__hijas">
+          ${hijas || '<p class="seccion-grupo__vacio">Todavía no hay tipos de calzado. Usá «+ Tipo» para crear Zapatillas, Botines, etc.</p>'}
+        </div>
+      </div>
+    `;
+  }
+
+  lista.innerHTML = htmlGenerales + htmlCalzado;
 }
 
 function limpiarPreviewEscudoSeccion() {
@@ -888,16 +1044,53 @@ function manejarSeleccionEscudoSeccion(event) {
   preview?.classList.remove('hidden');
 }
 
-function abrirModalCrearSeccion() {
+function obtenerMostrarEnCarruselDesdeCheckbox(checkbox) {
+  return Boolean(checkbox?.checked);
+}
+
+function sincronizarCheckboxMostrarEnCarrusel(checkbox, seccion) {
+  if (!checkbox) return;
+  // Default true si el campo no existe (secciones antiguas).
+  checkbox.checked = seccion?.mostrarEnCarrusel !== false;
+}
+
+function abrirModalCrearSeccion(opciones = {}) {
   const modal = document.getElementById('modal-crear-seccion');
   if (!modal) return;
 
+  const { padreId = null } = opciones;
   document.getElementById('modal-crear-seccion-form')?.reset();
   limpiarPreviewEscudoSeccion();
+
+  const padreInput = document.getElementById('modal-seccion-padre-id');
+  const contextoWrap = document.getElementById('modal-seccion-contexto-wrap');
+  const titulo = document.getElementById('modal-crear-seccion-titulo');
+  const label = document.getElementById('modal-seccion-nombre-label');
+  const nombreInput = document.getElementById('modal-seccion-nombre');
+  const submitBtn = document.getElementById('modal-crear-seccion-submit');
+  const mostrarCarruselInput = document.getElementById('modal-seccion-mostrar-carrusel');
+  const esSubtipo = padreId != null && Number.isFinite(Number(padreId));
+
+  if (padreInput) padreInput.value = esSubtipo ? String(padreId) : '';
+  if (contextoWrap) contextoWrap.hidden = !esSubtipo;
+  if (mostrarCarruselInput) mostrarCarruselInput.checked = true;
+
+  if (esSubtipo) {
+    if (titulo) titulo.textContent = 'Nuevo tipo de calzado';
+    if (label) label.textContent = 'Nombre del tipo';
+    if (nombreInput) nombreInput.placeholder = 'Ej: Zapatillas, Botines, Chimpunes...';
+    if (submitBtn) submitBtn.textContent = 'Crear tipo';
+  } else {
+    if (titulo) titulo.textContent = 'Nueva Sección';
+    if (label) label.textContent = 'Nombre de la sección';
+    if (nombreInput) nombreInput.placeholder = 'Ej: Boca Juniors, River Plate...';
+    if (submitBtn) submitBtn.textContent = 'Crear Sección';
+  }
+
   modal.classList.add('is-open');
   modal.setAttribute('aria-hidden', 'false');
   document.body.classList.add('modal-open');
-  document.getElementById('modal-seccion-nombre')?.focus();
+  nombreInput?.focus();
 }
 
 function cerrarModalCrearSeccion() {
@@ -908,6 +1101,10 @@ function cerrarModalCrearSeccion() {
   modal.setAttribute('aria-hidden', 'true');
   document.body.classList.remove('modal-open');
   document.getElementById('modal-crear-seccion-form')?.reset();
+  const padreInput = document.getElementById('modal-seccion-padre-id');
+  if (padreInput) padreInput.value = '';
+  const contextoWrap = document.getElementById('modal-seccion-contexto-wrap');
+  if (contextoWrap) contextoWrap.hidden = true;
   limpiarPreviewEscudoSeccion();
 }
 
@@ -918,6 +1115,11 @@ async function crearSeccionDesdeModal(event) {
   const nombre = input?.value.trim();
   if (!nombre) return;
 
+  const padreRaw = document.getElementById('modal-seccion-padre-id')?.value;
+  const padreId = padreRaw !== '' && Number.isFinite(Number(padreRaw))
+    ? Number(padreRaw)
+    : null;
+
   const submitBtn = document.querySelector('#modal-crear-seccion-form .seccion-modal-form__submit');
   submitBtn?.setAttribute('disabled', 'true');
 
@@ -927,15 +1129,24 @@ async function crearSeccionDesdeModal(event) {
       escudoUrl = await subirImagenACloudinary(archivoEscudoPendiente);
     }
 
-    const nuevaSeccion = await apiFetch('/api/secciones', {
+    const mostrarEnCarrusel = obtenerMostrarEnCarruselDesdeCheckbox(
+      document.getElementById('modal-seccion-mostrar-carrusel')
+    );
+
+    const payload = { nombre, escudo: escudoUrl, mostrarEnCarrusel };
+    if (padreId != null) payload.padreId = padreId;
+
+    await apiFetch('/api/secciones', {
       method: 'POST',
-      body: JSON.stringify({ nombre, escudo: escudoUrl }),
+      body: JSON.stringify(payload),
     });
 
     await cargarSecciones();
     renderizarFiltrosCategorias(productos);
     cerrarModalCrearSeccion();
-    mostrarToast('Sección creada correctamente.');
+    mostrarToast(padreId != null
+      ? 'Tipo de calzado creado correctamente.'
+      : 'Sección creada correctamente.');
   } catch (error) {
     mostrarToast(error?.message || 'No se pudo crear la sección.', 'error');
   } finally {
@@ -948,6 +1159,13 @@ function obtenerSeccionActiva() {
 }
 
 function obtenerProductosDeSeccion(nombreSeccion) {
+  const seccion = secciones.find((s) => s.nombre === nombreSeccion);
+  if (seccion && esSeccionCalzadoRaiz(seccion)) {
+    const nombres = new Set(obtenerNombresCategoriasCalzado().map((n) => n.toLowerCase()));
+    return productos.filter((producto) =>
+      nombres.has(String(producto.categoria || '').toLowerCase())
+    );
+  }
   return productos.filter((producto) => producto.categoria === nombreSeccion);
 }
 
@@ -1062,7 +1280,10 @@ function renderizarProductosEnSeccion(seccion) {
   const productosSeccion = obtenerProductosDeSeccion(seccion.nombre);
 
   if (!productosSeccion.length) {
-    lista.innerHTML = '<p class="seccion-modal-vacio">No hay productos en esta sección todavía.</p>';
+    const mensaje = esSeccionCalzadoRaiz(seccion)
+      ? 'No hay productos de calzado todavía. Creá un tipo con «+ Tipo» y agregá productos ahí.'
+      : 'No hay productos en esta sección todavía.';
+    lista.innerHTML = `<p class="seccion-modal-vacio">${mensaje}</p>`;
     return;
   }
 
@@ -1097,7 +1318,66 @@ function renderizarProductosEnSeccion(seccion) {
 
 function sincronizarNombreSeccionEnModal(seccion) {
   const input = document.getElementById('seccion-nombre-input');
-  if (input && seccion) input.value = seccion.nombre;
+  const btnGuardar = document.getElementById('btn-guardar-nombre-seccion');
+  if (!input || !seccion) return;
+
+  input.value = seccion.nombre;
+  const fija = esSeccionCalzadoRaiz(seccion);
+  input.readOnly = fija;
+  input.classList.toggle('is-readonly', fija);
+  if (fija) {
+    btnGuardar?.setAttribute('disabled', 'true');
+    btnGuardar?.setAttribute('hidden', 'true');
+  } else {
+    btnGuardar?.removeAttribute('disabled');
+    btnGuardar?.removeAttribute('hidden');
+  }
+}
+
+function sincronizarMostrarEnCarruselEnModal(seccion) {
+  sincronizarCheckboxMostrarEnCarrusel(
+    document.getElementById('seccion-mostrar-carrusel'),
+    seccion
+  );
+}
+
+async function guardarMostrarEnCarruselSeccion() {
+  const seccion = obtenerSeccionActiva();
+  const checkbox = document.getElementById('seccion-mostrar-carrusel');
+  if (!seccion || !checkbox) return;
+
+  const mostrarEnCarrusel = obtenerMostrarEnCarruselDesdeCheckbox(checkbox);
+  const valorAnterior = seccion.mostrarEnCarrusel !== false;
+
+  if (mostrarEnCarrusel === valorAnterior) return;
+
+  checkbox.disabled = true;
+
+  try {
+    const actualizada = await apiFetch(`/api/secciones/${seccion.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        nombre: seccion.nombre,
+        mostrarEnCarrusel,
+      }),
+    });
+
+    const indice = secciones.findIndex((item) => item.id === seccion.id);
+    if (indice !== -1) secciones[indice] = actualizada;
+
+    sincronizarMostrarEnCarruselEnModal(actualizada);
+    renderizarStadiumCarousel();
+    mostrarToast(
+      mostrarEnCarrusel
+        ? 'La sección se mostrará en el carrusel de la Home.'
+        : 'La sección se ocultó del carrusel de la Home.'
+    );
+  } catch (error) {
+    checkbox.checked = valorAnterior;
+    mostrarToast(error?.message || 'No se pudo actualizar la visibilidad en el carrusel.', 'error');
+  } finally {
+    checkbox.disabled = false;
+  }
 }
 
 function limpiarEscudoDetallePendiente(opciones = {}) {
@@ -1173,7 +1453,13 @@ async function guardarEscudoSeccion() {
     const escudoUrl = await subirImagenACloudinary(archivoEscudoDetallePendiente);
     const actualizada = await apiFetch(`/api/secciones/${seccion.id}`, {
       method: 'PUT',
-      body: JSON.stringify({ nombre: seccion.nombre, escudo: escudoUrl }),
+      body: JSON.stringify({
+        nombre: seccion.nombre,
+        escudo: escudoUrl,
+        mostrarEnCarrusel: obtenerMostrarEnCarruselDesdeCheckbox(
+          document.getElementById('seccion-mostrar-carrusel')
+        ),
+      }),
     });
 
     await cargarSecciones();
@@ -1197,6 +1483,7 @@ function abrirModalDetalleSeccion(id) {
 
   sincronizarNombreSeccionEnModal(seccion);
   sincronizarEscudoSeccionEnModal(seccion);
+  sincronizarMostrarEnCarruselEnModal(seccion);
   renderizarProductosEnSeccion(seccion);
 
   modal.classList.add('is-open');
@@ -1223,6 +1510,7 @@ function restaurarModalDetalleSeccionSiCorresponde() {
 
   sincronizarNombreSeccionEnModal(seccion);
   sincronizarEscudoSeccionEnModal(seccion);
+  sincronizarMostrarEnCarruselEnModal(seccion);
   renderizarProductosEnSeccion(seccion);
 
   modal.classList.add('is-open');
@@ -1243,13 +1531,41 @@ function cerrarModalDetalleSeccion() {
   limpiarEscudoDetallePendiente();
 }
 
+function sincronizarCategoriaTipoConSeccion(nombreSeccion) {
+  const selectTipo = document.getElementById('producto-categoria-tipo');
+  if (!selectTipo) return;
+
+  if (seccionEsCalzadoPorNombre(nombreSeccion)) {
+    if (selectTipo.value !== 'calzado') {
+      selectTipo.value = 'calzado';
+      alCambiarCategoriaTipoProducto();
+    }
+    return;
+  }
+
+  if (selectTipo.value !== 'ropa') {
+    selectTipo.value = 'ropa';
+    alCambiarCategoriaTipoProducto();
+  }
+}
+
 function abrirAgregarProductoDesdeSeccion() {
   const seccion = obtenerSeccionActiva();
   if (!seccion) return;
 
-  const nombreSeccion = seccion.nombre;
+  if (esSeccionCalzadoRaiz(seccion)) {
+    const subtipos = obtenerSubtiposCalzado();
+    if (!subtipos.length) {
+      mostrarToast('Creá primero un tipo de calzado con «+ Tipo» (Zapatillas, Botines, etc.).', 'error');
+      return;
+    }
+    ocultarModalDetalleSeccionTemporalmente();
+    abrirModalProducto(subtipos[0].nombre);
+    return;
+  }
+
   ocultarModalDetalleSeccionTemporalmente();
-  abrirModalProducto(nombreSeccion);
+  abrirModalProducto(seccion.nombre);
 }
 
 function obtenerProductosDisponiblesParaSeccion(nombreSeccion, busqueda = '') {
@@ -1404,6 +1720,11 @@ async function eliminarSeccion(id) {
   const seccion = secciones.find((item) => item.id === Number(id));
   if (!seccion) return;
 
+  if (esSeccionCalzadoRaiz(seccion)) {
+    mostrarToast('La sección «Calzado» es fija y no se puede eliminar.', 'error');
+    return;
+  }
+
   const totalProductos = contarProductosPorSeccion(seccion.nombre);
   if (totalProductos > 0) {
     mostrarToast(
@@ -1413,14 +1734,15 @@ async function eliminarSeccion(id) {
     return;
   }
 
-  const confirmar = window.confirm(`¿Eliminar la sección «${seccion.nombre}»?`);
+  const etiqueta = esSubtipoCalzado(seccion) ? 'tipo de calzado' : 'sección';
+  const confirmar = window.confirm(`¿Eliminar el ${etiqueta} «${seccion.nombre}»?`);
   if (!confirmar) return;
 
   try {
     await apiFetch(`/api/secciones/${seccion.id}`, { method: 'DELETE' });
     secciones = secciones.filter((item) => item.id !== seccion.id);
     actualizarVistaSecciones();
-    mostrarToast('Sección eliminada.');
+    mostrarToast(etiqueta === 'tipo de calzado' ? 'Tipo de calzado eliminado.' : 'Sección eliminada.');
   } catch (error) {
     mostrarToast(error?.message || 'No se pudo eliminar la sección.', 'error');
   }
@@ -1429,6 +1751,13 @@ async function eliminarSeccion(id) {
 async function guardarNombreSeccion() {
   const seccion = obtenerSeccionActiva();
   if (!seccion) return;
+
+  if (esSeccionCalzadoRaiz(seccion)) {
+    mostrarToast('La sección «Calzado» es fija y no se puede renombrar.', 'error');
+    const inputFijo = document.getElementById('seccion-nombre-input');
+    if (inputFijo) inputFijo.value = NOMBRE_SECCION_CALZADO;
+    return;
+  }
 
   const input = document.getElementById('seccion-nombre-input');
   const nuevoNombre = input?.value.trim() ?? '';
@@ -1448,7 +1777,12 @@ async function guardarNombreSeccion() {
   try {
     const actualizada = await apiFetch(`/api/secciones/${seccion.id}`, {
       method: 'PUT',
-      body: JSON.stringify({ nombre: nuevoNombre }),
+      body: JSON.stringify({
+        nombre: nuevoNombre,
+        mostrarEnCarrusel: obtenerMostrarEnCarruselDesdeCheckbox(
+          document.getElementById('seccion-mostrar-carrusel')
+        ),
+      }),
     });
 
     const indice = secciones.findIndex((item) => item.id === seccion.id);
@@ -1466,6 +1800,7 @@ async function guardarNombreSeccion() {
 
     sincronizarNombreSeccionEnModal(actualizada);
     sincronizarEscudoSeccionEnModal(actualizada);
+    sincronizarMostrarEnCarruselEnModal(actualizada);
     renderizarProductosEnSeccion(actualizada);
     actualizarVistaSecciones();
     renderizarSelectCategorias();
@@ -1518,21 +1853,72 @@ function productoTieneStock(producto) {
   return Number(producto.stock) > 0;
 }
 
+function obtenerCategoriaTipoProducto(producto = null) {
+  const tipo = String(producto?.categoriaTipo || producto?.categoria_tipo || 'ropa')
+    .trim()
+    .toLowerCase();
+  return tipo === 'calzado' ? 'calzado' : 'ropa';
+}
+
+function obtenerTallesDisponiblesPorTipo(categoriaTipo = 'ropa') {
+  return categoriaTipo === 'calzado'
+    ? [...TALLES_CALZADO_DISPONIBLES]
+    : [...TALLES_ROPA_DISPONIBLES];
+}
+
+function obtenerCategoriaTipoDelFormulario() {
+  const select = document.getElementById('producto-categoria-tipo');
+  const valor = String(select?.value || 'ropa').trim().toLowerCase();
+  return valor === 'calzado' ? 'calzado' : 'ropa';
+}
+
+function normalizarClaveTalleFront(talle) {
+  return String(talle ?? '').trim().toUpperCase().replace(/__DOT__/g, '.');
+}
+
+function compararTallesFront(a, b) {
+  const na = Number(a);
+  const nb = Number(b);
+  const aNum = Number.isFinite(na) && String(a).trim() !== '';
+  const bNum = Number.isFinite(nb) && String(b).trim() !== '';
+  if (aNum && bNum) return na - nb;
+  if (aNum) return 1;
+  if (bNum) return -1;
+  const orden = TALLES_ROPA_DISPONIBLES;
+  const ia = orden.indexOf(a);
+  const ib = orden.indexOf(b);
+  if (ia !== -1 && ib !== -1) return ia - ib;
+  return String(a).localeCompare(String(b), 'es', { numeric: true });
+}
+
+/** IDs HTML seguros: el punto de medios talles (p. ej. 40.5) se convierte a __DOT__. */
+function escaparIdTalle(talle) {
+  return encodeURIComponent(String(talle).replace(/\./g, '__DOT__')).replace(/%/g, '_');
+}
+
 function obtenerStockTallesProducto(producto) {
   const origen = producto?.stockTalles || {};
   const resultado = {};
+  const categoriaTipo = obtenerCategoriaTipoProducto(producto);
+  const tallesBase = obtenerTallesDisponiblesPorTipo(categoriaTipo);
 
-  TALLES_DISPONIBLES.forEach((talle) => {
-    resultado[talle] = Math.max(0, Math.floor(Number(origen[talle]) || 0));
+  Object.keys(origen).forEach((clave) => {
+    const talle = normalizarClaveTalleFront(clave);
+    if (!talle) return;
+    resultado[talle] = Math.max(0, Math.floor(Number(origen[clave]) || 0));
   });
 
-  const total = TALLES_DISPONIBLES.reduce((acc, talle) => acc + resultado[talle], 0);
+  tallesBase.forEach((talle) => {
+    if (resultado[talle] === undefined) resultado[talle] = 0;
+  });
+
+  const total = Object.values(resultado).reduce((acc, n) => acc + n, 0);
   if (total > 0) return resultado;
 
   const stockTotal = Math.max(0, Math.floor(Number(producto?.stock) || 0));
   const talles = Array.isArray(producto?.talles) && producto.talles.length
-    ? producto.talles.map((t) => String(t).toUpperCase()).filter((t) => TALLES_DISPONIBLES.includes(t))
-    : [...TALLES_DISPONIBLES];
+    ? producto.talles.map(normalizarClaveTalleFront).filter(Boolean)
+    : [...tallesBase];
 
   if (talles.length === 1) {
     resultado[talles[0]] = stockTotal;
@@ -1555,17 +1941,114 @@ function obtenerTallesProducto(producto) {
   if (!productoTieneStock(producto)) return [];
 
   const stockTalles = obtenerStockTallesProducto(producto);
-  const conStock = TALLES_DISPONIBLES.filter((talle) => stockTalles[talle] > 0);
+  const conStock = Object.keys(stockTalles)
+    .filter((talle) => stockTalles[talle] > 0)
+    .sort(compararTallesFront);
   if (conStock.length) return conStock;
 
-  if (Array.isArray(producto.talles) && producto.talles.length > 0) return producto.talles;
+  if (Array.isArray(producto.talles) && producto.talles.length > 0) {
+    return producto.talles.map(normalizarClaveTalleFront).filter(Boolean);
+  }
   return [];
+}
+
+function crearHtmlFilaStockTalle(talle, categoriaTipo, stock = 0, medidas = {}) {
+  const idSeguro = escaparIdTalle(talle);
+  const stockVal = Math.max(0, Math.floor(Number(stock) || 0));
+
+  if (categoriaTipo === 'calzado') {
+    const plantilla = String(medidas.largoPlantilla ?? '').trim();
+    return `
+      <div class="product-form__stock-talle product-form__stock-talle--calzado" data-talle="${escaparAtributoHtml(talle)}">
+        <span class="product-form__stock-talle-nombre">${escaparHtmlTexto(talle)}</span>
+        <label class="product-form__stock-field">
+          <span class="visually-hidden">Stock ${escaparHtmlTexto(talle)}</span>
+          <input type="number" id="producto-stock-${idSeguro}" name="stock_${escaparAtributoHtml(talle)}" class="product-form__input product-form__stock-input" min="0" step="1" value="${stockVal}" data-talle="${escaparAtributoHtml(talle)}" aria-label="Stock talle ${escaparAtributoHtml(talle)}">
+        </label>
+        <label class="product-form__medida-field">
+          <span>Largo de Plantilla (cm)</span>
+          <input type="text" id="producto-medida-plantilla-${idSeguro}" name="medida_plantilla_${escaparAtributoHtml(talle)}" class="product-form__input product-form__medida-input" placeholder="26 cm" inputmode="decimal" autocomplete="off" data-talle="${escaparAtributoHtml(talle)}" data-medida="largoPlantilla" aria-label="Largo de plantilla talle ${escaparAtributoHtml(talle)}" value="${escaparAtributoHtml(plantilla)}">
+        </label>
+      </div>
+    `;
+  }
+
+  const ancho = String(medidas.ancho ?? '').trim();
+  const largo = String(medidas.largo ?? '').trim();
+  return `
+    <div class="product-form__stock-talle" data-talle="${escaparAtributoHtml(talle)}">
+      <span class="product-form__stock-talle-nombre">${escaparHtmlTexto(talle)}</span>
+      <label class="product-form__stock-field">
+        <span class="visually-hidden">Stock ${escaparHtmlTexto(talle)}</span>
+        <input type="number" id="producto-stock-${idSeguro}" name="stock_${escaparAtributoHtml(talle)}" class="product-form__input product-form__stock-input" min="0" step="1" value="${stockVal}" data-talle="${escaparAtributoHtml(talle)}" aria-label="Stock talle ${escaparAtributoHtml(talle)}">
+      </label>
+      <label class="product-form__medida-field">
+        <span>Ancho (cm)</span>
+        <input type="text" id="producto-medida-ancho-${idSeguro}" name="medida_ancho_${escaparAtributoHtml(talle)}" class="product-form__input product-form__medida-input" placeholder="52cm" inputmode="decimal" autocomplete="off" data-talle="${escaparAtributoHtml(talle)}" data-medida="ancho" aria-label="Ancho talle ${escaparAtributoHtml(talle)}" value="${escaparAtributoHtml(ancho)}">
+      </label>
+      <label class="product-form__medida-field">
+        <span>Largo (cm)</span>
+        <input type="text" id="producto-medida-largo-${idSeguro}" name="medida_largo_${escaparAtributoHtml(talle)}" class="product-form__input product-form__medida-input" placeholder="71cm" inputmode="decimal" autocomplete="off" data-talle="${escaparAtributoHtml(talle)}" data-medida="largo" aria-label="Largo talle ${escaparAtributoHtml(talle)}" value="${escaparAtributoHtml(largo)}">
+      </label>
+    </div>
+  `;
+}
+
+function renderizarGrillaStockTallesFormulario(producto = null) {
+  const contenedor = document.getElementById('producto-stock-talles');
+  if (!contenedor) return;
+
+  const categoriaTipo = producto
+    ? obtenerCategoriaTipoProducto(producto)
+    : obtenerCategoriaTipoDelFormulario();
+
+  const selectTipo = document.getElementById('producto-categoria-tipo');
+  if (selectTipo) selectTipo.value = categoriaTipo;
+
+  contenedor.dataset.tipo = categoriaTipo;
+  contenedor.classList.toggle('product-form__stock-talles--calzado', categoriaTipo === 'calzado');
+
+  const talles = obtenerTallesDisponiblesPorTipo(categoriaTipo);
+  const stockTalles = producto
+    ? obtenerStockTallesProducto(producto)
+    : Object.fromEntries(talles.map((t) => [t, categoriaTipo === 'ropa' ? 2 : 0]));
+
+  const porTalle = new Map();
+  if (Array.isArray(producto?.tablaMedidas)) {
+    producto.tablaMedidas.forEach((fila) => {
+      if (!fila || typeof fila !== 'object') return;
+      const talle = normalizarClaveTalleFront(fila.talle);
+      if (!talle) return;
+      porTalle.set(talle, {
+        ancho: String(fila.ancho ?? '').trim(),
+        largo: String(fila.largo ?? '').trim(),
+        largoPlantilla: String(fila.largoPlantilla ?? fila.largo_plantilla ?? '').trim(),
+      });
+    });
+  }
+
+  contenedor.innerHTML = talles
+    .map((talle) => crearHtmlFilaStockTalle(
+      talle,
+      categoriaTipo,
+      stockTalles[talle] ?? 0,
+      porTalle.get(talle) || {}
+    ))
+    .join('');
+
+  actualizarTotalStockFormulario();
+}
+
+function obtenerTallesActivosDelFormulario() {
+  return [...document.querySelectorAll('#producto-stock-talles [data-talle]')]
+    .map((el) => normalizarClaveTalleFront(el.getAttribute('data-talle')))
+    .filter(Boolean);
 }
 
 function obtenerStockTallesDelFormulario() {
   const stockTalles = {};
-  TALLES_DISPONIBLES.forEach((talle) => {
-    const input = document.getElementById(`producto-stock-${talle}`);
+  obtenerTallesActivosDelFormulario().forEach((talle) => {
+    const input = document.getElementById(`producto-stock-${escaparIdTalle(talle)}`);
     stockTalles[talle] = Math.max(0, Math.floor(Number(input?.value) || 0));
   });
   return stockTalles;
@@ -1573,37 +2056,68 @@ function obtenerStockTallesDelFormulario() {
 
 function obtenerTallesDelFormulario() {
   const stockTalles = obtenerStockTallesDelFormulario();
-  return TALLES_DISPONIBLES.filter((talle) => stockTalles[talle] > 0);
+  return Object.keys(stockTalles)
+    .filter((talle) => stockTalles[talle] > 0)
+    .sort(compararTallesFront);
 }
 
 function actualizarTotalStockFormulario() {
   const totalEl = document.getElementById('producto-stock-total');
   if (!totalEl) return;
   const stockTalles = obtenerStockTallesDelFormulario();
-  const total = TALLES_DISPONIBLES.reduce((acc, talle) => acc + stockTalles[talle], 0);
+  const total = Object.values(stockTalles).reduce((acc, n) => acc + n, 0);
   totalEl.textContent = String(total);
 }
 
 function establecerStockTallesEnFormulario(producto = null) {
-  const stockTalles = producto
-    ? obtenerStockTallesProducto(producto)
-    : { S: 2, M: 2, L: 2, XL: 2, XXL: 2 };
-
-  TALLES_DISPONIBLES.forEach((talle) => {
-    const input = document.getElementById(`producto-stock-${talle}`);
-    if (input) input.value = String(stockTalles[talle] ?? 0);
-  });
-
-  actualizarTotalStockFormulario();
+  renderizarGrillaStockTallesFormulario(producto);
 }
 
-function establecerTallesEnFormulario(talles = TALLES_DISPONIBLES) {
+function obtenerTablaMedidasDelFormulario() {
+  const categoriaTipo = obtenerCategoriaTipoDelFormulario();
+
+  return obtenerTallesActivosDelFormulario()
+    .map((talle) => {
+      const idSeguro = escaparIdTalle(talle);
+      if (categoriaTipo === 'calzado') {
+        const largoPlantilla = document.getElementById(`producto-medida-plantilla-${idSeguro}`)?.value.trim() ?? '';
+        return { talle, ancho: '', largo: '', largoPlantilla };
+      }
+      const ancho = document.getElementById(`producto-medida-ancho-${idSeguro}`)?.value.trim() ?? '';
+      const largo = document.getElementById(`producto-medida-largo-${idSeguro}`)?.value.trim() ?? '';
+      return { talle, ancho, largo, largoPlantilla: '' };
+    })
+    .filter((fila) => {
+      if (categoriaTipo === 'calzado') return fila.largoPlantilla !== '';
+      return fila.ancho !== '' || fila.largo !== '';
+    });
+}
+
+function establecerTablaMedidasEnFormulario(producto = null) {
+  // La grilla ya se rellena en renderizarGrillaStockTallesFormulario.
+  if (producto) renderizarGrillaStockTallesFormulario(producto);
+}
+
+function establecerTallesEnFormulario(talles = TALLES_ROPA_DISPONIBLES) {
   const tallesActivos = new Set(
-    Array.isArray(talles) ? talles.map((talle) => String(talle).toUpperCase()) : []
+    Array.isArray(talles) ? talles.map((talle) => normalizarClaveTalleFront(talle)) : []
   );
 
   document.querySelectorAll('input[name="producto-talle"]').forEach((input) => {
     input.checked = tallesActivos.has(input.value);
+  });
+}
+
+function alCambiarCategoriaTipoProducto() {
+  const tipo = obtenerCategoriaTipoDelFormulario();
+  // Rebuild limpio: evita reenviar ancho/largo en calzado o largoPlantilla en ropa.
+  // No reutiliza stock ni medidas del tipo anterior (estructuras de talle incompatibles).
+  renderizarGrillaStockTallesFormulario({
+    categoriaTipo: tipo,
+    stockTalles: {},
+    tablaMedidas: [],
+    talles: obtenerTallesDisponiblesPorTipo(tipo),
+    stock: 0,
   });
 }
 
@@ -1612,6 +2126,7 @@ function restablecerFormularioProducto() {
   const precioOfertaInput = document.getElementById('producto-precio-oferta');
   const enOfertaSwitch = document.getElementById('producto-en-oferta');
   const generoSelect = document.getElementById('producto-genero');
+  const categoriaTipoSelect = document.getElementById('producto-categoria-tipo');
   const urlFrente = document.getElementById('producto-imagen-frente-url');
   const urlEspalda = document.getElementById('producto-imagen-espalda-url');
 
@@ -1619,6 +2134,7 @@ function restablecerFormularioProducto() {
   if (precioOfertaInput) precioOfertaInput.value = '';
   if (enOfertaSwitch) enOfertaSwitch.checked = false;
   if (generoSelect) generoSelect.value = 'hombre';
+  if (categoriaTipoSelect) categoriaTipoSelect.value = 'ropa';
   if (urlFrente) urlFrente.value = '';
   if (urlEspalda) urlEspalda.value = '';
   establecerStockTallesEnFormulario(null);
@@ -1663,8 +2179,14 @@ function filtrarProductos(lista) {
     // La tienda nunca muestra inactivos, aunque el admin tenga ?todos=true en memoria.
     if (producto.activo === false) return false;
 
-    const coincideCategoria =
-      categoriaFiltroActiva === 'todos' || producto.categoria === categoriaFiltroActiva;
+    let coincideCategoria = categoriaFiltroActiva === 'todos'
+      || producto.categoria === categoriaFiltroActiva;
+
+    // Filtrar por la sección fija Calzado incluye todos sus subtipos.
+    if (!coincideCategoria && categoriaFiltroActiva === NOMBRE_SECCION_CALZADO) {
+      coincideCategoria = productoEsCalzadoPorSeccion(producto);
+    }
+
     const ligaProducto = String(producto.liga || '').trim().toLowerCase();
     const coincideLiga =
       !ligaFiltroActiva || ligaProducto === ligaFiltroActiva.trim().toLowerCase();
@@ -1688,7 +2210,48 @@ function obtenerEtiquetaFiltroGenero(genero) {
   return etiquetas[genero] || 'Todos';
 }
 
-function crearHtmlBotonesTalles(producto) {
+function escaparHtmlTexto(valor) {
+  return String(valor ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function normalizarTextoMedida(valor) {
+  const texto = String(valor ?? '').trim();
+  return texto || '';
+}
+
+function filaTablaMedidasTieneDatos(fila) {
+  if (!fila || typeof fila !== 'object') return false;
+  const talle = normalizarTextoMedida(fila.talle);
+  if (!talle) return false;
+  return Boolean(
+    normalizarTextoMedida(fila.ancho)
+    || normalizarTextoMedida(fila.largo)
+    || normalizarTextoMedida(fila.largoPlantilla)
+    || normalizarTextoMedida(fila.largo_plantilla)
+  );
+}
+
+function obtenerTablaMedidasProducto(producto) {
+  if (!Array.isArray(producto?.tablaMedidas)) return [];
+  return producto.tablaMedidas.filter(filaTablaMedidasTieneDatos);
+}
+
+function crearHtmlEnlaceTablaMedidas(productoId) {
+  return `
+    <button
+      type="button"
+      class="tabla-medidas-link"
+      onclick="event.stopPropagation(); abrirTablaMedidas(${Number(productoId)})"
+    >Ver tabla de medidas</button>
+  `;
+}
+
+function crearHtmlBotonesTalles(producto, opciones = {}) {
+  const { incluirEnlaceMedidas = true } = opciones;
   const talles = obtenerTallesProducto(producto);
   if (!talles.length) return '';
 
@@ -1701,19 +2264,259 @@ function crearHtmlBotonesTalles(producto) {
           type="button"
           class="talle-btn${talle === talleActivo ? ' selected' : ''}"
           data-product-id="${producto.id}"
-          data-talle="${talle}"
-          onclick="seleccionarTalle(${producto.id}, '${talle}')"
-          aria-label="Talle ${talle}"
+          data-talle="${escaparAtributoHtml(talle)}"
+          onclick="seleccionarTalle(${producto.id}, '${escaparAtributoHtml(talle).replace(/'/g, "\\'")}')"
+          aria-label="Talle ${escaparHtmlTexto(talle)}"
           aria-pressed="${talle === talleActivo}"
-        >${talle}</button>
+        >${escaparHtmlTexto(talle)}</button>
       `
     )
     .join('');
 
+  const enlaceMedidas = incluirEnlaceMedidas && obtenerTablaMedidasProducto(producto).length
+    ? crearHtmlEnlaceTablaMedidas(producto.id)
+    : '';
+
   return `
     <span class="selector-talles__label">Talle</span>
     ${botones}
+    ${enlaceMedidas}
   `;
+}
+
+function renderizarFilasTablaMedidas(tablaMedidas, talleSeleccionado = null, categoriaTipo = 'ropa') {
+  const tipo = categoriaTipo === 'calzado' ? 'calzado' : 'ropa';
+  const colspan = tipo === 'calzado' ? 2 : 3;
+  const filas = Array.isArray(tablaMedidas)
+    ? tablaMedidas.filter((fila) => {
+      try {
+        return filaTablaMedidasTieneDatos(fila);
+      } catch {
+        return false;
+      }
+    })
+    : [];
+  if (!filas.length) {
+    return `<tr><td colspan="${colspan}"><p class="size-chart-modal__empty">No hay medidas cargadas para este producto.</p></td></tr>`;
+  }
+
+  const talleActivo = normalizarTextoMedida(talleSeleccionado).toUpperCase();
+
+  return filas
+    .map((fila) => {
+      const talle = normalizarTextoMedida(fila?.talle) || '—';
+      const activo = Boolean(talleActivo) && talle.toUpperCase() === talleActivo;
+
+      if (tipo === 'calzado') {
+        const plantilla = normalizarTextoMedida(fila?.largoPlantilla || fila?.largo_plantilla) || '—';
+        return `
+          <tr class="${activo ? 'is-selected' : ''}"${activo ? ' aria-current="true"' : ''}>
+            <td>${escaparHtmlTexto(talle)}</td>
+            <td>${escaparHtmlTexto(plantilla)}</td>
+          </tr>
+        `;
+      }
+
+      const ancho = normalizarTextoMedida(fila?.ancho) || '—';
+      const largo = normalizarTextoMedida(fila?.largo) || '—';
+      return `
+        <tr class="${activo ? 'is-selected' : ''}"${activo ? ' aria-current="true"' : ''}>
+          <td>${escaparHtmlTexto(talle)}</td>
+          <td>${escaparHtmlTexto(ancho)}</td>
+          <td>${escaparHtmlTexto(largo)}</td>
+        </tr>
+      `;
+    })
+    .join('');
+}
+
+function actualizarEncabezadoTablaMedidasModal(categoriaTipo = 'ropa') {
+  const tipo = categoriaTipo === 'calzado' ? 'calzado' : 'ropa';
+  const titleText = document.getElementById('size-chart-modal-title-text');
+  const subtitleText = document.getElementById('size-chart-modal-subtitle-text');
+  const head = document.getElementById('size-chart-modal-head');
+
+  if (tipo === 'calzado') {
+    if (titleText) titleText.textContent = 'TABLA DE MEDIDAS (CALZADO)';
+    if (subtitleText) {
+      subtitleText.textContent =
+        'Medidas tomadas sobre la plantilla interna. Tomá la plantilla de una zapatilla tuya que te quede bien y medí su largo de punta a talón.';
+    }
+    if (head) {
+      head.innerHTML = `
+        <th scope="col">Talle (AR)</th>
+        <th scope="col">Largo de Plantilla (cm)</th>
+      `;
+    }
+    return;
+  }
+
+  if (titleText) titleText.textContent = 'TABLA DE MEDIDAS (REFERENCIA DE PRENDA)';
+  if (subtitleText) {
+    subtitleText.textContent =
+      'Medidas tomadas sobre la prenda en plano. Tomá una remera tuya que te quede bien y compará el ancho (axila a axila).';
+  }
+  if (head) {
+    head.innerHTML = `
+      <th scope="col">Talle</th>
+      <th scope="col">Ancho (Axila a Axila)</th>
+      <th scope="col">Largo (cm)</th>
+    `;
+  }
+}
+
+function crearHtmlTablaMedidasProducto(producto, talleSeleccionado = null) {
+  const filas = obtenerTablaMedidasProducto(producto);
+  if (!filas.length) return '';
+
+  const categoriaTipo = obtenerCategoriaTipoProducto(producto);
+  const esCalzado = categoriaTipo === 'calzado';
+
+  const titulo = esCalzado
+    ? 'Tabla de medidas (calzado)'
+    : 'Tabla de medidas (referencia de prenda)';
+  const subtitulo = esCalzado
+    ? 'Medidas tomadas sobre la plantilla interna. Tomá la plantilla de una zapatilla tuya que te quede bien y medí su largo de punta a talón.'
+    : 'Medidas tomadas sobre la prenda en plano. Tomá una remera tuya que te quede bien y compará el ancho (axila a axila).';
+  const thead = esCalzado
+    ? `<tr><th scope="col">Talle (AR)</th><th scope="col">Largo de Plantilla (cm)</th></tr>`
+    : `<tr><th scope="col">Talle</th><th scope="col">Ancho (Axila a Axila)</th><th scope="col">Largo (cm)</th></tr>`;
+
+  return `
+    <div class="product-size-chart">
+      <h3 class="product-size-chart__title">
+        <span class="product-size-chart__title-icon" aria-hidden="true">📐</span>
+        ${titulo}
+      </h3>
+      <p class="product-size-chart__subtitle">
+        <span class="product-size-chart__subtitle-icon" aria-hidden="true">✏️</span>
+        ${subtitulo}
+      </p>
+      <div class="product-size-chart__table-wrap">
+        <table class="product-size-chart__table">
+          <thead>
+            ${thead}
+          </thead>
+          <tbody>
+            ${renderizarFilasTablaMedidas(filas, talleSeleccionado, categoriaTipo)}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function abrirTablaMedidas(productoId) {
+  const producto = productos.find((item) => item.id === Number(productoId));
+  const modal = document.getElementById('size-chart-modal');
+  const tbody = document.getElementById('size-chart-modal-body');
+  if (!producto || !modal || !tbody) return;
+
+  const categoriaTipo = obtenerCategoriaTipoProducto(producto);
+  const talleSeleccionado = tallesSeleccionados[producto.id] ?? null;
+  actualizarEncabezadoTablaMedidasModal(categoriaTipo);
+  tbody.innerHTML = renderizarFilasTablaMedidas(
+    obtenerTablaMedidasProducto(producto),
+    talleSeleccionado,
+    categoriaTipo
+  );
+  modal.dataset.productId = String(producto.id);
+  modal.dataset.categoriaTipo = categoriaTipo;
+  modal.style.display = 'flex';
+  modal.classList.add('is-open');
+  modal.setAttribute('aria-hidden', 'false');
+
+  requestAnimationFrame(() => {
+    modal.classList.add('is-visible');
+  });
+}
+
+function cerrarTablaMedidas() {
+  const modal = document.getElementById('size-chart-modal');
+  if (!modal || modal.style.display === 'none') return;
+
+  modal.classList.remove('is-visible');
+  modal.setAttribute('aria-hidden', 'true');
+  delete modal.dataset.productId;
+
+  const finalizarCierre = () => {
+    modal.classList.remove('is-open');
+    modal.style.display = 'none';
+    modal.removeEventListener('transitionend', finalizarCierre);
+  };
+
+  modal.addEventListener('transitionend', finalizarCierre);
+  window.setTimeout(finalizarCierre, 320);
+}
+
+function inicializarTablaMedidas() {
+  const overlay = document.getElementById('size-chart-modal-overlay');
+  const closeBtn = document.getElementById('size-chart-modal-close');
+  closeBtn?.addEventListener('click', cerrarTablaMedidas);
+  overlay?.addEventListener('click', cerrarTablaMedidas);
+}
+
+function renderizarTallesDetalleProducto(producto) {
+  const contenedor = document.getElementById('product-detail-talles');
+  if (!contenedor) return;
+
+  if (!producto) {
+    contenedor.innerHTML = '';
+    contenedor.hidden = true;
+    return;
+  }
+
+  const conStock = productoTieneStock(producto);
+  const tallesHtml = conStock
+    ? crearHtmlBotonesTalles(producto, { incluirEnlaceMedidas: false })
+    : '';
+
+  if (tallesHtml) {
+    contenedor.innerHTML = tallesHtml;
+    contenedor.hidden = false;
+    return;
+  }
+
+  contenedor.innerHTML = '';
+  contenedor.hidden = true;
+}
+
+function renderizarMedidasDetalleProducto(producto) {
+  const contenedor = document.getElementById('product-detail-medidas');
+  if (!contenedor) return;
+
+  if (!producto) {
+    contenedor.innerHTML = '';
+    contenedor.hidden = true;
+    return;
+  }
+
+  const talleSeleccionado = tallesSeleccionados[producto.id] ?? null;
+  const html = crearHtmlTablaMedidasProducto(producto, talleSeleccionado);
+  if (!html) {
+    contenedor.innerHTML = '';
+    contenedor.hidden = true;
+    return;
+  }
+
+  contenedor.innerHTML = html;
+  contenedor.hidden = false;
+}
+
+function renderizarAccionesDetalleProducto(producto) {
+  const btn = document.getElementById('product-detail-add-btn');
+  if (!btn) return;
+
+  const conStock = Boolean(producto && productoTieneStock(producto));
+  btn.disabled = !conStock;
+  btn.textContent = conStock ? 'Agregar al carrito' : 'Sin Stock';
+  btn.setAttribute(
+    'aria-label',
+    conStock
+      ? `Agregar ${producto.nombre} al carrito`
+      : `${producto?.nombre || 'Producto'} sin stock`
+  );
+  btn.classList.remove('btn-success-soft');
 }
 
 function obtenerStockProducto(producto) {
@@ -1794,6 +2597,9 @@ function abrirDetalleProducto(id) {
   descripcion.textContent = producto.descripcion || 'Sin descripción disponible.';
 
   renderizarMiniaturasDetalleProducto(imagenes);
+  renderizarTallesDetalleProducto(producto);
+  renderizarMedidasDetalleProducto(producto);
+  renderizarAccionesDetalleProducto(producto);
 
   modal.classList.add('is-open');
   modal.setAttribute('aria-hidden', 'false');
@@ -1804,6 +2610,7 @@ function cerrarDetalleProducto() {
   const modal = document.getElementById('product-detail-modal');
   if (!modal) return;
 
+  cerrarTablaMedidas();
   modal.classList.remove('is-open');
   modal.setAttribute('aria-hidden', 'true');
   delete modal.dataset.productId;
@@ -1811,10 +2618,10 @@ function cerrarDetalleProducto() {
 }
 
 function inicializarDetalleProducto() {
-  const modal = document.getElementById('product-detail-modal');
   const overlay = document.getElementById('product-detail-modal-overlay');
   const closeBtn = document.getElementById('product-detail-modal-close');
   const thumbs = document.getElementById('product-detail-thumbs');
+  const addBtn = document.getElementById('product-detail-add-btn');
 
   closeBtn?.addEventListener('click', cerrarDetalleProducto);
   overlay?.addEventListener('click', cerrarDetalleProducto);
@@ -1824,6 +2631,24 @@ function inicializarDetalleProducto() {
     if (!thumb) return;
     seleccionarImagenDetalleProducto(Number(thumb.dataset.index));
   });
+
+  addBtn?.addEventListener('click', () => {
+    const productoId = Number(document.getElementById('product-detail-modal')?.dataset.productId);
+    if (!Number.isFinite(productoId)) return;
+    agregarAlCarrito(productoId);
+
+    if (!addBtn.disabled) {
+      const textoOriginal = 'Agregar al carrito';
+      addBtn.textContent = '✓ ¡Agregado!';
+      addBtn.classList.add('btn-success-soft');
+      window.setTimeout(() => {
+        addBtn.textContent = textoOriginal;
+        addBtn.classList.remove('btn-success-soft');
+      }, 1500);
+    }
+  });
+
+  inicializarTablaMedidas();
 }
 
 function crearHtmlTarjetaProducto(producto) {
@@ -1924,6 +2749,22 @@ function crearHtmlTarjetaProducto(producto) {
   `;
 }
 
+function actualizarBotonesTalleUI(productoId) {
+  const nuevoTalle = tallesSeleccionados[productoId] ?? null;
+  const contenedores = [
+    document.getElementById(`talles-${productoId}`),
+    document.getElementById('product-detail-talles'),
+  ].filter(Boolean);
+
+  contenedores.forEach((contenedor) => {
+    contenedor.querySelectorAll(`.talle-btn[data-product-id="${productoId}"]`).forEach((btn) => {
+      const activo = btn.dataset.talle === nuevoTalle;
+      btn.classList.toggle('selected', activo);
+      btn.setAttribute('aria-pressed', activo ? 'true' : 'false');
+    });
+  });
+}
+
 function seleccionarTalle(productoId, talle) {
   const yaSeleccionado = tallesSeleccionados[productoId] === talle;
 
@@ -1933,16 +2774,33 @@ function seleccionarTalle(productoId, talle) {
     tallesSeleccionados[productoId] = talle;
   }
 
-  const contenedor = document.getElementById(`talles-${productoId}`);
-  if (!contenedor) return;
+  actualizarBotonesTalleUI(productoId);
 
-  const nuevoTalle = tallesSeleccionados[productoId] ?? null;
+  const modalDetalle = document.getElementById('product-detail-modal');
+  if (
+    modalDetalle?.classList.contains('is-open')
+    && Number(modalDetalle.dataset.productId) === Number(productoId)
+  ) {
+    const producto = productos.find((item) => item.id === Number(productoId));
+    if (producto) renderizarMedidasDetalleProducto(producto);
+  }
 
-  contenedor.querySelectorAll('.talle-btn').forEach((btn) => {
-    const activo = btn.dataset.talle === nuevoTalle;
-    btn.classList.toggle('selected', activo);
-    btn.setAttribute('aria-pressed', activo ? 'true' : 'false');
-  });
+  const modalMedidas = document.getElementById('size-chart-modal');
+  if (
+    modalMedidas?.classList.contains('is-open')
+    && Number(modalMedidas.dataset.productId) === Number(productoId)
+  ) {
+    const producto = productos.find((item) => item.id === Number(productoId));
+    const tbody = document.getElementById('size-chart-modal-body');
+    if (producto && tbody) {
+      const categoriaTipo = obtenerCategoriaTipoProducto(producto);
+      tbody.innerHTML = renderizarFilasTablaMedidas(
+        obtenerTablaMedidasProducto(producto),
+        tallesSeleccionados[productoId] ?? null,
+        categoriaTipo
+      );
+    }
+  }
 }
 
 function escaparAtributoHtml(texto) {
@@ -2042,7 +2900,19 @@ function formatearEtiquetaCategoria(categoria) {
 }
 
 function esFiltroSeccionValido(nombre) {
-  return nombre === 'todos' || secciones.some((seccion) => seccion.nombre === nombre);
+  return nombre === 'todos'
+    || nombre === NOMBRE_SECCION_CALZADO
+    || secciones.some((seccion) => seccion.nombre === nombre);
+}
+
+function obtenerSeccionesParaCarrusel() {
+  const generales = obtenerSeccionesGenerales();
+  const calzado = obtenerSeccionCalzadoRaiz();
+  const items = [...generales];
+  if (calzado) items.push(calzado);
+  // Solo secciones habilitadas para el carrusel de atajos (home).
+  // El menú hamburguesa usa `secciones` completo y no aplica este filtro.
+  return items.filter((seccion) => seccion.mostrarEnCarrusel !== false);
 }
 
 function obtenerLigaRepresentativaSeccion(seccionNombre) {
@@ -2260,8 +3130,11 @@ function renderizarCarruselSecciones() {
   const lista = document.getElementById('club-nav-list');
   if (!lista) return;
 
+  const seccionesCarrusel = obtenerSeccionesParaCarrusel();
+
   if (
     categoriaFiltroActiva !== 'todos' &&
+    !seccionesCarrusel.some((seccion) => seccion.nombre === categoriaFiltroActiva) &&
     !secciones.some((seccion) => seccion.nombre === categoriaFiltroActiva)
   ) {
     categoriaFiltroActiva = 'todos';
@@ -2286,7 +3159,7 @@ function renderizarCarruselSecciones() {
         </button>
       </li>
     `,
-    ...secciones.map((seccion) =>
+    ...seccionesCarrusel.map((seccion) =>
       crearHtmlItemCarruselSeccion(seccion, categoriaFiltroActiva === seccion.nombre)
     ),
   ];
@@ -3587,6 +4460,7 @@ function abrirModalProducto(categoriaPreseleccionada = null) {
   if (categoriaPreseleccionada) {
     const categoriaSelect = document.getElementById('producto-categoria');
     if (categoriaSelect) categoriaSelect.value = categoriaPreseleccionada;
+    sincronizarCategoriaTipoConSeccion(categoriaPreseleccionada);
   }
 
   modal.classList.remove('hidden');
@@ -3632,6 +4506,10 @@ function abrirModalEditar(id) {
   }
   actualizarControlesOfertaFormulario();
   if (categoriaSelect) categoriaSelect.value = producto.categoria;
+  const categoriaTipoSelect = document.getElementById('producto-categoria-tipo');
+  if (categoriaTipoSelect) {
+    categoriaTipoSelect.value = obtenerCategoriaTipoProducto(producto);
+  }
   const generoSelect = document.getElementById('producto-genero');
   if (generoSelect) generoSelect.value = producto.genero || 'hombre';
   if (descripcionInput) descripcionInput.value = producto.descripcion || '';
@@ -3684,7 +4562,9 @@ async function guardarNuevoProducto(event) {
   const descripcion = document.getElementById('producto-descripcion')?.value.trim() ?? '';
   const stockTalles = obtenerStockTallesDelFormulario();
   const talles = obtenerTallesDelFormulario();
-  const stock = TALLES_DISPONIBLES.reduce((acc, talle) => acc + stockTalles[talle], 0);
+  const stock = Object.values(stockTalles).reduce((acc, n) => acc + n, 0);
+  const categoriaTipo = obtenerCategoriaTipoDelFormulario();
+  const tablaMedidas = obtenerTablaMedidasDelFormulario();
   const urlFrenteInput = document.getElementById('producto-imagen-frente-url')?.value.trim() ?? '';
   const urlEspaldaInput = document.getElementById('producto-imagen-espalda-url')?.value.trim() ?? '';
   const submitBtn = document.querySelector('#product-form .product-form__submit');
@@ -3772,6 +4652,7 @@ async function guardarNuevoProducto(event) {
       precioOferta: precioOferta !== null ? precioOferta : null,
       precio_oferta: precioOferta !== null ? precioOferta : null,
       categoria,
+      categoriaTipo,
       genero,
       stock,
       stockTalles,
@@ -3779,6 +4660,7 @@ async function guardarNuevoProducto(event) {
       imagenFrente,
       imagenEspalda,
       talles,
+      tablaMedidas,
       enOferta: precioOferta !== null,
     };
 
@@ -3867,9 +4749,10 @@ function renderizarProductos() {
   }
 
   const nombresSecciones = secciones.map((seccion) => seccion.nombre);
+  const nombresCalzado = new Set(obtenerNombresCategoriasCalzado());
   const bloques = [];
 
-  secciones.forEach((seccion) => {
+  obtenerSeccionesGenerales().forEach((seccion) => {
     const productosSeccion = ordenarListaProductos(
       filtrarProductos(productos.filter((producto) => producto.categoria === seccion.nombre))
     );
@@ -3878,14 +4761,59 @@ function renderizarProductos() {
 
     bloques.push(`
       <section class="store-section" id="seccion-${seccion.id}">
-        <h3 class="store-section__title">${seccion.nombre}</h3>
+        <h3 class="store-section__title">${escaparHtmlTexto(seccion.nombre)}</h3>
         <div class="products-grid" role="list">${productosSeccion.map(crearHtmlTarjetaProducto).join('')}</div>
       </section>
     `);
   });
 
+  const calzadoRaiz = obtenerSeccionCalzadoRaiz();
+  const subtipos = obtenerSubtiposCalzado();
+  if (calzadoRaiz) {
+    const subBloques = [];
+
+    subtipos.forEach((sub) => {
+      const productosSub = ordenarListaProductos(
+        filtrarProductos(productos.filter((producto) => producto.categoria === sub.nombre))
+      );
+      if (!productosSub.length) return;
+      subBloques.push(`
+        <div class="store-section__sub" id="seccion-${sub.id}">
+          <h4 class="store-section__subtitle">${escaparHtmlTexto(sub.nombre)}</h4>
+          <div class="products-grid" role="list">${productosSub.map(crearHtmlTarjetaProducto).join('')}</div>
+        </div>
+      `);
+    });
+
+    // Productos asignados directo a «Calzado» (legado / sin subtipo).
+    const productosRaiz = ordenarListaProductos(
+      filtrarProductos(productos.filter((producto) => producto.categoria === calzadoRaiz.nombre))
+    );
+    if (productosRaiz.length) {
+      subBloques.unshift(`
+        <div class="store-section__sub" id="seccion-${calzadoRaiz.id}-raiz">
+          <div class="products-grid" role="list">${productosRaiz.map(crearHtmlTarjetaProducto).join('')}</div>
+        </div>
+      `);
+    }
+
+    if (subBloques.length) {
+      bloques.push(`
+        <section class="store-section store-section--calzado" id="seccion-${calzadoRaiz.id}">
+          <h3 class="store-section__title">${escaparHtmlTexto(calzadoRaiz.nombre)}</h3>
+          ${subBloques.join('')}
+        </section>
+      `);
+    }
+  }
+
   const productosSinSeccion = ordenarListaProductos(
-    filtrarProductos(productos.filter((producto) => !nombresSecciones.includes(producto.categoria)))
+    filtrarProductos(productos.filter((producto) => {
+      const cat = producto.categoria;
+      if (!cat) return true;
+      if (nombresCalzado.has(cat)) return false;
+      return !nombresSecciones.includes(cat);
+    }))
   );
 
   if (productosSinSeccion.length) {
@@ -3974,19 +4902,118 @@ function redondearMontoCheckout(valor) {
   return Math.round((Number(valor) + Number.EPSILON) * 100) / 100;
 }
 
+/** Payload de ítems del carrito para POST /api/cupones/validar */
+function construirItemsCuponCheckout() {
+  return carrito.map((item) => {
+    const producto = productos.find(
+      (p) => p.id === item.id || String(p.id) === String(item.id)
+    );
+    const seccionNombre = String(
+      producto?.categoria || item.categoria || item.seccion || ''
+    ).trim();
+    const seccion = secciones.find(
+      (s) => String(s.nombre || '').toLowerCase() === seccionNombre.toLowerCase()
+    );
+    const precio = Number(item.precio);
+    const cantidad = Math.max(1, Number(item.cantidad) || 1);
+
+    return {
+      _id: item.id,
+      id: item.id,
+      seccion: seccionNombre,
+      categoria: seccionNombre,
+      seccionId: seccion?.id ?? null,
+      precio: Number.isFinite(precio) ? precio : 0,
+      cantidad,
+    };
+  });
+}
+
+function normalizarIdsElegiblesCupon(respuesta) {
+  const raw = respuesta?.productosElegibles
+    ?? respuesta?.itemsElegibles
+    ?? respuesta?.idsElegibles
+    ?? respuesta?.elegibles
+    ?? null;
+
+  if (!Array.isArray(raw)) return null;
+
+  return raw
+    .map((entry) => {
+      if (entry == null) return null;
+      if (typeof entry === 'object') {
+        return entry._id ?? entry.id ?? entry.productoId ?? null;
+      }
+      return entry;
+    })
+    .filter((id) => id != null && String(id).trim() !== '');
+}
+
+function obtenerMontoAplicableCupon(respuesta) {
+  const candidatos = [
+    respuesta?.montoAplicable,
+    respuesta?.subtotalElegible,
+    respuesta?.montoBase,
+    respuesta?.baseDescuento,
+  ];
+
+  for (const valor of candidatos) {
+    const n = Number(valor);
+    if (Number.isFinite(n) && n >= 0) return redondearMontoCheckout(n);
+  }
+  return null;
+}
+
+function calcularBaseDescuentoCupon() {
+  if (!cuponAplicado?.descuentoPorcentaje) return 0;
+
+  if (
+    cuponAplicado.montoAplicable != null
+    && Number.isFinite(cuponAplicado.montoAplicable)
+    && cuponAplicado.montoAplicable >= 0
+  ) {
+    return redondearMontoCheckout(cuponAplicado.montoAplicable);
+  }
+
+  if (Array.isArray(cuponAplicado.idsElegibles) && cuponAplicado.idsElegibles.length > 0) {
+    const ids = new Set(cuponAplicado.idsElegibles.map((id) => String(id)));
+    return redondearMontoCheckout(
+      carrito.reduce((suma, item) => {
+        if (!ids.has(String(item.id))) return suma;
+        return suma + Number(item.precio) * Math.max(1, Number(item.cantidad) || 1);
+      }, 0)
+    );
+  }
+
+  const tipoFiltro = String(cuponAplicado.tipoFiltro || 'todos').toLowerCase();
+  // Cupones segmentados sin montoBase del servidor: no inventar base = carrito completo.
+  if (tipoFiltro === 'seccion' || tipoFiltro === 'producto') {
+    return 0;
+  }
+
+  // tipoFiltro "todos" (y legacy sin filtro): aplica sobre todo el carrito.
+  return redondearMontoCheckout(calcularTotal());
+}
+
 function calcularTotalConCupon() {
   const subtotal = redondearMontoCheckout(calcularTotal());
   if (!cuponAplicado?.descuentoPorcentaje) {
-    return { subtotal, descuentoMonto: 0, totalFinal: subtotal };
+    return { subtotal, descuentoMonto: 0, totalFinal: subtotal, baseDescuento: 0 };
   }
 
   const pct = Number(cuponAplicado.descuentoPorcentaje);
-  const totalFinal = Math.max(0, redondearMontoCheckout(subtotal * (1 - pct / 100)));
-  return {
-    subtotal,
-    descuentoMonto: redondearMontoCheckout(subtotal - totalFinal),
-    totalFinal,
-  };
+  if (!Number.isFinite(pct) || pct < 1) {
+    return { subtotal, descuentoMonto: 0, totalFinal: subtotal, baseDescuento: 0 };
+  }
+
+  const baseDescuento = calcularBaseDescuentoCupon();
+  const descuentoMonto = Math.max(
+    0,
+    redondearMontoCheckout(baseDescuento * (pct / 100))
+  );
+  const totalFinal = Math.max(0, redondearMontoCheckout(subtotal - descuentoMonto));
+
+  return { subtotal, descuentoMonto, totalFinal, baseDescuento };
 }
 
 function obtenerCodigoCuponCheckout() {
@@ -4056,8 +5083,34 @@ function actualizarTotalCheckoutUI() {
   if (descuentoRow) descuentoRow.hidden = !hayDescuento;
   if (subtotalEl) subtotalEl.textContent = formatearPrecio(subtotal);
   if (descuentoEl) descuentoEl.textContent = `−${formatearPrecio(descuentoMonto)}`;
-  if (descuentoLabel && cuponAplicado) {
-    descuentoLabel.textContent = `Descuento (${cuponAplicado.codigo} −${cuponAplicado.descuentoPorcentaje}%)`;
+  if (descuentoLabel) {
+    descuentoLabel.textContent = hayDescuento
+      ? `Descuento por cupón${cuponAplicado?.codigo ? ` (${cuponAplicado.codigo})` : ''}`
+      : 'Descuento por cupón';
+  }
+
+  // Descuento por transferencia: 10% compuesto sobre el total post-cupón.
+  const totalConCupon = Number(totalFinal) || 0;
+  const descuentoCupon = Number(descuentoMonto) || 0;
+  const descuentoPorTransferencia = redondearMontoCheckout(totalConCupon * 0.10);
+  const montoFinalTransferencia = Math.max(
+    0,
+    redondearMontoCheckout(totalConCupon - descuentoPorTransferencia)
+  );
+  const totalAhorrado = redondearMontoCheckout(descuentoCupon + descuentoPorTransferencia);
+
+  const totalConTransferenciaEl = document.getElementById('total-con-transferencia');
+  const montoAhorradoEl = document.getElementById('monto-ahorrado-total');
+  const contenedorAhorro = document.getElementById('contenedor-ahorro-transferencia');
+
+  if (totalConTransferenciaEl) {
+    totalConTransferenciaEl.textContent = formatearPrecio(montoFinalTransferencia);
+  }
+  if (montoAhorradoEl) {
+    montoAhorradoEl.textContent = formatearPrecio(totalAhorrado);
+  }
+  if (contenedorAhorro) {
+    contenedorAhorro.style.display = totalAhorrado > 0 ? 'block' : 'none';
   }
 }
 
@@ -4073,13 +5126,21 @@ async function aplicarCuponCheckout() {
     return;
   }
 
+  if (!carrito.length) {
+    cuponAplicado = null;
+    setMensajeCuponCheckout('Tu carrito está vacío.', 'error');
+    actualizarTotalCheckoutUI();
+    return;
+  }
+
   if (input) input.value = codigo;
   if (btn) btn.disabled = true;
 
   try {
+    const items = construirItemsCuponCheckout();
     const respuesta = await apiFetch('/api/cupones/validar', {
       method: 'POST',
-      body: JSON.stringify({ codigo }),
+      body: JSON.stringify({ codigo, items }),
     });
 
     const descuentoPorcentaje = Number(respuesta?.descuentoPorcentaje);
@@ -4087,13 +5148,36 @@ async function aplicarCuponCheckout() {
       throw new Error('El código de cupón ingresado no es válido o ya ha expirado');
     }
 
+    const idsElegibles = normalizarIdsElegiblesCupon(respuesta);
+    const montoAplicable = obtenerMontoAplicableCupon(respuesta);
+
+    if (
+      Array.isArray(idsElegibles)
+      && idsElegibles.length === 0
+      && (montoAplicable == null || montoAplicable <= 0)
+    ) {
+      throw new Error('Este cupón no es válido para los productos en tu carrito');
+    }
+
     cuponAplicado = {
       codigo: String(respuesta.codigo || codigo).trim().toUpperCase(),
       descuentoPorcentaje,
+      tipoFiltro: String(respuesta.tipoFiltro || 'todos').toLowerCase(),
+      idsElegibles,
+      montoAplicable,
     };
 
+    const { descuentoMonto, baseDescuento } = calcularTotalConCupon();
+    if (descuentoMonto <= 0) {
+      cuponAplicado = null;
+      throw new Error('Este cupón no es válido para los productos en tu carrito');
+    }
+
+    const parcial = baseDescuento < redondearMontoCheckout(calcularTotal()) - 0.005;
     setMensajeCuponCheckout(
-      `Cupón ${cuponAplicado.codigo} aplicado (−${descuentoPorcentaje}%).`,
+      parcial
+        ? `Cupón ${cuponAplicado.codigo} aplicado (−${descuentoPorcentaje}% sobre productos elegibles).`
+        : `Cupón ${cuponAplicado.codigo} aplicado (−${descuentoPorcentaje}%).`,
       'success'
     );
     actualizarTotalCheckoutUI();
@@ -4391,6 +5475,7 @@ function renderizarResumenCheckout() {
 async function prepararCheckoutModal(sesion) {
   const cuentaEmail = document.getElementById('checkout-cuenta-email');
   const submitBtn = document.getElementById('checkout-submit-btn');
+  const transferBtn = document.getElementById('checkout-transferencia-btn');
   const hint = document.getElementById('checkout-datos-hint');
   const guardarCheckbox = document.getElementById('checkout-guardar-datos');
 
@@ -4398,6 +5483,10 @@ async function prepararCheckoutModal(sesion) {
   if (submitBtn) {
     submitBtn.disabled = false;
     submitBtn.textContent = 'Pagar con Mercado Pago';
+  }
+  if (transferBtn) {
+    transferBtn.disabled = false;
+    transferBtn.textContent = 'Coordinar por WhatsApp';
   }
   if (hint) {
     hint.textContent = 'Completá tus datos de entrega para continuar.';
@@ -4427,16 +5516,15 @@ function cerrarCheckout() {
   limpiarCuponCheckout();
 }
 
-async function procesarPedido(event) {
-  event.preventDefault();
-  if (carrito.length === 0) return;
+function validarFormularioCheckout() {
+  if (carrito.length === 0) return { ok: false };
 
   const sesion = obtenerSesionUsuario();
   if (!sesion?.email) {
     cerrarCheckout();
     mostrarToast('Para comprar tenés que iniciar sesión o registrarte.', 'error');
     abrirAuthModal();
-    return;
+    return { ok: false };
   }
 
   const nombre = document.getElementById('checkout-nombre').value.trim();
@@ -4448,47 +5536,61 @@ async function procesarPedido(event) {
 
   if (nombre.length <= 2) {
     mostrarToast('Por favor, ingresá tu nombre completo.', 'error');
-    return;
+    return { ok: false };
   }
 
   const telefonoSoloNumeros = normalizarTelefono(telefono);
   if (!telefono || /[a-zA-Z]/.test(telefono) || telefonoSoloNumeros.length < 8) {
     mostrarToast('Ingresá un número de teléfono válido (solo números).', 'error');
-    return;
+    return { ok: false };
   }
 
   if (!direccion) {
     mostrarToast('Por favor, ingresá la calle y número de entrega.', 'error');
-    return;
+    return { ok: false };
   }
 
   if (!localidad) {
     mostrarToast('Por favor, ingresá la localidad.', 'error');
-    return;
+    return { ok: false };
   }
 
   if (!provincia) {
     mostrarToast('Por favor, seleccioná la provincia.', 'error');
-    return;
+    return { ok: false };
   }
 
   if (!esCodigoPostalValido(codigoPostal)) {
     mostrarToast('Ingresá un código postal válido (ej: 1425 o C1425ABC).', 'error');
-    return;
+    return { ok: false };
   }
 
-  const submitBtn = document.getElementById('checkout-submit-btn');
-  const guardarDatos = document.getElementById('checkout-guardar-datos')?.checked;
-  const datosEntrega = {
-    nombre,
-    telefono: telefonoSoloNumeros,
-    direccion,
-    localidad,
-    provincia,
-    codigoPostal,
+  return {
+    ok: true,
+    sesion,
+    datosEntrega: {
+      nombre,
+      telefono: telefonoSoloNumeros,
+      direccion,
+      localidad,
+      provincia,
+      codigoPostal,
+    },
+    guardarDatos: Boolean(document.getElementById('checkout-guardar-datos')?.checked),
   };
+}
+
+async function procesarPedido(event) {
+  event.preventDefault();
+  const validacion = validarFormularioCheckout();
+  if (!validacion.ok) return;
+
+  const { sesion, datosEntrega, guardarDatos } = validacion;
+  const submitBtn = document.getElementById('checkout-submit-btn');
+  const transferBtn = document.getElementById('checkout-transferencia-btn');
 
   submitBtn?.setAttribute('disabled', 'true');
+  transferBtn?.setAttribute('disabled', 'true');
   if (submitBtn) submitBtn.textContent = 'Redirigiendo a Mercado Pago…';
 
   try {
@@ -4497,7 +5599,6 @@ async function procesarPedido(event) {
       await guardarPerfilEntregaEnServidor(sesion.email, datosEntrega);
     }
 
-    const cliente = { ...datosEntrega };
     const items = carrito.map((item) => ({
       productoId: item.id,
       talle: item.talle,
@@ -4506,7 +5607,7 @@ async function procesarPedido(event) {
 
     const respuestaPago = await apiFetch('/api/pagar', {
       method: 'POST',
-      body: JSON.stringify(construirBodyCheckout(cliente, items)),
+      body: JSON.stringify(construirBodyCheckout(datosEntrega, items)),
     });
 
     if (!respuestaPago?.init_point) {
@@ -4525,7 +5626,72 @@ async function procesarPedido(event) {
     mostrarToast(error?.message || 'No se pudo iniciar el pago. Intentá de nuevo.', 'error');
   } finally {
     submitBtn?.removeAttribute('disabled');
+    transferBtn?.removeAttribute('disabled');
     if (submitBtn) submitBtn.textContent = 'Pagar con Mercado Pago';
+  }
+}
+
+async function procesarPedidoTransferencia() {
+  const validacion = validarFormularioCheckout();
+  if (!validacion.ok) return;
+
+  if (!WHATSAPP_NUMERO) {
+    mostrarToast('WhatsApp no está configurado. Contactá a la tienda por otro medio.', 'error');
+    return;
+  }
+
+  const { sesion, datosEntrega, guardarDatos } = validacion;
+  const submitBtn = document.getElementById('checkout-submit-btn');
+  const transferBtn = document.getElementById('checkout-transferencia-btn');
+
+  submitBtn?.setAttribute('disabled', 'true');
+  transferBtn?.setAttribute('disabled', 'true');
+  if (transferBtn) transferBtn.textContent = 'Creando pedido…';
+
+  try {
+    if (guardarDatos) {
+      guardarPerfilEntrega(sesion.email, datosEntrega);
+      await guardarPerfilEntregaEnServidor(sesion.email, datosEntrega);
+    }
+
+    const items = carrito.map((item) => ({
+      productoId: item.id,
+      talle: item.talle,
+      cantidad: item.cantidad,
+    }));
+
+    const pedido = await apiFetch('/api/pedidos', {
+      method: 'POST',
+      body: JSON.stringify(construirBodyCheckout(datosEntrega, items, { metodoPago: 'Transferencia' })),
+    });
+
+    enviarAWhatsApp({
+      idPedido: pedido.numeroPedido || pedido.id,
+      nombre: datosEntrega.nombre,
+      telefono: datosEntrega.telefono,
+      direccion: datosEntrega.direccion,
+      localidad: datosEntrega.localidad,
+      provincia: datosEntrega.provincia,
+      codigoPostal: datosEntrega.codigoPostal,
+      metodoPago: 'Transferencia bancaria (-10%)',
+      productos: pedido.productos || [],
+      total: pedido.total,
+    });
+
+    carrito = [];
+    cuponAplicado = null;
+    guardarCarritoEnLocalStorage();
+    actualizarCarritoUI();
+    cerrarCheckout();
+    cerrarCarrito();
+    document.getElementById('checkout-form')?.reset();
+    mostrarToast('Pedido creado. Coordiná la transferencia por WhatsApp.');
+  } catch (error) {
+    mostrarToast(error?.message || 'No se pudo crear el pedido. Intentá de nuevo.', 'error');
+  } finally {
+    submitBtn?.removeAttribute('disabled');
+    transferBtn?.removeAttribute('disabled');
+    if (transferBtn) transferBtn.textContent = 'Coordinar por WhatsApp';
   }
 }
 
@@ -5114,6 +6280,7 @@ function inicializarCheckout() {
       aplicarCuponCheckout();
     }
   });
+  document.getElementById('checkout-transferencia-btn')?.addEventListener('click', procesarPedidoTransferencia);
 }
 
 /* ── Página de información ── */
@@ -5244,6 +6411,12 @@ function inicializarTeclado() {
     const modalAgregarProductoExistente = document.getElementById('modal-agregar-producto-existente');
     if (modalAgregarProductoExistente?.classList.contains('is-open')) {
       cerrarModalAgregarProductoExistente();
+      return;
+    }
+
+    const sizeChartModal = document.getElementById('size-chart-modal');
+    if (sizeChartModal?.classList.contains('is-open')) {
+      cerrarTablaMedidas();
       return;
     }
 
@@ -5906,6 +7079,10 @@ const ADMIN_PANELS = {
     title: 'Configuración',
     subtitle: 'Personalizá los datos públicos de tu tienda',
   },
+  cupones: {
+    title: 'Cupones',
+    subtitle: 'Creá y administrá códigos de descuento',
+  },
 };
 
 let panelAdminActivo = 'dashboard';
@@ -5944,6 +7121,10 @@ function cambiarPanelAdmin(panel) {
 
   if (panel === 'configuracion') {
     cargarFormularioConfiguracion();
+  }
+
+  if (panel === 'cupones') {
+    cargarCuponesAdmin();
   }
 }
 
@@ -6019,6 +7200,406 @@ async function guardarConfiguracion(event) {
     mostrarToast(error?.message || 'No se pudo guardar la configuración.', 'error');
   } finally {
     btn?.removeAttribute('disabled');
+  }
+}
+
+function etiquetaAplicaACupon(cupon) {
+  if (cupon?.aplicaA) return String(cupon.aplicaA);
+  const tipo = String(cupon?.tipoFiltro || 'todos').toLowerCase();
+  const nombre = String(cupon?.referenciaNombre || '').trim();
+  if (tipo === 'seccion') {
+    return nombre ? `Sección: ${nombre}` : 'Sección (referencia no encontrada)';
+  }
+  if (tipo === 'producto') {
+    return nombre ? `Producto: ${nombre}` : 'Producto (referencia no encontrada)';
+  }
+  return 'Toda la tienda';
+}
+
+function renderizarCuponesAdmin(cupones = []) {
+  const tbody = document.getElementById('admin-cupones-tbody');
+  const wrap = document.getElementById('admin-cupones-table-wrap');
+  if (!tbody) return;
+
+  if (!Array.isArray(cupones) || cupones.length === 0) {
+    wrap?.classList.add('admin-table-wrapper--empty');
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="5">Todavía no hay cupones. Creá el primero con el formulario de arriba.</td>
+      </tr>
+    `;
+    return;
+  }
+
+  wrap?.classList.remove('admin-table-wrapper--empty');
+  tbody.innerHTML = cupones
+    .map((cupon) => {
+      const id = escaparHtmlTexto(cupon.id);
+      const codigo = escaparHtmlTexto(cupon.codigo);
+      const porcentaje = Number(cupon.descuentoPorcentaje) || 0;
+      const aplicaA = escaparHtmlTexto(etiquetaAplicaACupon(cupon));
+      const tipoFiltro = String(cupon.tipoFiltro || 'todos').toLowerCase();
+      const activo = cupon.activo !== false;
+      const estadoLabel = activo ? 'Activo' : 'Inactivo';
+      const estadoClase = activo ? 'admin-cupon-estado--activo' : 'admin-cupon-estado--inactivo';
+
+      return `
+        <tr data-cupon-id="${id}">
+          <td><code class="admin-cupon-codigo">${codigo}</code></td>
+          <td>${porcentaje}%</td>
+          <td>
+            <span class="admin-cupon-aplica" data-tipo-filtro="${escaparAtributoHtml(tipoFiltro)}">
+              ${aplicaA}
+            </span>
+          </td>
+          <td><span class="admin-cupon-estado ${estadoClase}">${estadoLabel}</span></td>
+          <td>
+            <label class="admin-toggle" title="${activo ? 'Desactivar' : 'Activar'} cupón">
+              <input
+                type="checkbox"
+                class="admin-toggle__input admin-cupon-toggle"
+                data-cupon-id="${id}"
+                ${activo ? 'checked' : ''}
+                aria-label="${activo ? 'Desactivar' : 'Activar'} cupón ${codigo}"
+              >
+              <span class="admin-toggle__track" aria-hidden="true"></span>
+            </label>
+          </td>
+        </tr>
+      `;
+    })
+    .join('');
+}
+
+async function cargarCuponesAdmin() {
+  const tbody = document.getElementById('admin-cupones-tbody');
+  if (tbody) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="5">Cargando cupones…</td>
+      </tr>
+    `;
+  }
+
+  try {
+    const cupones = await apiFetch('/api/admin/cupones');
+    renderizarCuponesAdmin(Array.isArray(cupones) ? cupones : []);
+  } catch (error) {
+    if (tbody) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="5">No se pudieron cargar los cupones.</td>
+        </tr>
+      `;
+    }
+    mostrarToast(error?.message || 'No se pudieron cargar los cupones.', 'error');
+  }
+}
+
+/** Cache local para el selector de alcance del cupón. */
+let cuponSeccionesCache = null;
+let cuponProductosCache = null;
+let cuponProductosCargando = null;
+let cuponSeccionesCargando = null;
+
+function obtenerTipoFiltroCupon() {
+  const select = document.getElementById('cupon-tipo-filtro');
+  const valor = String(select?.value || 'todos').trim();
+  return ['todos', 'seccion', 'producto'].includes(valor) ? valor : 'todos';
+}
+
+function setCampoCuponVisible(wrapId, visible) {
+  const wrap = document.getElementById(wrapId);
+  if (!wrap) return;
+  wrap.classList.toggle('hidden', !visible);
+  wrap.hidden = !visible;
+}
+
+function actualizarCamposFiltroCupon() {
+  const tipo = obtenerTipoFiltroCupon();
+  setCampoCuponVisible('cupon-filtro-seccion-wrap', tipo === 'seccion');
+  setCampoCuponVisible('cupon-filtro-producto-wrap', tipo === 'producto');
+
+  if (tipo === 'seccion') {
+    cargarOpcionesSeccionCupon();
+  } else if (tipo === 'producto') {
+    cargarOpcionesProductoCupon();
+  }
+}
+
+async function obtenerSeccionesParaCupon() {
+  if (Array.isArray(cuponSeccionesCache)) return cuponSeccionesCache;
+  if (cuponSeccionesCargando) return cuponSeccionesCargando;
+
+  cuponSeccionesCargando = (async () => {
+    try {
+      // Reutiliza secciones ya cargadas en admin; si no, fetch fresco.
+      if (Array.isArray(secciones) && secciones.length > 0) {
+        cuponSeccionesCache = secciones.slice();
+      } else {
+        cuponSeccionesCache = await apiFetch('/api/secciones');
+      }
+      return cuponSeccionesCache;
+    } finally {
+      cuponSeccionesCargando = null;
+    }
+  })();
+
+  return cuponSeccionesCargando;
+}
+
+async function obtenerProductosParaCupon() {
+  if (Array.isArray(cuponProductosCache)) return cuponProductosCache;
+  if (cuponProductosCargando) return cuponProductosCargando;
+
+  cuponProductosCargando = (async () => {
+    try {
+      const lista = await apiFetch('/api/productos');
+      cuponProductosCache = Array.isArray(lista) ? lista : [];
+      return cuponProductosCache;
+    } finally {
+      cuponProductosCargando = null;
+    }
+  })();
+
+  return cuponProductosCargando;
+}
+
+function renderizarOpcionesSeccionCupon(lista) {
+  const select = document.getElementById('cupon-seccion');
+  if (!select) return;
+
+  const valorActual = select.value;
+  const todas = Array.isArray(lista) ? lista.filter(Boolean) : [];
+  const raizCalzado = todas.find((seccion) => esSeccionCalzadoRaiz(seccion)) || null;
+  // Incluye la raíz «Calzado» (cubre todos los subtipos) + secciones/subtipos asignables.
+  const activas = [
+    ...(raizCalzado ? [raizCalzado] : []),
+    ...todas
+      .filter((seccion) => !esSeccionCalzadoRaiz(seccion))
+      .sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es')),
+  ];
+
+  if (activas.length === 0) {
+    select.innerHTML = '<option value="">No hay secciones disponibles</option>';
+    return;
+  }
+
+  select.innerHTML = [
+    '<option value="">Seleccioná una sección…</option>',
+    ...activas.map((seccion) => {
+      const esRaiz = esSeccionCalzadoRaiz(seccion);
+      const etiqueta = esRaiz
+        ? `${seccion.nombre} (todos los subtipos)`
+        : seccion.nombre;
+      return `<option value="${escaparAtributoHtml(String(seccion.id))}">${escaparHtmlTexto(etiqueta)}</option>`;
+    }),
+  ].join('');
+
+  if (valorActual && activas.some((s) => String(s.id) === String(valorActual))) {
+    select.value = valorActual;
+  }
+}
+
+function renderizarOpcionesProductoCupon(lista, filtroTexto = '') {
+  const select = document.getElementById('cupon-producto');
+  if (!select) return;
+
+  const valorActual = select.value;
+  const consulta = String(filtroTexto || '').trim().toLowerCase();
+  const productosFiltrados = (Array.isArray(lista) ? lista : [])
+    .filter((producto) => producto && producto.activo !== false)
+    .filter((producto) => {
+      if (!consulta) return true;
+      const nombre = String(producto.nombre || '').toLowerCase();
+      const categoria = String(producto.categoria || '').toLowerCase();
+      return nombre.includes(consulta) || categoria.includes(consulta);
+    })
+    .sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es'));
+
+  if (productosFiltrados.length === 0) {
+    select.innerHTML = consulta
+      ? '<option value="">Sin resultados para esa búsqueda</option>'
+      : '<option value="">No hay productos disponibles</option>';
+    return;
+  }
+
+  const maxOpciones = 150;
+  const visibles = productosFiltrados.slice(0, maxOpciones);
+
+  select.innerHTML = [
+    '<option value="">Seleccioná un producto…</option>',
+    ...visibles.map((producto) => {
+      const etiqueta = producto.categoria
+        ? `${producto.nombre} — ${producto.categoria}`
+        : producto.nombre;
+      return `<option value="${escaparAtributoHtml(String(producto.id))}">${escaparHtmlTexto(etiqueta)}</option>`;
+    }),
+  ].join('');
+
+  if (productosFiltrados.length > maxOpciones) {
+    const restante = productosFiltrados.length - maxOpciones;
+    select.insertAdjacentHTML(
+      'beforeend',
+      `<option value="" disabled>…y ${restante} más. Refiná la búsqueda.</option>`
+    );
+  }
+
+  if (valorActual && visibles.some((p) => String(p.id) === String(valorActual))) {
+    select.value = valorActual;
+  }
+}
+
+async function cargarOpcionesSeccionCupon() {
+  const select = document.getElementById('cupon-seccion');
+  if (select && !select.dataset.loaded) {
+    select.innerHTML = '<option value="">Cargando secciones…</option>';
+  }
+
+  try {
+    const lista = await obtenerSeccionesParaCupon();
+    renderizarOpcionesSeccionCupon(lista);
+    if (select) select.dataset.loaded = '1';
+  } catch (error) {
+    if (select) {
+      select.innerHTML = '<option value="">Error al cargar secciones</option>';
+      delete select.dataset.loaded;
+    }
+    mostrarToast(error?.message || 'No se pudieron cargar las secciones.', 'error');
+  }
+}
+
+async function cargarOpcionesProductoCupon() {
+  const select = document.getElementById('cupon-producto');
+  const buscar = document.getElementById('cupon-producto-buscar');
+  if (select && !select.dataset.loaded) {
+    select.innerHTML = '<option value="">Cargando productos…</option>';
+  }
+
+  try {
+    const lista = await obtenerProductosParaCupon();
+    renderizarOpcionesProductoCupon(lista, buscar?.value || '');
+    if (select) select.dataset.loaded = '1';
+  } catch (error) {
+    if (select) {
+      select.innerHTML = '<option value="">Error al cargar productos</option>';
+      delete select.dataset.loaded;
+    }
+    mostrarToast(error?.message || 'No se pudieron cargar los productos.', 'error');
+  }
+}
+
+function resetearFormularioFiltroCupon() {
+  const tipoSelect = document.getElementById('cupon-tipo-filtro');
+  const seccionSelect = document.getElementById('cupon-seccion');
+  const productoSelect = document.getElementById('cupon-producto');
+  const productoBuscar = document.getElementById('cupon-producto-buscar');
+
+  if (tipoSelect) tipoSelect.value = 'todos';
+  if (seccionSelect) seccionSelect.value = '';
+  if (productoSelect) productoSelect.value = '';
+  if (productoBuscar) productoBuscar.value = '';
+  actualizarCamposFiltroCupon();
+}
+
+function obtenerReferenciaIdCupon() {
+  const tipo = obtenerTipoFiltroCupon();
+  if (tipo === 'seccion') {
+    return String(document.getElementById('cupon-seccion')?.value || '').trim() || null;
+  }
+  if (tipo === 'producto') {
+    return String(document.getElementById('cupon-producto')?.value || '').trim() || null;
+  }
+  return null;
+}
+
+async function crearCuponAdmin(event) {
+  event.preventDefault();
+
+  const codigoInput = document.getElementById('cupon-codigo');
+  const descuentoInput = document.getElementById('cupon-descuento');
+  const activoInput = document.getElementById('cupon-activo');
+  const btn = document.getElementById('btn-crear-cupon');
+
+  const codigo = String(codigoInput?.value || '').trim().toUpperCase();
+  const descuentoPorcentaje = Number(descuentoInput?.value);
+  const tipoFiltro = obtenerTipoFiltroCupon();
+  const referenciaId = obtenerReferenciaIdCupon();
+
+  if (!codigo) {
+    mostrarToast('Ingresá un código de cupón.', 'error');
+    return;
+  }
+
+  if (
+    !Number.isInteger(descuentoPorcentaje)
+    || descuentoPorcentaje < 1
+    || descuentoPorcentaje > 100
+  ) {
+    mostrarToast('El descuento debe ser un número entero entre 1 y 100.', 'error');
+    return;
+  }
+
+  if (tipoFiltro === 'seccion' && !referenciaId) {
+    mostrarToast('Seleccioná una sección para el cupón.', 'error');
+    return;
+  }
+
+  if (tipoFiltro === 'producto' && !referenciaId) {
+    mostrarToast('Seleccioná un producto para el cupón.', 'error');
+    return;
+  }
+
+  btn?.setAttribute('disabled', 'true');
+
+  try {
+    await apiFetch('/api/admin/cupones', {
+      method: 'POST',
+      body: JSON.stringify({
+        codigo,
+        descuentoPorcentaje,
+        activo: Boolean(activoInput?.checked),
+        tipoFiltro,
+        referenciaId,
+      }),
+    });
+
+    if (codigoInput) codigoInput.value = '';
+    if (descuentoInput) descuentoInput.value = '';
+    if (activoInput) activoInput.checked = true;
+    resetearFormularioFiltroCupon();
+
+    mostrarToast(`Cupón ${codigo} creado (−${descuentoPorcentaje}%).`);
+    await cargarCuponesAdmin();
+  } catch (error) {
+    mostrarToast(error?.message || 'No se pudo crear el cupón.', 'error');
+  } finally {
+    btn?.removeAttribute('disabled');
+  }
+}
+
+async function toggleCuponActivoAdmin(event) {
+  const toggle = event.target.closest('.admin-cupon-toggle');
+  if (!toggle) return;
+
+  const id = toggle.dataset.cuponId;
+  if (!id) return;
+
+  const activo = Boolean(toggle.checked);
+  toggle.disabled = true;
+
+  try {
+    await apiFetch(`/api/admin/cupones/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ activo }),
+    });
+    await cargarCuponesAdmin();
+    mostrarToast(activo ? 'Cupón activado.' : 'Cupón desactivado.');
+  } catch (error) {
+    toggle.checked = !activo;
+    mostrarToast(error?.message || 'No se pudo actualizar el cupón.', 'error');
+  } finally {
+    toggle.disabled = false;
   }
 }
 
@@ -6760,6 +8341,7 @@ function inicializarEventosAdmin() {
   modalDetalleSeccionOverlay?.addEventListener('click', cerrarModalDetalleSeccion);
   btnGuardarNombreSeccion?.addEventListener('click', guardarNombreSeccion);
   btnGuardarEscudoSeccion?.addEventListener('click', guardarEscudoSeccion);
+  document.getElementById('seccion-mostrar-carrusel')?.addEventListener('change', guardarMostrarEnCarruselSeccion);
   seccionEscudoInput?.addEventListener('change', manejarSeleccionEscudoDetalle);
   seccionNombreInput?.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
@@ -6799,6 +8381,13 @@ function inicializarEventosAdmin() {
   });
 
   sectionsList?.addEventListener('click', (e) => {
+    const btnSubtipo = e.target.closest('.btn-agregar-subtipo-calzado');
+    if (btnSubtipo) {
+      e.stopPropagation();
+      abrirModalCrearSeccion({ padreId: Number(btnSubtipo.dataset.padreId) });
+      return;
+    }
+
     const btnEliminar = e.target.closest('.btn-eliminar-seccion');
     if (btnEliminar) {
       e.stopPropagation();
@@ -6815,7 +8404,7 @@ function inicializarEventosAdmin() {
     if (e.key !== 'Enter' && e.key !== ' ') return;
 
     const fila = e.target.closest('.seccion-fila');
-    if (!fila || e.target.closest('.btn-eliminar-seccion')) return;
+    if (!fila || e.target.closest('.btn-eliminar-seccion') || e.target.closest('.btn-agregar-subtipo-calzado')) return;
 
     e.preventDefault();
     abrirModalDetalleSeccion(fila.dataset.id);
@@ -6827,6 +8416,20 @@ function inicializarEventosAdmin() {
   document.getElementById('producto-en-oferta')?.addEventListener('change', actualizarControlesOfertaFormulario);
   document.getElementById('producto-precio-oferta')?.addEventListener('input', actualizarBotonQuitarDescuentoProducto);
   document.getElementById('form-configuracion')?.addEventListener('submit', guardarConfiguracion);
+  document.getElementById('form-crear-cupon')?.addEventListener('submit', crearCuponAdmin);
+  document.getElementById('cupon-tipo-filtro')?.addEventListener('change', actualizarCamposFiltroCupon);
+  document.getElementById('cupon-producto-buscar')?.addEventListener('input', () => {
+    if (!Array.isArray(cuponProductosCache)) {
+      cargarOpcionesProductoCupon();
+      return;
+    }
+    renderizarOpcionesProductoCupon(
+      cuponProductosCache,
+      document.getElementById('cupon-producto-buscar')?.value || ''
+    );
+  });
+  actualizarCamposFiltroCupon();
+  document.getElementById('admin-cupones-tbody')?.addEventListener('change', toggleCuponActivoAdmin);
   document.getElementById('portada-buscar')?.addEventListener('input', () => {
     if (panelAdminActivo === 'portada') renderizarGestionPortada();
   });
@@ -6841,6 +8444,10 @@ function inicializarEventosAdmin() {
     );
   });
   document.getElementById('producto-stock-talles')?.addEventListener('input', actualizarTotalStockFormulario);
+  document.getElementById('producto-categoria-tipo')?.addEventListener('change', alCambiarCategoriaTipoProducto);
+  document.getElementById('producto-categoria')?.addEventListener('change', (event) => {
+    sincronizarCategoriaTipoConSeccion(event.target.value);
+  });
   document.getElementById('producto-imagen-frente-url')?.addEventListener('input', (event) => {
     const url = String(event.target.value || '').trim();
     if (!url) return;

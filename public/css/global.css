@@ -557,6 +557,30 @@ body.admin-active {
   margin-top: 20px;
 }
 
+#admin-view .seccion-grupo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid #e8e8e8;
+  border-radius: var(--radius-md);
+  background: #fafafa;
+}
+
+#admin-view .seccion-grupo__hijas {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 0 6px 12px;
+}
+
+#admin-view .seccion-grupo__vacio {
+  margin: 0;
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
 #admin-view .seccion-fila {
   display: flex;
   justify-content: space-between;
@@ -567,6 +591,46 @@ body.admin-active {
   border-radius: var(--radius-md);
   cursor: pointer;
   transition: all 0.2s ease;
+}
+
+#admin-view .seccion-fila--hija {
+  padding: 11px 14px;
+  margin-left: 0;
+  background: #fff;
+}
+
+#admin-view .seccion-fila--fija {
+  border-color: #dbeafe;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+
+#admin-view .seccion-badge-fija {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #1d4ed8;
+  background: #dbeafe;
+}
+
+#admin-view .btn-agregar-subtipo-calzado {
+  flex-shrink: 0;
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.4rem 0.75rem;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+#admin-view .btn-agregar-subtipo-calzado:hover {
+  background: #dbeafe;
 }
 
 #admin-view .seccion-fila:hover {
@@ -666,6 +730,47 @@ body.admin-active {
 #admin-view .seccion-modal-form__hint {
   margin: -0.25rem 0 0.625rem;
   font-size: 0.75rem;
+  color: #6b7280;
+}
+
+#admin-view .seccion-modal-form__hint--inline {
+  margin: 0.125rem 0 0;
+  display: block;
+}
+
+#admin-view .seccion-modal-form__switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  cursor: pointer;
+}
+
+#admin-view .seccion-modal-form__switch-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+#admin-view .seccion-modal-form__switch-row .seccion-modal-form__label {
+  margin-bottom: 0;
+}
+
+#modal-detalle-seccion .modal-contenido__carrusel-toggle {
+  margin-top: 0.875rem;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid var(--admin-border, #e5e7eb);
+  border-radius: 10px;
+  background: #fafafa;
+}
+
+#modal-detalle-seccion .modal-contenido__carrusel-toggle .seccion-modal-form__label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--admin-text-primary, #111827);
+}
+
+#modal-detalle-seccion .modal-contenido__carrusel-toggle .seccion-modal-form__hint {
   color: #6b7280;
 }
 
@@ -2718,28 +2823,69 @@ body.auth-open {
   gap: 0.5rem;
 }
 
+#product-modal .product-form__stock-talles[data-tipo="calzado"] {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 #product-modal .product-form__stock-talle {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   gap: 0.35rem;
-  padding: 0.5rem 0.35rem;
+  padding: 0.5rem 0.4rem;
   border: 1px solid var(--admin-border, #e5e7eb);
   border-radius: 8px;
   background: #fafafa;
 }
 
-#product-modal .product-form__stock-talle span {
+#product-modal .product-form__stock-talle--calzado .product-form__medida-field span {
+  font-size: 0.6rem;
+}
+
+#product-modal .product-form__stock-talle-nombre {
   font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.04em;
   color: #374151;
+  text-align: center;
 }
 
-#product-modal .product-form__stock-input {
+#product-modal .product-form__stock-field,
+#product-modal .product-form__medida-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin: 0;
+}
+
+#product-modal .product-form__medida-field span {
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #6b7280;
+  line-height: 1.2;
+}
+
+#product-modal .product-form__stock-input,
+#product-modal .product-form__medida-input {
   width: 100%;
   text-align: center;
-  padding: 0.4rem 0.25rem;
+  padding: 0.35rem 0.2rem;
+  font-size: 0.8rem;
+}
+
+#product-modal .product-form__medida-input {
+  padding: 0.3rem 0.2rem;
+}
+
+@media (max-width: 900px) {
+  #product-modal .product-form__stock-talles {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  #product-modal .product-form__stock-talles[data-tipo="calzado"] {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 #product-modal .product-form__imagen-campo .product-form__input {
@@ -3077,6 +3223,20 @@ body.auth-open {
   box-shadow: 0 0 0 3px rgba(45, 138, 69, 0.12);
 }
 
+#admin-view .admin-config__select {
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='1.5'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19.5 8.25l-7.5 7.5-7.5-7.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 18px;
+  padding-right: 2.5rem;
+}
+
+#admin-view #cupon-filtro-producto-wrap .admin-config__select {
+  margin-top: 0.35rem;
+}
+
 #admin-view .admin-config__actions {
   display: flex;
   justify-content: flex-end;
@@ -3105,6 +3265,68 @@ body.auth-open {
 #admin-view .admin-config__submit:disabled {
   opacity: 0.65;
   cursor: wait;
+}
+
+#admin-view .admin-config__switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+#admin-view .admin-cupones-lista {
+  margin-top: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+#admin-view .admin-cupones-lista__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--admin-text-primary);
+}
+
+#admin-view .admin-cupon-codigo {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--admin-text-primary);
+  background: transparent;
+}
+
+#admin-view .admin-cupon-aplica {
+  display: inline-block;
+  max-width: 18rem;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  color: var(--admin-text-secondary, #4b5563);
+  word-break: break-word;
+}
+
+#admin-view .admin-cupon-aplica[data-tipo-filtro="todos"] {
+  color: var(--admin-text-primary);
+}
+
+#admin-view .admin-cupon-estado {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+#admin-view .admin-cupon-estado--activo {
+  color: #1e6b32;
+  background: rgba(45, 138, 69, 0.12);
+}
+
+#admin-view .admin-cupon-estado--inactivo {
+  color: #6b7280;
+  background: rgba(107, 114, 128, 0.12);
 }
 
 #admin-view .admin-portada {
@@ -3238,7 +3460,7 @@ body.auth-open {
 
 @media (max-width: 640px) {
   #product-modal .product-form__stock-talles {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   #admin-view .admin-portada__grid {

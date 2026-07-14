@@ -12,7 +12,7 @@
   <link rel="stylesheet" href="css/header.css?v=6.6">
   <link rel="stylesheet" href="css/main.css?v=4.7">
   <link rel="stylesheet" href="css/footer.css?v=4.0">
-  <link rel="stylesheet" href="css/cart.css?v=2.9">
+  <link rel="stylesheet" href="css/cart.css?v=3.0">
 </head>
 <body>
 
@@ -23,19 +23,19 @@
         <span aria-hidden="true">·</span>
         <span>ENVÍO A TODO EL PAÍS</span>
         <span aria-hidden="true">·</span>
-        <span>DESCUENTOS EN TRANSFERENCIA Y EFECTIVO</span>
+        <span>DESCUENTOS POR TRANSFERENCIA</span>
         <span aria-hidden="true">·</span>
         <span>CAMISETAS DE FÚTBOL</span>
         <span aria-hidden="true">·</span>
         <span>ENVÍO A TODO EL PAÍS</span>
         <span aria-hidden="true">·</span>
-        <span>DESCUENTOS EN TRANSFERENCIA Y EFECTIVO</span>
+        <span>DESCUENTOS POR TRANSFERENCIA</span>
         <span aria-hidden="true">·</span>
         <span>CAMISETAS DE FÚTBOL</span>
         <span aria-hidden="true">·</span>
         <span>ENVÍO A TODO EL PAÍS</span>
         <span aria-hidden="true">·</span>
-        <span>DESCUENTOS EN TRANSFERENCIA Y EFECTIVO</span>
+        <span>DESCUENTOS POR TRANSFERENCIA</span>
         <span aria-hidden="true">·</span>
       </div>
     </div>
@@ -183,19 +183,19 @@
           <span aria-hidden="true">★</span>
           <span>ENVÍO A TODO EL PAÍS</span>
           <span aria-hidden="true">★</span>
-          <span>DESCUENTOS EN TRANSFERENCIA Y EFECTIVO</span>
+          <span>DESCUENTOS POR TRANSFERENCIA</span>
           <span aria-hidden="true">★</span>
           <span>APROVECHÁ LAS OFERTAS</span>
           <span aria-hidden="true">★</span>
           <span>ENVÍO A TODO EL PAÍS</span>
           <span aria-hidden="true">★</span>
-          <span>DESCUENTOS EN TRANSFERENCIA Y EFECTIVO</span>
+          <span>DESCUENTOS POR TRANSFERENCIA</span>
           <span aria-hidden="true">★</span>
           <span>APROVECHÁ LAS OFERTAS</span>
           <span aria-hidden="true">★</span>
           <span>ENVÍO A TODO EL PAÍS</span>
           <span aria-hidden="true">★</span>
-          <span>DESCUENTOS EN TRANSFERENCIA Y EFECTIVO</span>
+          <span>DESCUENTOS POR TRANSFERENCIA</span>
           <span aria-hidden="true">★</span>
         </div>
       </div>
@@ -492,6 +492,57 @@
           <h2 class="product-detail-modal__title" id="product-detail-title"></h2>
           <p class="product-detail-modal__price" id="product-detail-price"></p>
           <p class="product-detail-modal__description" id="product-detail-description"></p>
+          <div class="product-detail-modal__talles selector-talles" id="product-detail-talles" hidden></div>
+          <div class="product-detail-modal__medidas" id="product-detail-medidas" hidden aria-live="polite"></div>
+          <div class="product-detail-modal__actions" id="product-detail-actions">
+            <button
+              type="button"
+              class="product-detail-modal__add-btn"
+              id="product-detail-add-btn"
+              disabled
+            >
+              Agregar al carrito
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="size-chart-modal" id="size-chart-modal" aria-hidden="true" style="display: none;">
+      <div class="size-chart-modal__overlay" id="size-chart-modal-overlay"></div>
+      <div
+        class="size-chart-modal__dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="size-chart-modal-title"
+      >
+        <button
+          class="size-chart-modal__close"
+          id="size-chart-modal-close"
+          type="button"
+          aria-label="Cerrar tabla de medidas"
+        >
+          <span aria-hidden="true">&times;</span>
+        </button>
+        <h2 class="size-chart-modal__title" id="size-chart-modal-title">
+          <span class="size-chart-modal__title-icon" aria-hidden="true">📐</span>
+          <span id="size-chart-modal-title-text">TABLA DE MEDIDAS (REFERENCIA DE PRENDA)</span>
+        </h2>
+        <p class="size-chart-modal__subtitle" id="size-chart-modal-subtitle">
+          <span class="size-chart-modal__subtitle-icon" aria-hidden="true">✏️</span>
+          <span id="size-chart-modal-subtitle-text">Medidas tomadas sobre la prenda en plano. Tomá una remera tuya que te quede bien y compará el ancho (axila a axila).</span>
+        </p>
+        <div class="size-chart-modal__table-wrap">
+          <table class="size-chart-modal__table">
+            <thead>
+              <tr id="size-chart-modal-head">
+                <th scope="col">Talle</th>
+                <th scope="col">Ancho (Axila a Axila)</th>
+                <th scope="col">Largo (cm)</th>
+              </tr>
+            </thead>
+            <tbody id="size-chart-modal-body"></tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -624,7 +675,7 @@
               <span id="checkout-summary-subtotal">$ 0</span>
             </div>
             <div class="checkout-form__summary-row checkout-form__summary-row--discount" id="checkout-summary-descuento-row" hidden>
-              <span id="checkout-summary-descuento-label">Descuento</span>
+              <span id="checkout-summary-descuento-label">Descuento por cupón</span>
               <span id="checkout-summary-descuento">−$ 0</span>
             </div>
             <div class="checkout-form__summary-row checkout-form__summary-row--total">
@@ -632,6 +683,23 @@
               <strong id="checkout-summary-total">$ 0</strong>
             </div>
           </div>
+
+          <div id="contenedor-ahorro-transferencia" class="tarjeta-metodo-pago destacado-ahorro" style="display: none;">
+            <div class="info-pago">
+              <span class="metodo-etiqueta">TRANSFERENCIA BANCARIA (-10%)</span>
+              <h3 class="monto-destacado" id="total-con-transferencia">$0,00</h3>
+              <div class="pildora-ahorro" id="pildora-ahorro-total">
+                <span class="emoji-bolsa">💰</span>
+                <span>Ahorrás <strong id="monto-ahorrado-total">$0,00</strong> en total</span>
+              </div>
+            </div>
+            <button type="button" class="checkout-form__submit checkout-form__submit--transfer" id="checkout-transferencia-btn">
+              Coordinar por WhatsApp
+            </button>
+            <p class="checkout-form__note checkout-form__note--transfer">Te pasamos los datos bancarios para completar el pago.</p>
+          </div>
+
+          <p class="checkout-payment-divider" aria-hidden="true">o</p>
 
           <button type="submit" class="checkout-form__submit" id="checkout-submit-btn">Pagar con Mercado Pago</button>
           <p class="checkout-form__note">Serás redirigido al checkout seguro de Mercado Pago para completar el pago.</p>
@@ -673,6 +741,12 @@
               <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z"/>
             </svg>
             <span>Gestión de Portada</span>
+          </a>
+          <a href="#" class="admin-sidebar__link" data-admin-panel="cupones">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 6v.75m0 3v.75m0 3v.75m0 3V18m-9-5.25h5.25M7.5 15h3M3.375 5.25c-.621 0-1.125.504-1.125 1.125v3.026a2.999 2.999 0 010 5.198v3.026c0 .621.504 1.125 1.125 1.125h17.25c.621 0 1.125-.504 1.125-1.125v-3.026a2.999 2.999 0 010-5.198V6.375c0-.621-.504-1.125-1.125-1.125H3.375z"/>
+            </svg>
+            <span>Cupones</span>
           </a>
           <a href="#" class="admin-sidebar__link" data-admin-panel="configuracion">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
@@ -815,7 +889,7 @@
           <div class="admin-sections">
             <div class="admin-sections__header">
               <h3 class="admin-sections__title">Secciones de la tienda</h3>
-              <p class="admin-sections__subtitle">Organizá tu catálogo en categorías visibles para tus clientes</p>
+              <p class="admin-sections__subtitle">Organizá tu catálogo en categorías. «Calzado» es fija y podés subdividirla en tipos (Zapatillas, Botines, etc.).</p>
             </div>
 
             <div class="admin-sections__toolbar">
@@ -890,6 +964,123 @@
             <div class="admin-portada__grid" id="admin-portada-grid" aria-label="Productos de portada"></div>
             <p class="admin-portada__empty hidden" id="admin-portada-empty">No hay productos en el catálogo.</p>
           </section>
+        </section>
+
+        <section class="admin-panel hidden" id="admin-panel-cupones" data-admin-panel="cupones">
+          <div class="admin-config">
+            <div class="admin-config__header">
+              <h2 class="admin-config__title">Cupones de descuento</h2>
+              <p class="admin-config__subtitle">Creá códigos personalizados. El descuento se aplica en el checkout al validar el cupón.</p>
+            </div>
+
+            <form class="admin-config__form" id="form-crear-cupon">
+              <div class="admin-config__field">
+                <label for="cupon-codigo" class="admin-config__label">Código</label>
+                <input
+                  type="text"
+                  id="cupon-codigo"
+                  class="admin-config__input"
+                  required
+                  maxlength="40"
+                  placeholder="Ej: VERANO15"
+                  autocomplete="off"
+                  spellcheck="false"
+                >
+                <p class="admin-config__hint">Se guardará en mayúsculas. Debe ser único.</p>
+              </div>
+
+              <div class="admin-config__field">
+                <label for="cupon-descuento" class="admin-config__label">Descuento (%)</label>
+                <input
+                  type="number"
+                  id="cupon-descuento"
+                  class="admin-config__input"
+                  required
+                  min="1"
+                  max="100"
+                  step="1"
+                  placeholder="Ej: 15"
+                  inputmode="numeric"
+                >
+              </div>
+
+              <div class="admin-config__field">
+                <label for="cupon-tipo-filtro" class="admin-config__label">Aplicar descuento a:</label>
+                <select id="cupon-tipo-filtro" class="admin-config__input admin-config__select" required>
+                  <option value="todos" selected>Toda la tienda</option>
+                  <option value="seccion">Una Sección específica</option>
+                  <option value="producto">Un Producto específico</option>
+                </select>
+              </div>
+
+              <div class="admin-config__field hidden" id="cupon-filtro-seccion-wrap" hidden>
+                <label for="cupon-seccion" class="admin-config__label">Sección</label>
+                <select id="cupon-seccion" class="admin-config__input admin-config__select">
+                  <option value="">Cargando secciones…</option>
+                </select>
+                <p class="admin-config__hint">El cupón solo aplicará a productos de esta sección. «Calzado» incluye todos sus subtipos.</p>
+              </div>
+
+              <div class="admin-config__field hidden" id="cupon-filtro-producto-wrap" hidden>
+                <label for="cupon-producto-buscar" class="admin-config__label">Producto</label>
+                <input
+                  type="search"
+                  id="cupon-producto-buscar"
+                  class="admin-config__input"
+                  placeholder="Buscar por nombre…"
+                  autocomplete="off"
+                  spellcheck="false"
+                >
+                <select id="cupon-producto" class="admin-config__input admin-config__select" aria-label="Producto seleccionado">
+                  <option value="">Cargando productos…</option>
+                </select>
+                <p class="admin-config__hint">Escribí para filtrar y elegí el producto exacto.</p>
+              </div>
+
+              <div class="admin-config__field">
+                <label class="admin-config__switch-row" for="cupon-activo">
+                  <span class="admin-config__label">Activo</span>
+                  <span class="admin-toggle" title="Activar o desactivar el cupón al crearlo">
+                    <input
+                      type="checkbox"
+                      id="cupon-activo"
+                      class="admin-toggle__input"
+                      checked
+                    >
+                    <span class="admin-toggle__track" aria-hidden="true"></span>
+                  </span>
+                </label>
+              </div>
+
+              <div class="admin-config__actions">
+                <button type="submit" class="admin-config__submit" id="btn-crear-cupon">
+                  Crear cupón
+                </button>
+              </div>
+            </form>
+
+            <div class="admin-cupones-lista">
+              <h3 class="admin-cupones-lista__title">Cupones existentes</h3>
+              <div class="admin-table-wrapper" id="admin-cupones-table-wrap">
+                <table class="admin-table" id="admin-cupones-table">
+                  <thead>
+                    <tr>
+                      <th>Código</th>
+                      <th>Descuento</th>
+                      <th>Aplica a</th>
+                      <th>Estado</th>
+                      <th>Activo</th>
+                    </tr>
+                  </thead>
+                  <tbody id="admin-cupones-tbody">
+                    <tr>
+                      <td colspan="5">Cargando cupones…</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         </section>
 
         <section class="admin-panel hidden" id="seccion-configuracion" data-admin-panel="configuracion">
@@ -1040,6 +1231,15 @@
           </div>
 
           <div class="product-form__field">
+            <label for="producto-categoria-tipo" class="product-form__label">Tipo de producto</label>
+            <select id="producto-categoria-tipo" class="product-form__input product-form__select" required name="categoriaTipo">
+              <option value="ropa">Ropa</option>
+              <option value="calzado">Calzado</option>
+            </select>
+            <p class="product-form__hint">Define si el stock y las medidas usan talles de ropa (S–XXL) o de calzado (numeración AR).</p>
+          </div>
+
+          <div class="product-form__field">
             <label for="producto-genero" class="product-form__label">Género</label>
             <select id="producto-genero" class="product-form__input product-form__select" required name="genero">
               <option value="hombre">Hombre</option>
@@ -1049,30 +1249,11 @@
           </div>
 
           <div class="product-form__field">
-            <span class="product-form__label">Stock por talle</span>
-            <div class="product-form__stock-talles" id="producto-stock-talles">
-              <label class="product-form__stock-talle">
-                <span>S</span>
-                <input type="number" id="producto-stock-S" name="stock_S" class="product-form__input product-form__stock-input" min="0" step="1" value="2" data-talle="S">
-              </label>
-              <label class="product-form__stock-talle">
-                <span>M</span>
-                <input type="number" id="producto-stock-M" name="stock_M" class="product-form__input product-form__stock-input" min="0" step="1" value="2" data-talle="M">
-              </label>
-              <label class="product-form__stock-talle">
-                <span>L</span>
-                <input type="number" id="producto-stock-L" name="stock_L" class="product-form__input product-form__stock-input" min="0" step="1" value="2" data-talle="L">
-              </label>
-              <label class="product-form__stock-talle">
-                <span>XL</span>
-                <input type="number" id="producto-stock-XL" name="stock_XL" class="product-form__input product-form__stock-input" min="0" step="1" value="2" data-talle="XL">
-              </label>
-              <label class="product-form__stock-talle">
-                <span>XXL</span>
-                <input type="number" id="producto-stock-XXL" name="stock_XXL" class="product-form__input product-form__stock-input" min="0" step="1" value="2" data-talle="XXL">
-              </label>
+            <span class="product-form__label" id="producto-stock-medidas-label">Talles, stock y medidas</span>
+            <div class="product-form__stock-talles" id="producto-stock-talles" data-tipo="ropa">
+              <!-- Filas generadas dinámicamente según categoriaTipo -->
             </div>
-            <p class="product-form__hint">Los talles con stock 0 no se ofrecen en la tienda. Total: <strong id="producto-stock-total">10</strong> u.</p>
+            <p class="product-form__hint">Los talles con stock 0 no se ofrecen en la tienda. Total: <strong id="producto-stock-total">0</strong> u.</p>
           </div>
 
           <div class="product-form__field">
@@ -1160,8 +1341,14 @@
           </button>
         </div>
         <form class="seccion-modal-form" id="modal-crear-seccion-form">
+          <input type="hidden" id="modal-seccion-padre-id" value="">
+          <div class="seccion-modal-form__field" id="modal-seccion-contexto-wrap" hidden>
+            <p class="seccion-modal-form__hint" id="modal-seccion-contexto">
+              Se creará como subtipo dentro de <strong>Calzado</strong>.
+            </p>
+          </div>
           <div class="seccion-modal-form__field">
-            <label for="modal-seccion-nombre" class="seccion-modal-form__label">Nombre de la sección</label>
+            <label for="modal-seccion-nombre" class="seccion-modal-form__label" id="modal-seccion-nombre-label">Nombre de la sección</label>
             <input
               type="text"
               id="modal-seccion-nombre"
@@ -1185,9 +1372,27 @@
               <img id="modal-seccion-escudo-img" alt="Vista previa del escudo" width="48" height="48">
             </div>
           </div>
+          <div class="seccion-modal-form__field">
+            <label class="seccion-modal-form__switch-row" for="modal-seccion-mostrar-carrusel">
+              <span class="seccion-modal-form__switch-text">
+                <span class="seccion-modal-form__label">Mostrar en el carrusel de la Home</span>
+                <span class="seccion-modal-form__hint seccion-modal-form__hint--inline">Aparece en los accesos rápidos de la tienda.</span>
+              </span>
+              <span class="admin-toggle" title="Mostrar en el carrusel de la Home">
+                <input
+                  type="checkbox"
+                  id="modal-seccion-mostrar-carrusel"
+                  class="admin-toggle__input"
+                  name="mostrarEnCarrusel"
+                  checked
+                >
+                <span class="admin-toggle__track" aria-hidden="true"></span>
+              </span>
+            </label>
+          </div>
           <div class="seccion-modal-form__actions">
             <button type="button" class="seccion-modal-form__cancel" id="modal-crear-seccion-cancelar">Cancelar</button>
-            <button type="submit" class="seccion-modal-form__submit">Crear Sección</button>
+            <button type="submit" class="seccion-modal-form__submit" id="modal-crear-seccion-submit">Crear Sección</button>
           </div>
         </form>
       </div>
@@ -1236,6 +1441,24 @@
                 </button>
               </div>
             </div>
+          </div>
+          <div class="modal-contenido__carrusel-toggle">
+            <label class="seccion-modal-form__switch-row" for="seccion-mostrar-carrusel">
+              <span class="seccion-modal-form__switch-text">
+                <span class="seccion-modal-form__label">Mostrar en el carrusel de la Home</span>
+                <span class="seccion-modal-form__hint seccion-modal-form__hint--inline">Controlá si esta sección aparece en los accesos rápidos.</span>
+              </span>
+              <span class="admin-toggle" title="Mostrar en el carrusel de la Home">
+                <input
+                  type="checkbox"
+                  id="seccion-mostrar-carrusel"
+                  class="admin-toggle__input"
+                  name="mostrarEnCarrusel"
+                  checked
+                >
+                <span class="admin-toggle__track" aria-hidden="true"></span>
+              </span>
+            </label>
           </div>
           <button class="modal-contenido__cerrar" id="modal-detalle-seccion-cerrar" type="button" aria-label="Cerrar">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">

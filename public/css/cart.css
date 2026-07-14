@@ -717,6 +717,89 @@ body.cart-open {
   color: var(--color-accent);
 }
 
+/* Tarjeta de método de pago destacado con estética limpia */
+.tarjeta-metodo-pago.destacado-ahorro {
+  background-color: #f0fdf4; /* Verde menta muy suave y limpio */
+  border: 1.5px solid #bbf7d0; /* Borde verde sutil */
+  border-radius: 12px;
+  padding: 18px 24px;
+  margin: 15px 0;
+  font-family: inherit;
+  box-shadow: 0 2px 4px rgba(22, 101, 52, 0.03);
+  transition: all 0.2s ease-in-out;
+}
+
+.tarjeta-metodo-pago.destacado-ahorro:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(22, 101, 52, 0.06);
+}
+
+.tarjeta-metodo-pago.destacado-ahorro .info-pago {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tarjeta-metodo-pago.destacado-ahorro .metodo-etiqueta {
+  color: #166534; /* Verde oscuro elegante */
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.tarjeta-metodo-pago.destacado-ahorro .monto-destacado {
+  color: #15803d; /* Verde principal de tu UI */
+  font-size: 1.85rem;
+  font-weight: 800;
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+
+.tarjeta-metodo-pago.destacado-ahorro .pildora-ahorro {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background-color: #dcfce7; /* Fondo un tono más oscuro de menta para contraste */
+  color: #14532d;
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 6px 14px;
+  border-radius: 50px;
+  width: fit-content;
+  margin-top: 4px;
+}
+
+.tarjeta-metodo-pago.destacado-ahorro .emoji-bolsa {
+  font-size: 1rem;
+}
+
+.checkout-form__submit--transfer {
+  margin-top: 14px;
+  color: #fff;
+  background: linear-gradient(145deg, var(--whatsapp-green) 0%, var(--whatsapp-green-dark) 100%);
+}
+
+.checkout-form__submit--transfer:hover:not(:disabled) {
+  color: #fff;
+  background: var(--whatsapp-green-dark);
+  box-shadow: 0 8px 28px rgba(37, 211, 102, 0.25);
+}
+
+.checkout-form__note--transfer {
+  margin-top: 0.625rem;
+  color: #166534;
+}
+
+.checkout-payment-divider {
+  margin: 1rem 0 0.875rem;
+  font-size: 0.75rem;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: center;
+  color: var(--color-text-muted);
+}
+
 .checkout-form__submit {
   width: 100%;
   padding: 1rem 1.25rem;

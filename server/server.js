@@ -168,8 +168,15 @@ const productoItemPedidoSchema = new mongoose.Schema(
   { _id: false }
 );
 
-const TALLES_DEFECTO = ['S', 'M', 'L', 'XL', 'XXL'];
-const TALLES_PERMITIDOS = new Set(TALLES_DEFECTO);
+const TALLES_ROPA_DEFECTO = ['S', 'M', 'L', 'XL', 'XXL'];
+/** Alias retrocompatible: productos/seeds anteriores usaban TALLES_DEFECTO. */
+const TALLES_DEFECTO = TALLES_ROPA_DEFECTO;
+const TALLES_CALZADO_DEFECTO = [
+  '35', '35.5', '36', '36.5', '37', '37.5', '38', '38.5',
+  '39', '39.5', '40', '40.5', '41', '41.5', '42', '42.5',
+  '43', '43.5', '44', '44.5', '45',
+];
+const CATEGORIAS_TIPO_PRODUCTO = ['ropa', 'calzado'];
 const GENEROS_PERMITIDOS = ['hombre', 'mujer', 'ninos'];
 /** Estados del panel de administración (flujo de fulfillment). */
 const ESTADOS_PEDIDO = ['pendiente_pago', 'listo_empaquetar', 'despachado', 'entregado'];
@@ -191,13 +198,13 @@ const ESTADOS_PEDIDO_LEGACY = {
   Rechazado: 'cancelado',
 };
 
-const stockTallesSchema = new mongoose.Schema(
+const tablaMedidaSchema = new mongoose.Schema(
   {
-    S: { type: Number, default: 0, min: 0 },
-    M: { type: Number, default: 0, min: 0 },
-    L: { type: Number, default: 0, min: 0 },
-    XL: { type: Number, default: 0, min: 0 },
-    XXL: { type: Number, default: 0, min: 0 },
+    talle: { type: String, required: true },
+    ancho: { type: String, default: '' },
+    largo: { type: String, default: '' },
+    /** Usado cuando categoriaTipo === 'calzado' (p. ej. "25.5 cm"). */
+    largoPlantilla: { type: String, default: '' },
   },
   { _id: false }
 );
@@ -210,6 +217,12 @@ const productoSchema = new mongoose.Schema({
   destacado: { type: Boolean, default: false },
   enOferta: { type: Boolean, default: false },
   categoria: { type: String, required: true },
+  /** 'ropa' (talles S–XXL + ancho/largo) o 'calzado' (talles numéricos + largoPlantilla). */
+  categoriaTipo: {
+    type: String,
+    enum: CATEGORIAS_TIPO_PRODUCTO,
+    default: 'ropa',
+  },
   genero: {
     type: String,
     required: true,
@@ -220,11 +233,13 @@ const productoSchema = new mongoose.Schema({
   imagenEspalda: { type: String, default: '' },
   liga: { type: String, default: '' },
   stock: { type: Number, required: true, default: 0, min: 0 },
-  stockTalles: { type: stockTallesSchema, default: () => ({ S: 0, M: 0, L: 0, XL: 0, XXL: 0 }) },
+  /** Mapa flexible talle → stock (letras o números, p. ej. M / 39 / 40.5). */
+  stockTalles: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
   ventasContador: { type: Number, default: 0, min: 0 },
   activo: { type: Boolean, default: true },
-  talles: { type: [String], default: () => [...TALLES_DEFECTO] },
+  talles: { type: [String], default: () => [...TALLES_ROPA_DEFECTO] },
   descripcion: { type: String, default: '' },
+  tablaMedidas: { type: [tablaMedidaSchema], default: () => [] },
 });
 
 productoSchema.pre('save', function () {
@@ -277,6 +292,8 @@ const contadorSchema = new mongoose.Schema({
   seq: { type: Number, default: 0 },
 });
 
+const TIPOS_FILTRO_CUPON = ['todos', 'seccion', 'producto'];
+
 const cuponSchema = new mongoose.Schema(
   {
     codigo: {
@@ -293,6 +310,22 @@ const cuponSchema = new mongoose.Schema(
       max: [100, 'El descuento no puede superar 100%'],
     },
     activo: { type: Boolean, default: true },
+    /**
+     * Alcance del descuento:
+     * - todos: carrito completo
+     * - seccion: solo ítems cuya categoría/sección = referenciaId
+     * - producto: solo el producto con _id = referenciaId
+     */
+    tipoFiltro: {
+      type: String,
+      enum: TIPOS_FILTRO_CUPON,
+      default: 'todos',
+    },
+    /** ObjectId de Seccion o Producto según tipoFiltro; null si tipoFiltro === 'todos'. */
+    referenciaId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+    },
   },
   { timestamps: true }
 );
@@ -337,10 +370,25 @@ const Cupon = mongoose.model('Cupon', cuponSchema);
 const Usuario = mongoose.model('Usuario', usuarioSchema);
 const RegistroPendiente = mongoose.model('RegistroPendiente', registroPendienteSchema);
 
+const NOMBRE_SECCION_CALZADO = 'Calzado';
+const ID_SECCION_CALZADO_FIJA = 100;
+
 const seccionSchema = new mongoose.Schema({
   id: { type: Number, unique: true },
   nombre: { type: String, required: true, unique: true, trim: true },
   escudo: { type: String, default: '', trim: true },
+  /** 'general' = sección de ropa; 'calzado' = contenedor fijo o subtipo de calzado. */
+  grupo: {
+    type: String,
+    enum: ['general', 'calzado'],
+    default: 'general',
+  },
+  /** Solo true para la sección raíz «Calzado» (no se elimina ni renombra). */
+  esFija: { type: Boolean, default: false },
+  /** id de la sección padre (p. ej. subtipos bajo Calzado). null = nivel raíz. */
+  padreId: { type: Number, default: null },
+  /** Si false, la sección no aparece en el carrusel de accesos rápidos de la home. */
+  mostrarEnCarrusel: { type: Boolean, default: true },
 });
 
 seccionSchema.pre('save', function () {
@@ -362,9 +410,17 @@ const configuracionSchema = new mongoose.Schema({
 const Configuracion = mongoose.model('Configuracion', configuracionSchema);
 
 const SECCIONES_BASE = [
-  { id: 1, nombre: 'Remeras' },
-  { id: 2, nombre: 'Camperas' },
-  { id: 3, nombre: 'Pantalones' },
+  { id: 1, nombre: 'Remeras', grupo: 'general', esFija: false, padreId: null, mostrarEnCarrusel: true },
+  { id: 2, nombre: 'Camperas', grupo: 'general', esFija: false, padreId: null, mostrarEnCarrusel: true },
+  { id: 3, nombre: 'Pantalones', grupo: 'general', esFija: false, padreId: null, mostrarEnCarrusel: true },
+  {
+    id: ID_SECCION_CALZADO_FIJA,
+    nombre: NOMBRE_SECCION_CALZADO,
+    grupo: 'calzado',
+    esFija: true,
+    padreId: null,
+    mostrarEnCarrusel: true,
+  },
 ];
 
 const PRODUCTOS_BASE = [
@@ -637,6 +693,28 @@ function normalizarStock(stock) {
   return Math.floor(valor);
 }
 
+function normalizarCategoriaTipo(valor) {
+  const tipo = String(valor || '').trim().toLowerCase();
+  return CATEGORIAS_TIPO_PRODUCTO.includes(tipo) ? tipo : 'ropa';
+}
+
+/** Clave de talle canónica: trim + mayúsculas (funciona para S/M/L y 39/40.5). */
+function normalizarClaveTalle(talle) {
+  return String(talle ?? '').trim().toUpperCase();
+}
+
+/**
+ * Encodea puntos en claves de stockTalles para paths MongoDB seguros
+ * (p. ej. "40.5" → "40__DOT__5").
+ */
+function encodeTalleKey(talle) {
+  return normalizarClaveTalle(talle).replace(/\./g, '__DOT__');
+}
+
+function decodeTalleKey(clave) {
+  return String(clave ?? '').replace(/__DOT__/g, '.');
+}
+
 function obtenerObjetoStockTalles(stockTalles) {
   if (!stockTalles) return null;
   if (stockTalles instanceof Map) {
@@ -651,21 +729,36 @@ function obtenerObjetoStockTalles(stockTalles) {
   return null;
 }
 
+function leerStockDeTalle(stockTalles, talle) {
+  const origen = obtenerObjetoStockTalles(stockTalles);
+  if (!origen) return 0;
+  const clave = normalizarClaveTalle(talle);
+  if (!clave) return 0;
+  const directa = origen[clave] ?? origen[encodeTalleKey(clave)] ?? origen[talle];
+  if (directa !== undefined) return normalizarStock(directa);
+  const lower = clave.toLowerCase();
+  if (origen[lower] !== undefined) return normalizarStock(origen[lower]);
+  return 0;
+}
+
 function normalizarStockTalles(stockTalles, stockTotal = null, talles = null) {
-  const base = { S: 0, M: 0, L: 0, XL: 0, XXL: 0 };
+  const base = {};
   const origen = obtenerObjetoStockTalles(stockTalles);
 
   if (origen) {
-    for (const talle of TALLES_DEFECTO) {
-      base[talle] = normalizarStock(origen[talle] ?? origen[talle.toLowerCase()]);
+    for (const claveRaw of Object.keys(origen)) {
+      if (claveRaw === '_id' || String(claveRaw).startsWith('$')) continue;
+      const talle = normalizarClaveTalle(decodeTalleKey(claveRaw));
+      if (!talle) continue;
+      base[talle] = normalizarStock(origen[claveRaw]);
     }
   }
 
-  const sumaActual = TALLES_DEFECTO.reduce((acc, talle) => acc + base[talle], 0);
+  const sumaActual = Object.values(base).reduce((acc, n) => acc + normalizarStock(n), 0);
   if (sumaActual > 0) return base;
 
   if (stockTotal != null) {
-    const tallesActivos = normalizarTalles(talles);
+    const tallesActivos = normalizarTalles(talles, { fallback: [] });
     const total = normalizarStock(stockTotal);
     if (tallesActivos.length === 1) {
       base[tallesActivos[0]] = total;
@@ -684,25 +777,166 @@ function normalizarStockTalles(stockTalles, stockTotal = null, talles = null) {
 
 function sumarStockTalles(stockTalles) {
   const normalizado = normalizarStockTalles(stockTalles);
-  return TALLES_DEFECTO.reduce((acc, talle) => acc + normalizarStock(normalizado[talle]), 0);
+  return Object.values(normalizado).reduce((acc, n) => acc + normalizarStock(n), 0);
 }
 
-function tallesDesdeStockTalles(stockTalles) {
+/** Prepara stockTalles para MongoDB (claves con puntos encodeadas). */
+function encodeStockTallesParaDB(stockTalles) {
   const normalizado = normalizarStockTalles(stockTalles);
-  const conStock = TALLES_DEFECTO.filter((talle) => normalizarStock(normalizado[talle]) > 0);
-  return conStock.length ? conStock : [...TALLES_DEFECTO];
+  const out = {};
+  for (const [talle, cantidad] of Object.entries(normalizado)) {
+    out[encodeTalleKey(talle)] = normalizarStock(cantidad);
+  }
+  return out;
 }
 
-function normalizarTalles(talles) {
-  if (!Array.isArray(talles)) return [...TALLES_DEFECTO];
+/**
+ * True si el documento YA tiene claves reales en stockTalles (aunque el valor sea 0).
+ * No usa la redistribución en memoria de normalizarStockTalles(..., stockTotal, talles):
+ * esa proyección inventaría talles y haría fallar ($gte sobre path inexistente) o
+ * sobrevender (descontar solo stock global cuando el talle pedía 0).
+ */
+function documentoTrackeaStockPorTalle(stockTalles) {
+  const origen = obtenerObjetoStockTalles(stockTalles);
+  if (!origen) return false;
+  return Object.keys(origen).some((claveRaw) => {
+    if (claveRaw === '_id' || String(claveRaw).startsWith('$')) return false;
+    return Boolean(normalizarClaveTalle(decodeTalleKey(claveRaw)));
+  });
+}
+
+/** True si además hay stock > 0 en alguna clave real del documento. */
+function documentoTieneStockPorTalle(stockTalles) {
+  const origen = obtenerObjetoStockTalles(stockTalles);
+  if (!origen) return false;
+  return Object.keys(origen).some((claveRaw) => {
+    if (claveRaw === '_id' || String(claveRaw).startsWith('$')) return false;
+    return normalizarStock(origen[claveRaw]) > 0;
+  });
+}
+
+/**
+ * Resuelve la clave física en el subdocumento stockTalles para paths de update.
+ * Prefiere la forma encodeada (40__DOT__5); acepta literales sin puntos (M, 41).
+ */
+function resolverClaveFisicaStockTalle(stockTalles, talle) {
+  const origen = obtenerObjetoStockTalles(stockTalles);
+  if (!origen) return null;
+  const clave = normalizarClaveTalle(talle);
+  if (!clave) return null;
+  const encoded = encodeTalleKey(clave);
+
+  if (Object.prototype.hasOwnProperty.call(origen, encoded)) return encoded;
+  if (Object.prototype.hasOwnProperty.call(origen, clave) && !clave.includes('.')) {
+    return clave;
+  }
+  // Clave literal con punto (legado): no se puede $inc vía "stockTalles.40.5"
+  // (Mongo lo interpreta como anidación). Requiere migración previa a encode.
+  if (Object.prototype.hasOwnProperty.call(origen, clave)) return null;
+  return encoded;
+}
+
+/** True si hay claves con '.' literales que romperían updates por path. */
+function stockTallesRequiereMigracionClaves(stockTalles) {
+  const origen = obtenerObjetoStockTalles(stockTalles);
+  if (!origen) return false;
+  return Object.keys(origen).some(
+    (k) => k.includes('.') && !k.includes('__DOT__')
+  );
+}
+
+/**
+ * Reescribe stockTalles con claves encodeadas (idempotente). Evita que talles
+ * como "40.5" queden inaccesibles para $inc atómico.
+ */
+async function migrarClavesStockTallesSiNecesario(producto) {
+  if (!producto || !stockTallesRequiereMigracionClaves(producto.stockTalles)) {
+    return producto;
+  }
+
+  const migrado = encodeStockTallesParaDB(
+    normalizarStockTalles(producto.stockTalles, producto.stock, producto.talles)
+  );
+
+  const actualizado = await Producto.findByIdAndUpdate(
+    producto._id,
+    { $set: { stockTalles: migrado } },
+    { new: true }
+  );
+
+  return actualizado || producto;
+}
+
+function tallesDesdeStockTalles(stockTalles, categoriaTipo = 'ropa') {
+  const normalizado = normalizarStockTalles(stockTalles);
+  const conStock = Object.keys(normalizado)
+    .filter((talle) => normalizarStock(normalizado[talle]) > 0)
+    .sort(compararTalles);
+  if (conStock.length) return conStock;
+  return categoriaTipo === 'calzado' ? [...TALLES_CALZADO_DEFECTO] : [...TALLES_ROPA_DEFECTO];
+}
+
+function compararTalles(a, b) {
+  const na = Number(a);
+  const nb = Number(b);
+  const aNum = Number.isFinite(na) && String(a).trim() !== '';
+  const bNum = Number.isFinite(nb) && String(b).trim() !== '';
+  if (aNum && bNum) return na - nb;
+  if (aNum) return 1;
+  if (bNum) return -1;
+  const ordenRopa = TALLES_ROPA_DEFECTO;
+  const ia = ordenRopa.indexOf(a);
+  const ib = ordenRopa.indexOf(b);
+  if (ia !== -1 && ib !== -1) return ia - ib;
+  return String(a).localeCompare(String(b), 'es', { numeric: true });
+}
+
+/**
+ * Acepta cualquier talle no vacío (letras o números). Ya no valida contra S/M/L fijos.
+ */
+function normalizarTalles(talles, opciones = {}) {
+  const fallback = Array.isArray(opciones.fallback)
+    ? opciones.fallback
+    : [...TALLES_ROPA_DEFECTO];
+
+  if (!Array.isArray(talles)) return [...fallback];
 
   const normalizados = [...new Set(
     talles
-      .map((talle) => String(talle).trim().toUpperCase())
-      .filter((talle) => TALLES_PERMITIDOS.has(talle))
-  )];
+      .map((talle) => normalizarClaveTalle(talle))
+      .filter(Boolean)
+  )].sort(compararTalles);
 
-  return normalizados.length ? normalizados : [...TALLES_DEFECTO];
+  return normalizados.length ? normalizados : [...fallback];
+}
+
+function normalizarTablaMedidas(tablaMedidas, categoriaTipo = 'ropa') {
+  if (!Array.isArray(tablaMedidas)) return [];
+  const tipo = normalizarCategoriaTipo(categoriaTipo);
+
+  return tablaMedidas
+    .map((fila) => {
+      if (!fila || typeof fila !== 'object') return null;
+      const talle = normalizarClaveTalle(fila.talle);
+      if (!talle) return null;
+
+      if (tipo === 'calzado') {
+        return {
+          talle,
+          ancho: '',
+          largo: '',
+          largoPlantilla: String(fila.largoPlantilla ?? fila.largo_plantilla ?? '').trim(),
+        };
+      }
+
+      return {
+        talle,
+        ancho: String(fila.ancho ?? '').trim(),
+        largo: String(fila.largo ?? '').trim(),
+        largoPlantilla: '',
+      };
+    })
+    .filter(Boolean);
 }
 
 function parsearBooleano(valor, fallback = false) {
@@ -719,34 +953,53 @@ function resolverStockYTallesDesdeBody(body = {}, productoExistente = null) {
   const existente = productoExistente?.toObject
     ? productoExistente.toObject()
     : productoExistente || {};
+  const categoriaTipo = normalizarCategoriaTipo(
+    body.categoriaTipo ?? body.categoria_tipo ?? existente.categoriaTipo
+  );
+
+  const origenBodyStock = body.stockTalles || body.stock_talles;
+  const tieneObjetoStockTalles = origenBodyStock && typeof origenBodyStock === 'object';
+  const clavesStockPlanas = Object.keys(body || {}).filter((clave) =>
+    /^stock[_]?[A-Za-z0-9.__-]+$/i.test(clave)
+    && !/^stock$/i.test(clave)
+    && !/^stockTalles$/i.test(clave)
+    && !/^stock_talles$/i.test(clave)
+  );
   const tieneStockTallesEnBody =
     body.stockTalles !== undefined
     || body.stock_talles !== undefined
-    || TALLES_DEFECTO.some((talle) => body[`stock_${talle}`] !== undefined || body[`stock${talle}`] !== undefined);
+    || clavesStockPlanas.length > 0;
 
   let stockTalles;
 
   if (tieneStockTallesEnBody) {
-    const desdeBody = body.stockTalles || body.stock_talles || {};
-    const ensamblado = { ...normalizarStockTalles(existente.stockTalles) };
+    const ensamblado = {};
 
-    for (const talle of TALLES_DEFECTO) {
-      const valorDirecto =
-        desdeBody[talle]
-        ?? desdeBody[talle.toLowerCase()]
-        ?? body[`stock_${talle}`]
-        ?? body[`stock${talle}`];
-
-      if (valorDirecto !== undefined) {
-        ensamblado[talle] = normalizarStock(valorDirecto);
+    if (tieneObjetoStockTalles) {
+      for (const [claveRaw, valor] of Object.entries(obtenerObjetoStockTalles(origenBodyStock) || {})) {
+        const talle = normalizarClaveTalle(decodeTalleKey(claveRaw));
+        if (!talle) continue;
+        ensamblado[talle] = normalizarStock(valor);
       }
+    }
+
+    for (const clave of clavesStockPlanas) {
+      const match = clave.match(/^stock[_-]?(.+)$/i);
+      if (!match) continue;
+      const talle = normalizarClaveTalle(decodeTalleKey(match[1]));
+      if (!talle) continue;
+      ensamblado[talle] = normalizarStock(body[clave]);
     }
 
     stockTalles = normalizarStockTalles(ensamblado);
   } else if (body.stock !== undefined) {
     const talles = body.talles !== undefined
-      ? normalizarTalles(parsearTallesDesdeBody(body.talles))
-      : normalizarTalles(existente.talles);
+      ? normalizarTalles(parsearTallesDesdeBody(body.talles), {
+        fallback: categoriaTipo === 'calzado' ? TALLES_CALZADO_DEFECTO : TALLES_ROPA_DEFECTO,
+      })
+      : normalizarTalles(existente.talles, {
+        fallback: categoriaTipo === 'calzado' ? TALLES_CALZADO_DEFECTO : TALLES_ROPA_DEFECTO,
+      });
     stockTalles = normalizarStockTalles(null, body.stock, talles);
   } else {
     stockTalles = normalizarStockTalles(
@@ -757,11 +1010,16 @@ function resolverStockYTallesDesdeBody(body = {}, productoExistente = null) {
   }
 
   const talles = body.talles !== undefined
-    ? normalizarTalles(parsearTallesDesdeBody(body.talles))
-    : tallesDesdeStockTalles(stockTalles);
-  const stock = sumarStockTalles(stockTalles);
+    ? normalizarTalles(parsearTallesDesdeBody(body.talles), { fallback: [] })
+    : tallesDesdeStockTalles(stockTalles, categoriaTipo);
 
-  return { stock, stockTalles, talles };
+  const tallesFinales = talles.length
+    ? talles
+    : Object.keys(stockTalles).filter((t) => stockTalles[t] > 0).sort(compararTalles);
+
+  const stock = Math.max(sumarStockTalles(stockTalles), 0);
+
+  return { stock, stockTalles, talles: tallesFinales, categoriaTipo };
 }
 
 function normalizarGenero(genero) {
@@ -842,24 +1100,421 @@ function obtenerImagenesDesdeDocumento(datos = {}) {
 
 function formatearSeccion(seccion) {
   const datos = seccion.toObject ? seccion.toObject() : seccion;
+  const padreIdRaw = datos.padreId;
+  const padreId = padreIdRaw == null || padreIdRaw === ''
+    ? null
+    : Number(padreIdRaw);
 
   return {
     id: datos.id,
     nombre: datos.nombre,
     escudo: String(datos.escudo || '').trim(),
+    grupo: datos.grupo === 'calzado' ? 'calzado' : 'general',
+    esFija: Boolean(datos.esFija),
+    padreId: Number.isFinite(padreId) ? padreId : null,
+    mostrarEnCarrusel: datos.mostrarEnCarrusel !== false,
   };
 }
 
-function formatearCupon(cupon) {
+/**
+ * Garantiza la existencia de la sección raíz fija «Calzado».
+ * Compatible con bases que ya tienen secciones de ropa.
+ */
+async function asegurarSeccionCalzadoFija() {
+  let calzado = await Seccion.findOne({
+    $or: [
+      { esFija: true, grupo: 'calzado' },
+      { nombre: { $regex: new RegExp(`^${NOMBRE_SECCION_CALZADO}$`, 'i') } },
+    ],
+  });
+
+  if (calzado) {
+    let dirty = false;
+    if (calzado.nombre !== NOMBRE_SECCION_CALZADO) {
+      calzado.nombre = NOMBRE_SECCION_CALZADO;
+      dirty = true;
+    }
+    if (calzado.grupo !== 'calzado') {
+      calzado.grupo = 'calzado';
+      dirty = true;
+    }
+    if (!calzado.esFija) {
+      calzado.esFija = true;
+      dirty = true;
+    }
+    if (calzado.padreId != null) {
+      calzado.padreId = null;
+      dirty = true;
+    }
+    if (dirty) await calzado.save();
+    return calzado;
+  }
+
+  const ocupado = await Seccion.findOne({ id: ID_SECCION_CALZADO_FIJA });
+  const id = ocupado ? Date.now() : ID_SECCION_CALZADO_FIJA;
+
+  return new Seccion({
+    id,
+    nombre: NOMBRE_SECCION_CALZADO,
+    grupo: 'calzado',
+    esFija: true,
+    padreId: null,
+    escudo: '',
+    mostrarEnCarrusel: true,
+  }).save();
+}
+
+function formatearCupon(cupon, extras = {}) {
   const datos = cupon.toObject ? cupon.toObject() : cupon;
+  const tipoFiltro = normalizarTipoFiltroCupon(datos.tipoFiltro) || 'todos';
+  const referenciaId = tipoFiltro === 'todos' || !datos.referenciaId
+    ? null
+    : String(datos.referenciaId);
+  const referenciaNombre = extras.referenciaNombre != null
+    ? String(extras.referenciaNombre)
+    : null;
+
+  let aplicaA = 'Toda la tienda';
+  if (tipoFiltro === 'seccion') {
+    aplicaA = referenciaNombre
+      ? `Sección: ${referenciaNombre}`
+      : 'Sección (referencia no encontrada)';
+  } else if (tipoFiltro === 'producto') {
+    aplicaA = referenciaNombre
+      ? `Producto: ${referenciaNombre}`
+      : 'Producto (referencia no encontrada)';
+  }
 
   return {
     id: String(datos._id),
     codigo: String(datos.codigo || '').toUpperCase(),
     descuentoPorcentaje: Number(datos.descuentoPorcentaje),
     activo: datos.activo !== false,
+    tipoFiltro,
+    referenciaId,
+    /** Nombre legible de Sección/Producto (null si tipoFiltro === 'todos'). */
+    referenciaNombre: tipoFiltro === 'todos' ? null : referenciaNombre,
+    /** Etiqueta lista para mostrar en el panel admin. */
+    aplicaA,
     createdAt: datos.createdAt || null,
     updatedAt: datos.updatedAt || null,
+  };
+}
+
+/**
+ * Enriquece cupones con el nombre de la sección/producto referenciado
+ * (evita mostrar ObjectIds ilegibles en el admin).
+ */
+async function formatearCuponesConReferencias(cupones = []) {
+  const lista = Array.isArray(cupones) ? cupones : [];
+  if (lista.length === 0) return [];
+
+  const seccionIds = [];
+  const productoIds = [];
+
+  for (const cupon of lista) {
+    const datos = cupon.toObject ? cupon.toObject() : cupon;
+    const tipoFiltro = normalizarTipoFiltroCupon(datos.tipoFiltro) || 'todos';
+    if (!datos.referenciaId) continue;
+    const refId = String(datos.referenciaId);
+    if (tipoFiltro === 'seccion') seccionIds.push(refId);
+    else if (tipoFiltro === 'producto') productoIds.push(refId);
+  }
+
+  const [seccionesDocs, productosDocs] = await Promise.all([
+    seccionIds.length
+      ? Seccion.find({ _id: { $in: seccionIds } }).select('_id nombre').lean()
+      : Promise.resolve([]),
+    productoIds.length
+      ? Producto.find({ _id: { $in: productoIds } }).select('_id nombre').lean()
+      : Promise.resolve([]),
+  ]);
+
+  const nombresSeccion = new Map(
+    seccionesDocs.map((doc) => [String(doc._id), String(doc.nombre || '').trim()])
+  );
+  const nombresProducto = new Map(
+    productosDocs.map((doc) => [String(doc._id), String(doc.nombre || '').trim()])
+  );
+
+  return lista.map((cupon) => {
+    const datos = cupon.toObject ? cupon.toObject() : cupon;
+    const tipoFiltro = normalizarTipoFiltroCupon(datos.tipoFiltro) || 'todos';
+    const refId = datos.referenciaId ? String(datos.referenciaId) : null;
+    let referenciaNombre = null;
+    if (tipoFiltro === 'seccion' && refId) {
+      referenciaNombre = nombresSeccion.get(refId) || null;
+    } else if (tipoFiltro === 'producto' && refId) {
+      referenciaNombre = nombresProducto.get(refId) || null;
+    }
+    return formatearCupon(cupon, { referenciaNombre });
+  });
+}
+
+async function formatearCuponConReferencia(cupon) {
+  const [formateado] = await formatearCuponesConReferencias([cupon]);
+  return formateado;
+}
+
+function escaparRegexLiteral(valor) {
+  return String(valor || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function normalizarTipoFiltroCupon(raw) {
+  const tipo = String(raw || '').trim().toLowerCase();
+  // Alias legacy por si quedaron cupones/admin con "tienda".
+  if (tipo === 'tienda' || tipo === 'all') return 'todos';
+  return TIPOS_FILTRO_CUPON.includes(tipo) ? tipo : null;
+}
+
+/**
+ * Resuelve una sección por ObjectId Mongo, id numérico de negocio o nombre.
+ */
+async function resolverSeccionReferencia(refRaw) {
+  const idParam = String(refRaw ?? '').trim();
+  if (!idParam) return null;
+
+  if (mongoose.isValidObjectId(idParam)) {
+    const porOid = await Seccion.findById(idParam);
+    if (porOid) return porOid;
+  }
+
+  const idNumerico = Number(idParam);
+  if (Number.isFinite(idNumerico)) {
+    const porId = await Seccion.findOne({ id: idNumerico });
+    if (porId) return porId;
+  }
+
+  return Seccion.findOne({
+    nombre: { $regex: new RegExp(`^${escaparRegexLiteral(idParam)}$`, 'i') },
+  });
+}
+
+/**
+ * Sanitiza tipoFiltro + referenciaId desde body de admin.
+ * Acepta ObjectId, id numérico o (sección) nombre; siempre persiste ObjectId o null.
+ */
+async function sanitizarFiltroCupon(body = {}) {
+  const tieneTipo = body.tipoFiltro !== undefined
+    || body.tipo_filtro !== undefined;
+
+  const tipoRaw = body.tipoFiltro ?? body.tipo_filtro;
+  const tipoFiltro = tieneTipo
+    ? normalizarTipoFiltroCupon(tipoRaw)
+    : 'todos';
+
+  if (tieneTipo && !tipoFiltro) {
+    return {
+      ok: false,
+      status: 400,
+      error: `tipoFiltro inválido. Usá uno de: ${TIPOS_FILTRO_CUPON.join(', ')}.`,
+    };
+  }
+
+  const refRaw = body.referenciaId ?? body.referencia_id ?? body.referencia;
+
+  if (tipoFiltro === 'todos') {
+    return { ok: true, tipoFiltro: 'todos', referenciaId: null };
+  }
+
+  if (refRaw === undefined || refRaw === null || String(refRaw).trim() === '') {
+    return {
+      ok: false,
+      status: 400,
+      error: 'referenciaId es obligatorio cuando el cupón filtra por sección o producto.',
+    };
+  }
+
+  if (tipoFiltro === 'seccion') {
+    const seccion = await resolverSeccionReferencia(refRaw);
+    if (!seccion) {
+      return { ok: false, status: 400, error: 'La sección de referencia no existe.' };
+    }
+    return { ok: true, tipoFiltro, referenciaId: seccion._id };
+  }
+
+  const producto = await buscarProductoPorId(refRaw);
+  if (!producto) {
+    return { ok: false, status: 400, error: 'El producto de referencia no existe.' };
+  }
+
+  return { ok: true, tipoFiltro, referenciaId: producto._id };
+}
+
+/**
+ * Map nombre de categoría (producto.categoria) → documento Seccion.
+ */
+async function mapaSeccionesPorNombre() {
+  const secciones = await Seccion.find().lean();
+  const mapa = new Map();
+  for (const seccion of secciones) {
+    const clave = String(seccion.nombre || '').trim().toLowerCase();
+    if (clave) mapa.set(clave, seccion);
+  }
+  return mapa;
+}
+
+/**
+ * Construye líneas de carrito desde ítems del cliente (precios y sección desde DB).
+ * Acepta: { id|productoId, cantidad?, seccionId? } — seccionId del cliente no se confía.
+ */
+async function construirLineasCuponDesdeItems(items) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return {
+      ok: false,
+      status: 400,
+      error: 'Debés enviar los ítems del carrito para validar el cupón.',
+    };
+  }
+
+  const seccionesPorNombre = await mapaSeccionesPorNombre();
+  const lineas = [];
+
+  for (const item of items) {
+    const productoId = item?.productoId ?? item?.id ?? item?._id;
+    const cantidadRaw = Number(item?.cantidad);
+    const cantidad = Number.isFinite(cantidadRaw) && cantidadRaw > 0
+      ? Math.floor(cantidadRaw)
+      : 1;
+
+    const producto = await buscarProductoPorId(productoId);
+    if (!producto || producto.activo === false) {
+      continue;
+    }
+
+    const precioUnitario = obtenerPrecioEfectivoProducto(producto);
+    if (!Number.isFinite(precioUnitario) || precioUnitario <= 0) {
+      continue;
+    }
+
+    const seccion = seccionesPorNombre.get(
+      String(producto.categoria || '').trim().toLowerCase()
+    ) || null;
+
+    lineas.push({
+      productoOid: producto._id,
+      productoId: producto.id,
+      seccionOid: seccion?._id || null,
+      seccionId: seccion?.id ?? null,
+      subtotal: redondearMonto(precioUnitario * cantidad),
+      cantidad,
+    });
+  }
+
+  if (!lineas.length) {
+    return {
+      ok: false,
+      status: 400,
+      error: 'Este cupón no es válido para los productos en tu carrito',
+    };
+  }
+
+  return { ok: true, lineas };
+}
+
+/**
+ * True si la sección es la raíz fija «Calzado» (agrupa todos los subtipos).
+ */
+function esSeccionCalzadoRaizDoc(seccion) {
+  if (!seccion) return false;
+  if (seccion.esFija) return true;
+  return seccion.grupo === 'calzado'
+    && seccion.padreId == null
+    && String(seccion.nombre || '').trim().toLowerCase() === NOMBRE_SECCION_CALZADO.toLowerCase();
+}
+
+/**
+ * ObjectIds de sección cubiertos por un cupón de tipo «seccion».
+ * Si la referencia es la raíz Calzado, incluye también todos sus subtipos
+ * (los productos se asignan a subtipos, nunca a la raíz).
+ */
+async function resolverOidsSeccionCupon(referenciaId) {
+  const refId = String(referenciaId || '').trim();
+  if (!refId) return new Set();
+
+  const oids = new Set([refId]);
+  if (!mongoose.isValidObjectId(refId)) return oids;
+
+  const seccion = await Seccion.findById(refId).lean();
+  if (!seccion || !esSeccionCalzadoRaizDoc(seccion)) return oids;
+
+  const subtipos = await Seccion.find({
+    grupo: 'calzado',
+    padreId: seccion.id,
+  }).select('_id').lean();
+
+  for (const subtipo of subtipos) {
+    oids.add(String(subtipo._id));
+  }
+  return oids;
+}
+
+/**
+ * Calcula monto base elegible según tipoFiltro del cupón.
+ * El % se aplica SOLO sobre montos de líneas elegibles; el total final
+ * resta ese descuento del carrito completo (p. ej. remera + calzado).
+ */
+async function calcularAplicacionCuponSobreLineas(cupon, lineas) {
+  // Cupones legacy sin tipoFiltro → comportamiento «toda la tienda».
+  const tipoFiltro = normalizarTipoFiltroCupon(cupon?.tipoFiltro) || 'todos';
+  const refId = cupon?.referenciaId ? String(cupon.referenciaId) : null;
+  const totalCarrito = redondearMonto(
+    lineas.reduce((acum, linea) => acum + Number(linea.subtotal || 0), 0)
+  );
+
+  let lineasElegibles = lineas;
+
+  if (tipoFiltro === 'seccion') {
+    if (!refId) {
+      return {
+        ok: false,
+        status: 400,
+        error: 'Este cupón no es válido para los productos en tu carrito',
+      };
+    }
+    const oidsElegibles = await resolverOidsSeccionCupon(refId);
+    lineasElegibles = lineas.filter(
+      (linea) => linea.seccionOid && oidsElegibles.has(String(linea.seccionOid))
+    );
+  } else if (tipoFiltro === 'producto') {
+    if (!refId) {
+      return {
+        ok: false,
+        status: 400,
+        error: 'Este cupón no es válido para los productos en tu carrito',
+      };
+    }
+    lineasElegibles = lineas.filter(
+      (linea) => linea.productoOid && String(linea.productoOid) === refId
+    );
+  }
+  // tipoFiltro === 'todos': todas las líneas con precio válido (incl. categorías legacy).
+
+  const montoBase = redondearMonto(
+    lineasElegibles.reduce((acum, linea) => acum + Number(linea.subtotal || 0), 0)
+  );
+
+  if (montoBase <= 0) {
+    return {
+      ok: false,
+      status: 400,
+      error: 'Este cupón no es válido para los productos en tu carrito',
+    };
+  }
+
+  const descuentoPorcentaje = Number(cupon.descuentoPorcentaje);
+  const descuentoMonto = redondearMonto(montoBase * (descuentoPorcentaje / 100));
+  const totalFinal = Math.max(0, redondearMonto(totalCarrito - descuentoMonto));
+
+  return {
+    ok: true,
+    tipoFiltro,
+    referenciaId: tipoFiltro === 'todos' ? null : refId,
+    descuentoPorcentaje,
+    montoBase,
+    totalCarrito,
+    descuentoMonto,
+    totalFinal,
   };
 }
 
@@ -870,6 +1525,7 @@ function formatearProducto(producto) {
   const imagen = imagenEspalda && imagenEspalda !== imagenFrente
     ? [imagenFrente, imagenEspalda]
     : [imagenFrente].filter(Boolean);
+  const categoriaTipo = normalizarCategoriaTipo(datos.categoriaTipo);
   const stockTalles = normalizarStockTalles(datos.stockTalles, datos.stock, datos.talles);
   const stock = Math.max(normalizarStock(datos.stock ?? 0), sumarStockTalles(stockTalles));
   const destacado = Boolean(datos.destacado);
@@ -885,6 +1541,7 @@ function formatearProducto(producto) {
     enOferta,
     en_oferta: enOferta,
     categoria: datos.categoria,
+    categoriaTipo,
     genero: normalizarGenero(datos.genero),
     imagenFrente,
     imagenEspalda,
@@ -892,9 +1549,13 @@ function formatearProducto(producto) {
     stock,
     stockTalles,
     activo: datos.activo !== false,
-    talles: normalizarTalles(datos.talles?.length ? datos.talles : tallesDesdeStockTalles(stockTalles)),
+    talles: normalizarTalles(
+      datos.talles?.length ? datos.talles : tallesDesdeStockTalles(stockTalles, categoriaTipo),
+      { fallback: categoriaTipo === 'calzado' ? TALLES_CALZADO_DEFECTO : TALLES_ROPA_DEFECTO }
+    ),
     descripcion: String(datos.descripcion || '').trim(),
     liga: String(datos.liga || '').trim(),
+    tablaMedidas: normalizarTablaMedidas(datos.tablaMedidas, categoriaTipo),
   };
 }
 
@@ -1116,10 +1777,13 @@ function obtenerPrecioEfectivoProducto(producto) {
 
 async function revertirDecrementosStock(decrementos) {
   await Promise.all(
-    decrementos.map(({ productoId, cantidad, talle }) => {
+    decrementos.map(async ({ productoId, cantidad, talle }) => {
       const update = { $inc: { stock: cantidad } };
-      if (talle && TALLES_PERMITIDOS.has(talle)) {
-        update.$inc[`stockTalles.${talle}`] = cantidad;
+      if (talle) {
+        const producto = await Producto.findById(productoId).select('stockTalles');
+        const pathKey = resolverClaveFisicaStockTalle(producto?.stockTalles, talle)
+          || encodeTalleKey(talle);
+        update.$inc[`stockTalles.${pathKey}`] = cantidad;
       }
       return Producto.findByIdAndUpdate(productoId, update);
     })
@@ -1131,14 +1795,24 @@ async function restaurarStockDesdePedido(pedido) {
 
   for (const item of pedido?.productos || []) {
     const productoId = item.producto?.id ?? item.producto;
-    const producto = await buscarProductoPorId(productoId);
+    let producto = await buscarProductoPorId(productoId);
     if (!producto) continue;
 
-    const talleRaw = item.producto?.talle ? String(item.producto.talle).trim().toUpperCase() : null;
+    producto = await migrarClavesStockTallesSiNecesario(producto);
+
+    const talleRaw = item.producto?.talle
+      ? normalizarClaveTalle(item.producto.talle)
+      : null;
+    // Restaurar path de talle si el doc trackea por talle (aunque el stock actual sea 0).
+    const talleValido = talleRaw && documentoTrackeaStockPorTalle(producto.stockTalles)
+      && (resolverClaveFisicaStockTalle(producto.stockTalles, talleRaw) || encodeTalleKey(talleRaw))
+      ? talleRaw
+      : null;
+
     decrementos.push({
       productoId: String(producto._id),
       cantidad: Number(item.cantidad || 0),
-      talle: talleRaw && TALLES_PERMITIDOS.has(talleRaw) ? talleRaw : null,
+      talle: talleValido,
     });
   }
 
@@ -1268,17 +1942,20 @@ async function validarItemsYReservarStock(items) {
   for (const item of items) {
     const productoId = item.productoId ?? item.id;
     const cantidad = Math.floor(Number(item.cantidad));
-    const talle = item.talle ? String(item.talle).trim().toUpperCase() : null;
+    const talle = item.talle ? normalizarClaveTalle(item.talle) : null;
 
     if (!productoId || !Number.isFinite(cantidad) || cantidad <= 0) {
       return { error: 'Uno de los ítems del pedido es inválido.', status: 400 };
     }
 
-    const producto = await buscarProductoPorId(productoId);
+    let producto = await buscarProductoPorId(productoId);
 
     if (!producto) {
       return { error: 'Uno de los productos del pedido ya no existe.', status: 400 };
     }
+
+    // Migración lazy: "40.5" → "40__DOT__5" para que $inc por path sea seguro.
+    producto = await migrarClavesStockTallesSiNecesario(producto);
 
     if (producto.activo === false || normalizarStock(producto.stock) <= 0) {
       return {
@@ -1287,12 +1964,34 @@ async function validarItemsYReservarStock(items) {
       };
     }
 
-    const tallesDisponibles = normalizarTalles(producto.talles);
-    if (tallesDisponibles.length && (!talle || !tallesDisponibles.includes(talle))) {
+    const tallesDisponibles = normalizarTalles(producto.talles, { fallback: [] });
+    const tallesConStock = Object.keys(
+      normalizarStockTalles(producto.stockTalles)
+    )
+      .filter((t) => leerStockDeTalle(producto.stockTalles, t) > 0)
+      .sort(compararTalles);
+    const catalogoTalles = tallesDisponibles.length
+      ? tallesDisponibles
+      : tallesConStock;
+
+    if (catalogoTalles.length && (!talle || !catalogoTalles.includes(talle))) {
       return {
-        error: `Talle inválido para «${producto.nombre}». Talles disponibles: ${tallesDisponibles.join(', ')}.`,
+        error: `Talle inválido para «${producto.nombre}». Talles disponibles: ${catalogoTalles.join(', ')}.`,
         status: 400,
       };
+    }
+
+    // Si el doc trackea por talle, exigir stock real en ese talle antes de reservar.
+    if (talle && documentoTrackeaStockPorTalle(producto.stockTalles)) {
+      const stockTalle = leerStockDeTalle(producto.stockTalles, talle);
+      if (stockTalle < cantidad) {
+        return {
+          error: stockTalle <= 0
+            ? `No hay unidades disponibles de «${producto.nombre}» (talle ${talle}).`
+            : `Stock insuficiente para «${producto.nombre}» (talle ${talle}). Disponible: ${stockTalle}, solicitado: ${cantidad}.`,
+          status: 400,
+        };
+      }
     }
 
     const precioUnitario = obtenerPrecioEfectivoProducto(producto);
@@ -1320,32 +2019,30 @@ async function validarItemsYReservarStock(items) {
       stock: { $gte: cantidad },
     };
     const update = { $inc: { stock: -cantidad } };
+    let talleDecrementado = null;
 
-    if (talle && TALLES_PERMITIDOS.has(talle)) {
-      const stockTallesActual = normalizarStockTalles(
-        linea.producto.stockTalles,
-        linea.producto.stock,
-        linea.producto.talles
-      );
-      const usaStockPorTalle = TALLES_DEFECTO.some((t) => stockTallesActual[t] > 0);
-
-      if (usaStockPorTalle) {
-        filtro[`stockTalles.${talle}`] = { $gte: cantidad };
-        update.$inc[`stockTalles.${talle}`] = -cantidad;
+    if (talle && documentoTrackeaStockPorTalle(linea.producto.stockTalles)) {
+      const pathKey = resolverClaveFisicaStockTalle(linea.producto.stockTalles, talle);
+      if (!pathKey) {
+        await revertirDecrementosStock(decrementosRealizados);
+        return {
+          error: `No se pudo reservar stock del talle «${talle}» para «${linea.producto.nombre}». Reintentá o contactá a la tienda.`,
+          status: 409,
+        };
       }
+      // $inc sobre Mixed: path "stockTalles.41" / "stockTalles.40__DOT__5" (no operador $ de array).
+      filtro[`stockTalles.${pathKey}`] = { $gte: cantidad };
+      update.$inc[`stockTalles.${pathKey}`] = -cantidad;
+      talleDecrementado = normalizarClaveTalle(talle);
     }
 
     const actualizado = await Producto.findOneAndUpdate(filtro, update, { new: true });
 
     if (!actualizado) {
       const productoActual = await Producto.findById(productoIdStr);
-      const stockTallesActual = normalizarStockTalles(
-        productoActual?.stockTalles,
-        productoActual?.stock,
-        productoActual?.talles
-      );
-      const disponible = talle && stockTallesActual[talle] > 0
-        ? normalizarStock(stockTallesActual[talle])
+      const usaPorTalle = documentoTrackeaStockPorTalle(productoActual?.stockTalles);
+      const disponible = talle && usaPorTalle
+        ? leerStockDeTalle(productoActual?.stockTalles, talle)
         : normalizarStock(productoActual?.stock ?? 0);
       const nombreProducto = linea?.producto?.nombre || productoActual?.nombre || 'Producto';
 
@@ -1353,7 +2050,7 @@ async function validarItemsYReservarStock(items) {
 
       if (productoActual?.activo === false || disponible <= 0) {
         return {
-          error: `No hay unidades disponibles de «${nombreProducto}».`,
+          error: `No hay unidades disponibles de «${nombreProducto}»${talle ? ` (talle ${talle})` : ''}.`,
           status: 400,
         };
       }
@@ -1367,7 +2064,8 @@ async function validarItemsYReservarStock(items) {
     decrementosRealizados.push({
       productoId: productoIdStr,
       cantidad,
-      talle: talle && TALLES_PERMITIDOS.has(talle) ? talle : null,
+      // Solo revertir path de talle si realmente se descontó en stockTalles.
+      talle: talleDecrementado,
     });
   }
 
@@ -1450,20 +2148,41 @@ async function resolverCuponParaCheckout(codigoRaw) {
     };
   }
 
+  const tipoFiltro = normalizarTipoFiltroCupon(cupon.tipoFiltro) || 'todos';
+
   return {
     ok: true,
     cupon: {
       codigo: cupon.codigo,
       descuentoPorcentaje,
+      tipoFiltro,
+      referenciaId: tipoFiltro === 'todos' || !cupon.referenciaId
+        ? null
+        : cupon.referenciaId,
     },
   };
 }
 
+const DESCUENTO_TRANSFERENCIA_PORCENTAJE = 10;
+
+function esMetodoPagoTransferencia(metodoPago) {
+  return String(metodoPago || '').trim().toLowerCase() === 'transferencia';
+}
+
+/** 10% sobre el total post-cupón (misma regla que el preview del checkout). */
+function aplicarDescuentoTransferenciaAlTotal(totalPostCupon) {
+  const base = redondearMonto(totalPostCupon);
+  const descuentoMonto = redondearMonto(base * (DESCUENTO_TRANSFERENCIA_PORCENTAJE / 100));
+  const totalFinal = Math.max(0, redondearMonto(base - descuentoMonto));
+
+  return { totalFinal, descuentoTransferencia: descuentoMonto };
+}
+
 /**
- * Aplica el % del cupón al total calculado en servidor (totalPedido / totalCompra).
- * El frontend no define el precio final.
+ * Aplica el % del cupón sobre montoBase (elegible). Si no se pasa montoBase, usa todo el total.
+ * totalFinal = totalCarrito − (montoBase × %).
  */
-function aplicarDescuentoCuponAlTotal(totalBase, cupon) {
+function aplicarDescuentoCuponAlTotal(totalBase, cupon, montoBase = null) {
   const totalSinDescuento = redondearMonto(totalBase);
 
   if (!cupon) {
@@ -1471,19 +2190,47 @@ function aplicarDescuentoCuponAlTotal(totalBase, cupon) {
       totalSinDescuento,
       totalFinal: totalSinDescuento,
       descuentoMonto: 0,
+      montoBase: totalSinDescuento,
     };
   }
 
-  const totalFinal = Math.max(
-    0,
-    redondearMonto(totalSinDescuento * (1 - cupon.descuentoPorcentaje / 100))
+  const baseElegible = montoBase == null
+    ? totalSinDescuento
+    : Math.min(totalSinDescuento, Math.max(0, redondearMonto(montoBase)));
+
+  const descuentoMonto = redondearMonto(
+    baseElegible * (Number(cupon.descuentoPorcentaje) / 100)
   );
+  const totalFinal = Math.max(0, redondearMonto(totalSinDescuento - descuentoMonto));
 
   return {
     totalSinDescuento,
     totalFinal,
-    descuentoMonto: redondearMonto(totalSinDescuento - totalFinal),
+    descuentoMonto,
+    montoBase: baseElegible,
   };
+}
+
+/**
+ * Aplica cupón filtrado sobre ítems ya valuados en servidor.
+ * items: [{ id|productoId, cantidad }] o líneas internas con producto + precio/cantidad.
+ */
+async function aplicarCuponFiltradoAItems(cupon, itemsParaCupon) {
+  if (!cupon) {
+    return { ok: true, aplicacion: null };
+  }
+
+  const resultadoLineas = await construirLineasCuponDesdeItems(itemsParaCupon);
+  if (!resultadoLineas.ok) {
+    return resultadoLineas;
+  }
+
+  const aplicacion = await calcularAplicacionCuponSobreLineas(cupon, resultadoLineas.lineas);
+  if (!aplicacion.ok) {
+    return aplicacion;
+  }
+
+  return { ok: true, aplicacion };
 }
 
 /**
@@ -1868,6 +2615,9 @@ app.get('/api/secciones', async (_req, res) => {
 
     if (secciones.length === 0) {
       secciones = await Seccion.insertMany(SECCIONES_BASE);
+    } else {
+      await asegurarSeccionCalzadoFija();
+      secciones = await Seccion.find().sort({ id: 1 });
     }
 
     res.json(secciones.map(formatearSeccion));
@@ -1881,9 +2631,37 @@ app.post('/api/secciones', verificarAdminJWT, async (req, res) => {
   try {
     const nombreLimpio = String(req.body?.nombre || '').trim();
     const escudo = String(req.body?.escudo || '').trim();
+    const padreIdRaw = req.body?.padreId;
+    const padreId = padreIdRaw == null || padreIdRaw === ''
+      ? null
+      : Number(padreIdRaw);
+    const mostrarEnCarrusel = parsearBooleano(req.body?.mostrarEnCarrusel, true);
 
     if (!nombreLimpio) {
       return res.status(400).json({ error: 'El nombre de la sección es obligatorio.' });
+    }
+
+    if (nombreLimpio.toLowerCase() === NOMBRE_SECCION_CALZADO.toLowerCase()) {
+      return res.status(400).json({
+        error: `«${NOMBRE_SECCION_CALZADO}» es una sección fija del sistema. Creá subtipos debajo de ella.`,
+      });
+    }
+
+    let grupo = 'general';
+    let padreIdFinal = null;
+
+    if (Number.isFinite(padreId)) {
+      const padre = await Seccion.findOne({ id: padreId });
+      if (!padre) {
+        return res.status(400).json({ error: 'La sección padre no existe.' });
+      }
+      if (padre.grupo !== 'calzado' || !padre.esFija) {
+        return res.status(400).json({
+          error: 'Solo se pueden crear subtipos bajo la sección fija Calzado.',
+        });
+      }
+      grupo = 'calzado';
+      padreIdFinal = padre.id;
     }
 
     const existe = await Seccion.findOne({
@@ -1894,7 +2672,15 @@ app.post('/api/secciones', verificarAdminJWT, async (req, res) => {
       return res.status(400).json({ error: 'Ya existe una sección con ese nombre.' });
     }
 
-    const nuevaSeccion = await new Seccion({ nombre: nombreLimpio, escudo }).save();
+    const nuevaSeccion = await new Seccion({
+      nombre: nombreLimpio,
+      escudo,
+      grupo,
+      esFija: false,
+      padreId: padreIdFinal,
+      mostrarEnCarrusel,
+    }).save();
+
     res.status(201).json(formatearSeccion(nuevaSeccion));
   } catch (error) {
     console.error('Error al crear sección:', error);
@@ -1909,6 +2695,11 @@ app.put('/api/secciones/:id', verificarAdminJWT, async (req, res) => {
     const escudoEnviado = req.body?.escudo;
     const escudo =
       escudoEnviado === undefined ? undefined : String(escudoEnviado || '').trim();
+    const mostrarEnCarruselEnviado = req.body?.mostrarEnCarrusel;
+    const mostrarEnCarrusel =
+      mostrarEnCarruselEnviado === undefined
+        ? undefined
+        : parsearBooleano(mostrarEnCarruselEnviado, true);
 
     if (!Number.isFinite(id)) {
       return res.status(400).json({ error: 'ID de sección inválido.' });
@@ -1924,17 +2715,45 @@ app.put('/api/secciones/:id', verificarAdminJWT, async (req, res) => {
       return res.status(404).json({ error: 'Sección no encontrada.' });
     }
 
+    if (seccion.esFija) {
+      // Sección fija: solo escudo y visibilidad en carrusel; no se renombra.
+      if (nombreLimpio.toLowerCase() !== NOMBRE_SECCION_CALZADO.toLowerCase()) {
+        return res.status(400).json({
+          error: `No se puede renombrar la sección fija «${NOMBRE_SECCION_CALZADO}».`,
+        });
+      }
+      let dirty = false;
+      if (escudo !== undefined) {
+        seccion.escudo = escudo;
+        dirty = true;
+      }
+      if (mostrarEnCarrusel !== undefined) {
+        seccion.mostrarEnCarrusel = mostrarEnCarrusel;
+        dirty = true;
+      }
+      if (dirty) await seccion.save();
+      return res.json(formatearSeccion(seccion));
+    }
+
     const nombreAnterior = seccion.nombre;
     const actualizacion = { nombre: nombreLimpio };
 
     if (escudo !== undefined) {
       actualizacion.escudo = escudo;
     }
+    if (mostrarEnCarrusel !== undefined) {
+      actualizacion.mostrarEnCarrusel = mostrarEnCarrusel;
+    }
 
     if (nombreAnterior.toLowerCase() === nombreLimpio.toLowerCase()) {
-      if (nombreAnterior !== nombreLimpio || escudo !== undefined) {
+      if (
+        nombreAnterior !== nombreLimpio
+        || escudo !== undefined
+        || mostrarEnCarrusel !== undefined
+      ) {
         seccion.nombre = nombreLimpio;
         if (escudo !== undefined) seccion.escudo = escudo;
+        if (mostrarEnCarrusel !== undefined) seccion.mostrarEnCarrusel = mostrarEnCarrusel;
         await seccion.save();
         if (nombreAnterior !== nombreLimpio) {
           await Producto.updateMany(
@@ -1954,6 +2773,12 @@ app.put('/api/secciones/:id', verificarAdminJWT, async (req, res) => {
 
     if (existe) {
       return res.status(400).json({ error: 'Ya existe una sección con ese nombre.' });
+    }
+
+    if (nombreLimpio.toLowerCase() === NOMBRE_SECCION_CALZADO.toLowerCase()) {
+      return res.status(400).json({
+        error: `El nombre «${NOMBRE_SECCION_CALZADO}» está reservado para la sección fija.`,
+      });
     }
 
     const actualizada = await Seccion.findOneAndUpdate(
@@ -1980,12 +2805,32 @@ app.put('/api/secciones/:id', verificarAdminJWT, async (req, res) => {
 
 app.delete('/api/secciones/:id', verificarAdminJWT, async (req, res) => {
   try {
-    const eliminada = await Seccion.findOneAndDelete({ id: Number(req.params.id) });
+    const seccion = await Seccion.findOne({ id: Number(req.params.id) });
 
-    if (!eliminada) {
+    if (!seccion) {
       return res.status(404).json({ error: 'Sección no encontrada.' });
     }
 
+    if (seccion.esFija) {
+      return res.status(400).json({
+        error: `No se puede eliminar la sección fija «${NOMBRE_SECCION_CALZADO}».`,
+      });
+    }
+
+    if (seccion.grupo === 'calzado' && seccion.padreId == null) {
+      return res.status(400).json({
+        error: `No se puede eliminar la sección raíz de calzado.`,
+      });
+    }
+
+    const hijas = await Seccion.countDocuments({ padreId: seccion.id });
+    if (hijas > 0) {
+      return res.status(400).json({
+        error: 'Eliminá primero los subtipos de esta sección.',
+      });
+    }
+
+    const eliminada = await Seccion.findOneAndDelete({ id: seccion.id });
     res.json(formatearSeccion(eliminada));
   } catch (error) {
     console.error('Error al eliminar sección:', error);
@@ -2281,10 +3126,11 @@ app.patch('/api/productos/:id/portada', verificarAdminJWT, async (req, res) => {
 
 app.post('/api/productos', verificarAdminJWT, async (req, res) => {
   try {
-    const { nombre, precio, precioOferta, precio_oferta, categoria, genero, descripcion } = req.body;
+    const { nombre, precio, precioOferta, precio_oferta, categoria, genero, descripcion, tablaMedidas } = req.body;
     const { imagenFrente, imagenEspalda } = resolverImagenesProducto(req.body);
     const categoriaNombre = await resolverCategoriaProducto(categoria);
-    const { stock, stockTalles, talles } = resolverStockYTallesDesdeBody(req.body);
+    const { stock, stockTalles, talles, categoriaTipo } = resolverStockYTallesDesdeBody(req.body);
+    const tablaMedidasNormalizada = normalizarTablaMedidas(tablaMedidas, categoriaTipo);
 
     if (!nombre || !categoriaNombre || !imagenFrente || !precio || Number(precio) <= 0) {
       return res.status(400).json({ error: 'Datos de producto incompletos o inválidos.' });
@@ -2314,13 +3160,15 @@ app.post('/api/productos', verificarAdminJWT, async (req, res) => {
       destacado: parsearBooleano(req.body.destacado),
       enOferta,
       categoria: categoriaNombre,
+      categoriaTipo,
       genero: normalizarGenero(genero),
       imagenFrente,
       imagenEspalda,
       stock,
-      stockTalles,
+      stockTalles: encodeStockTallesParaDB(stockTalles),
       talles,
       descripcion: String(descripcion || '').trim(),
+      tablaMedidas: tablaMedidasNormalizada,
     }).save();
 
     res.status(201).json(formatearProducto(nuevoProducto));
@@ -2332,11 +3180,14 @@ app.post('/api/productos', verificarAdminJWT, async (req, res) => {
 
 app.put('/api/productos/:id', verificarAdminJWT, async (req, res) => {
   try {
-    const { nombre, precio, precioOferta, precio_oferta, categoria, genero, descripcion } = req.body;
+    const { nombre, precio, precioOferta, precio_oferta, categoria, genero, descripcion, tablaMedidas } = req.body;
     const productoExistente = await buscarProductoPorId(req.params.id);
     const { imagenFrente, imagenEspalda } = resolverImagenesProducto(req.body, productoExistente);
     const categoriaNombre = await resolverCategoriaProducto(categoria);
-    const { stock, stockTalles, talles } = resolverStockYTallesDesdeBody(req.body, productoExistente);
+    const { stock, stockTalles, talles, categoriaTipo } = resolverStockYTallesDesdeBody(req.body, productoExistente);
+    const tablaMedidasNormalizada = tablaMedidas !== undefined
+      ? normalizarTablaMedidas(tablaMedidas, categoriaTipo)
+      : normalizarTablaMedidas(productoExistente?.tablaMedidas, categoriaTipo);
 
     if (!nombre || !categoriaNombre || !imagenFrente || !precio || Number(precio) <= 0) {
       return res.status(400).json({ error: 'Datos de producto incompletos o inválidos.' });
@@ -2351,13 +3202,15 @@ app.put('/api/productos/:id', verificarAdminJWT, async (req, res) => {
       precio: precioNumerico,
       precioOferta: precioOfertaNormalizado,
       categoria: categoriaNombre,
+      categoriaTipo,
       genero: normalizarGenero(genero),
       imagenFrente,
       imagenEspalda,
       stock,
-      stockTalles,
+      stockTalles: encodeStockTallesParaDB(stockTalles),
       talles,
       descripcion: String(descripcion || '').trim(),
+      tablaMedidas: tablaMedidasNormalizada,
     };
 
     if (req.body.destacado !== undefined) {
@@ -2458,13 +3311,31 @@ app.post('/api/pedidos', verificarClienteJWT, async (req, res) => {
       return res.status(resultadoCupon.status).json({ error: resultadoCupon.error });
     }
 
+    let aplicacionCupon = null;
+    if (resultadoCupon.cupon) {
+      const resultadoFiltro = await aplicarCuponFiltradoAItems(resultadoCupon.cupon, items);
+      if (!resultadoFiltro.ok) {
+        return res.status(resultadoFiltro.status).json({ error: resultadoFiltro.error });
+      }
+      aplicacionCupon = resultadoFiltro.aplicacion;
+    }
+
     const resultadoItems = await validarItemsYReservarStock(items);
     if (resultadoItems.error) {
       return res.status(resultadoItems.status).json({ error: resultadoItems.error });
     }
 
     const { productosPedido, totalPedido, decrementosRealizados } = resultadoItems;
-    const { totalFinal } = aplicarDescuentoCuponAlTotal(totalPedido, resultadoCupon.cupon);
+    const esTransferencia = esMetodoPagoTransferencia(metodoPago);
+    let { totalFinal } = aplicarDescuentoCuponAlTotal(
+      totalPedido,
+      resultadoCupon.cupon,
+      aplicacionCupon?.montoBase
+    );
+
+    if (esTransferencia) {
+      ({ totalFinal } = aplicarDescuentoTransferenciaAlTotal(totalFinal));
+    }
 
     let nuevoPedido;
 
@@ -2480,11 +3351,10 @@ app.post('/api/pedidos', verificarClienteJWT, async (req, res) => {
         localidad: datosEntrega.localidad,
         provincia: datosEntrega.provincia,
         codigoPostal: datosEntrega.codigoPostal,
-        pago: metodoPago || 'Efectivo',
+        pago: esTransferencia ? 'Transferencia' : (metodoPago || 'Efectivo'),
         productos: productosPedido,
         total: totalFinal,
-        // Efectivo / tradicional: listo para armar de inmediato (no espera confirmación de pago).
-        estado: 'listo_empaquetar',
+        estado: esTransferencia ? ESTADO_PEDIDO_INICIAL : 'listo_empaquetar',
         fecha: new Date(),
       }).save();
     } catch (saveError) {
@@ -2494,20 +3364,22 @@ app.post('/api/pedidos', verificarClienteJWT, async (req, res) => {
 
     res.status(201).json(formatearPedido(nuevoPedido));
 
-    // Pedido confirmado (efectivo u otro): contador de ventas + desactivar stock 0.
-    setImmediate(async () => {
-      try {
-        await incrementarVentasContadorDesdePedido(nuevoPedido);
-      } catch (ventasError) {
-        logError('PEDIDO_VENTAS_CONTADOR', ventasError, { pedidoId: nuevoPedido.id });
-      }
-      try {
-        await desactivarProductosSinStockDesdePedido(nuevoPedido);
-      } catch (stockError) {
-        logError('PEDIDO_DESACTIVAR_SIN_STOCK', stockError, { pedidoId: nuevoPedido.id });
-      }
-      notificarConfirmacionCompraSegura(nuevoPedido, usuario);
-    });
+    if (!esTransferencia) {
+      // Pedido confirmado al crear: contador de ventas + desactivar stock 0.
+      setImmediate(async () => {
+        try {
+          await incrementarVentasContadorDesdePedido(nuevoPedido);
+        } catch (ventasError) {
+          logError('PEDIDO_VENTAS_CONTADOR', ventasError, { pedidoId: nuevoPedido.id });
+        }
+        try {
+          await desactivarProductosSinStockDesdePedido(nuevoPedido);
+        } catch (stockError) {
+          logError('PEDIDO_DESACTIVAR_SIN_STOCK', stockError, { pedidoId: nuevoPedido.id });
+        }
+        notificarConfirmacionCompraSegura(nuevoPedido, usuario);
+      });
+    }
   } catch (error) {
     logError('CREAR_PEDIDO', error, {
       emailUsuario: normalizarEmail(req.usuario?.email),
@@ -2546,13 +3418,26 @@ app.post('/api/pagar', verificarClienteJWT, async (req, res) => {
       return res.status(resultadoCupon.status).json({ error: resultadoCupon.error });
     }
 
+    let aplicacionCupon = null;
+    if (resultadoCupon.cupon) {
+      const resultadoFiltro = await aplicarCuponFiltradoAItems(resultadoCupon.cupon, items);
+      if (!resultadoFiltro.ok) {
+        return res.status(resultadoFiltro.status).json({ error: resultadoFiltro.error });
+      }
+      aplicacionCupon = resultadoFiltro.aplicacion;
+    }
+
     const resultadoItems = await validarItemsYReservarStock(items);
     if (resultadoItems.error) {
       return res.status(resultadoItems.status).json({ error: resultadoItems.error });
     }
 
     const { productosPedido, totalPedido, decrementosRealizados } = resultadoItems;
-    const { totalFinal } = aplicarDescuentoCuponAlTotal(totalPedido, resultadoCupon.cupon);
+    const { totalFinal } = aplicarDescuentoCuponAlTotal(
+      totalPedido,
+      resultadoCupon.cupon,
+      aplicacionCupon?.montoBase
+    );
     const pedidoId = generarIdPedido();
     const nombreCliente = String(cliente.nombre).trim();
     const partesNombre = nombreCliente.split(/\s+/).filter(Boolean);
@@ -2937,6 +3822,16 @@ app.get('/api/admin/stats', verificarAdminJWT, async (_req, res) => {
   }
 });
 
+app.get('/api/admin/cupones', verificarAdminJWT, async (req, res) => {
+  try {
+    const cupones = await Cupon.find().sort({ createdAt: -1 }).lean();
+    res.json(await formatearCuponesConReferencias(cupones));
+  } catch (error) {
+    logError('ADMIN_LISTAR_CUPONES', error, { ruta: req.path, metodo: req.method });
+    res.status(500).json({ error: 'Error interno del servidor.' });
+  }
+});
+
 app.post('/api/admin/cupones', verificarAdminJWT, async (req, res) => {
   try {
     const codigo = String(req.body?.codigo || '').trim().toUpperCase();
@@ -2960,6 +3855,11 @@ app.post('/api/admin/cupones', verificarAdminJWT, async (req, res) => {
       });
     }
 
+    const filtro = await sanitizarFiltroCupon(req.body);
+    if (!filtro.ok) {
+      return res.status(filtro.status).json({ error: filtro.error });
+    }
+
     const existente = await Cupon.findOne({ codigo });
     if (existente) {
       return res.status(409).json({ error: 'Ya existe un cupón con ese código.' });
@@ -2969,9 +3869,11 @@ app.post('/api/admin/cupones', verificarAdminJWT, async (req, res) => {
       codigo,
       descuentoPorcentaje,
       activo: parsearBooleano(req.body?.activo, true),
+      tipoFiltro: filtro.tipoFiltro,
+      referenciaId: filtro.referenciaId,
     }).save();
 
-    res.status(201).json(formatearCupon(nuevoCupon));
+    res.status(201).json(await formatearCuponConReferencia(nuevoCupon));
   } catch (error) {
     if (error?.code === 11000) {
       return res.status(409).json({ error: 'Ya existe un cupón con ese código.' });
@@ -2981,9 +3883,121 @@ app.post('/api/admin/cupones', verificarAdminJWT, async (req, res) => {
   }
 });
 
+app.put('/api/admin/cupones/:id', verificarAdminJWT, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'ID de cupón inválido.' });
+    }
+
+    const cupon = await Cupon.findById(id);
+    if (!cupon) {
+      return res.status(404).json({ error: 'Cupón no encontrado.' });
+    }
+
+    if (req.body?.codigo !== undefined) {
+      const codigo = String(req.body.codigo || '').trim().toUpperCase();
+      if (!codigo) {
+        return res.status(400).json({ error: 'El código del cupón es obligatorio.' });
+      }
+      const otro = await Cupon.findOne({ codigo, _id: { $ne: cupon._id } });
+      if (otro) {
+        return res.status(409).json({ error: 'Ya existe un cupón con ese código.' });
+      }
+      cupon.codigo = codigo;
+    }
+
+    if (
+      req.body?.descuentoPorcentaje !== undefined
+      || req.body?.porcentaje !== undefined
+    ) {
+      const porcentajeRaw = req.body?.descuentoPorcentaje ?? req.body?.porcentaje;
+      const descuentoPorcentaje = Number(porcentajeRaw);
+      if (
+        porcentajeRaw === undefined
+        || porcentajeRaw === null
+        || porcentajeRaw === ''
+        || !Number.isInteger(descuentoPorcentaje)
+        || descuentoPorcentaje < 1
+        || descuentoPorcentaje > 100
+      ) {
+        return res.status(400).json({
+          error: 'El porcentaje de descuento debe ser un número entero entre 1 y 100.',
+        });
+      }
+      cupon.descuentoPorcentaje = descuentoPorcentaje;
+    }
+
+    if (req.body?.activo !== undefined) {
+      cupon.activo = parsearBooleano(req.body.activo, cupon.activo !== false);
+    }
+
+    const actualizaFiltro = req.body?.tipoFiltro !== undefined
+      || req.body?.tipo_filtro !== undefined
+      || req.body?.referenciaId !== undefined
+      || req.body?.referencia_id !== undefined
+      || req.body?.referencia !== undefined;
+
+    if (actualizaFiltro) {
+      const filtro = await sanitizarFiltroCupon({
+        tipoFiltro: req.body?.tipoFiltro ?? req.body?.tipo_filtro ?? cupon.tipoFiltro,
+        referenciaId: req.body?.referenciaId
+          ?? req.body?.referencia_id
+          ?? req.body?.referencia
+          ?? cupon.referenciaId,
+      });
+      if (!filtro.ok) {
+        return res.status(filtro.status).json({ error: filtro.error });
+      }
+      cupon.tipoFiltro = filtro.tipoFiltro;
+      cupon.referenciaId = filtro.referenciaId;
+    }
+
+    await cupon.save();
+    res.json(await formatearCuponConReferencia(cupon));
+  } catch (error) {
+    if (error?.code === 11000) {
+      return res.status(409).json({ error: 'Ya existe un cupón con ese código.' });
+    }
+    logError('ADMIN_ACTUALIZAR_CUPON', error, { ruta: req.path, metodo: req.method });
+    res.status(500).json({ error: 'Error interno del servidor.' });
+  }
+});
+
+app.patch('/api/admin/cupones/:id', verificarAdminJWT, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'ID de cupón inválido.' });
+    }
+
+    if (req.body?.activo === undefined) {
+      return res.status(400).json({ error: 'Debés indicar si el cupón queda activo o no.' });
+    }
+
+    const cupon = await Cupon.findByIdAndUpdate(
+      id,
+      { activo: parsearBooleano(req.body.activo, true) },
+      { new: true, runValidators: true }
+    );
+
+    if (!cupon) {
+      return res.status(404).json({ error: 'Cupón no encontrado.' });
+    }
+
+    res.json(await formatearCuponConReferencia(cupon));
+  } catch (error) {
+    logError('ADMIN_ACTUALIZAR_CUPON', error, { ruta: req.path, metodo: req.method });
+    res.status(500).json({ error: 'Error interno del servidor.' });
+  }
+});
+
 app.post('/api/cupones/validar', limitadorAuth, async (req, res) => {
   try {
     const codigo = String(req.body?.codigo || '').trim().toUpperCase();
+    const items = req.body?.items;
 
     if (!codigo) {
       return res.status(400).json({ error: 'Debés ingresar un código de cupón.' });
@@ -2998,10 +4012,45 @@ app.post('/api/cupones/validar', limitadorAuth, async (req, res) => {
       });
     }
 
+    const descuentoPorcentaje = Number(cupon.descuentoPorcentaje);
+    if (
+      !Number.isInteger(descuentoPorcentaje)
+      || descuentoPorcentaje < 1
+      || descuentoPorcentaje > 100
+    ) {
+      return res.status(400).json({
+        error: 'El código de cupón ingresado no es válido o ya ha expirado',
+      });
+    }
+
+    const resultadoLineas = await construirLineasCuponDesdeItems(items);
+    if (!resultadoLineas.ok) {
+      return res.status(resultadoLineas.status).json({ error: resultadoLineas.error });
+    }
+
+    const cuponNorm = {
+      codigo: cupon.codigo,
+      descuentoPorcentaje,
+      tipoFiltro: normalizarTipoFiltroCupon(cupon.tipoFiltro) || 'todos',
+      referenciaId: cupon.referenciaId || null,
+    };
+
+    const aplicacion = await calcularAplicacionCuponSobreLineas(cuponNorm, resultadoLineas.lineas);
+    if (!aplicacion.ok) {
+      return res.status(aplicacion.status).json({ error: aplicacion.error });
+    }
+
     res.json({
       valido: true,
       codigo: cupon.codigo,
-      descuentoPorcentaje: Number(cupon.descuentoPorcentaje),
+      descuentoPorcentaje,
+      tipoFiltro: aplicacion.tipoFiltro,
+      referenciaId: aplicacion.referenciaId,
+      /** Subtotal del carrito sobre el que aplica el % de descuento. */
+      montoBase: aplicacion.montoBase,
+      totalCarrito: aplicacion.totalCarrito,
+      descuentoMonto: aplicacion.descuentoMonto,
+      totalFinal: aplicacion.totalFinal,
     });
   } catch (error) {
     logError('VALIDAR_CUPON', error, { ruta: req.path, metodo: req.method });
