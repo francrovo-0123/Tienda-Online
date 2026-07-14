@@ -2240,6 +2240,7 @@ body.modal-open {
   display: none !important;
 }
 
+.mini-cart-drawer__close svg,
 .cart-drawer__close svg,
 .checkout-modal__close svg,
 .auth-modal__close svg,

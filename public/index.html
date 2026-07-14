@@ -9,10 +9,10 @@
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/favicon.png">
   <link rel="stylesheet" href="css/global.css?v=4.4">
-  <link rel="stylesheet" href="css/header.css?v=6.6">
-  <link rel="stylesheet" href="css/main.css?v=4.7">
+  <link rel="stylesheet" href="css/header.css?v=6.7">
+  <link rel="stylesheet" href="css/main.css?v=4.9">
   <link rel="stylesheet" href="css/footer.css?v=4.0">
-  <link rel="stylesheet" href="css/cart.css?v=3.0">
+  <link rel="stylesheet" href="css/cart.css?v=3.1">
 </head>
 <body>
 
@@ -123,18 +123,18 @@
             placeholder="Buscar camisetas, clubes..."
             autocomplete="off"
             aria-autocomplete="list"
-            aria-controls="contenedor-resultados-predicativos"
+            aria-controls="resultados-busqueda-flotante"
             aria-expanded="false"
           >
           <svg class="search-bar__icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
             <path d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/>
           </svg>
           <div
-            class="search-suggestions"
-            id="contenedor-resultados-predicativos"
+            id="resultados-busqueda-flotante"
+            class="resultados-busqueda-flotante"
             role="listbox"
             aria-label="Sugerencias de productos"
-            hidden
+            style="display: none;"
           ></div>
         </div>
       </div>
@@ -444,29 +444,41 @@
       </div>
     </footer>
 
-    <div class="cart-overlay" id="cart-overlay" aria-hidden="true"></div>
+    <div class="mini-cart-overlay" id="mini-cart-overlay" aria-hidden="true"></div>
 
-    <aside class="cart-drawer" id="cart-drawer" aria-label="Carrito de compras" aria-hidden="true">
-      <div class="cart-drawer__header">
-        <h2 class="cart-drawer__title">Tu carrito</h2>
-        <button class="cart-drawer__close" id="cart-close" aria-label="Cerrar carrito">
+    <aside id="mini-cart-drawer" aria-label="Carrito de compras" aria-hidden="true">
+      <div class="mini-cart-drawer__header">
+        <h2 class="mini-cart-drawer__title">Tu carrito</h2>
+        <button class="mini-cart-drawer__close" id="mini-cart-close" type="button" aria-label="Cerrar carrito">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
           </svg>
         </button>
       </div>
 
-      <div class="cart-drawer__body">
-        <div class="cart-drawer__items" id="cart-items-container"></div>
+      <div class="mini-cart-drawer__body">
+        <div class="mini-cart-drawer__items" id="mini-cart-items-container"></div>
       </div>
 
-      <div class="cart-drawer__footer">
-        <div class="cart-drawer__total">
-          <span class="cart-drawer__total-label">Total</span>
-          <span class="cart-drawer__total-amount" id="cart-total">$ 0</span>
+      <div class="mini-cart-drawer__footer">
+        <div class="contenedor-envio-gratis" id="contenedor-envio-gratis-drawer" hidden>
+          <p id="mensaje-envio-gratis-drawer">¡Te faltan $ 0,00 para conseguir envío gratis! 🚚</p>
+          <div class="barra-progreso-fondo">
+            <div id="barra-progreso-llenado-drawer" class="barra-progreso-llenado" style="width: 0%;"></div>
+          </div>
         </div>
-        <button class="cart-drawer__checkout" id="cart-checkout" type="button">
-          Iniciar Compra
+        <div class="mini-cart-drawer__summary">
+          <div class="mini-cart-drawer__row">
+            <span class="mini-cart-drawer__label">Subtotal</span>
+            <span class="mini-cart-drawer__value" id="mini-cart-subtotal">$ 0</span>
+          </div>
+          <div class="mini-cart-drawer__row mini-cart-drawer__row--discount" id="mini-cart-descuento-row" hidden>
+            <span class="mini-cart-drawer__label" id="mini-cart-descuento-label">Descuento</span>
+            <span class="mini-cart-drawer__value" id="mini-cart-descuento">−$ 0</span>
+          </div>
+        </div>
+        <button class="mini-cart-drawer__checkout" id="mini-cart-checkout" type="button">
+          Ir al Checkout
         </button>
       </div>
     </aside>
@@ -492,7 +504,7 @@
           <h2 class="product-detail-modal__title" id="product-detail-title"></h2>
           <p class="product-detail-modal__price" id="product-detail-price"></p>
           <p class="product-detail-modal__description" id="product-detail-description"></p>
-          <div class="product-detail-modal__talles selector-talles" id="product-detail-talles" hidden></div>
+          <div class="product-detail-modal__talles grilla-talles" id="product-detail-talles" hidden></div>
           <div class="product-detail-modal__medidas" id="product-detail-medidas" hidden aria-live="polite"></div>
           <div class="product-detail-modal__actions" id="product-detail-actions">
             <button
@@ -508,42 +520,56 @@
       </div>
     </div>
 
-    <div class="size-chart-modal" id="size-chart-modal" aria-hidden="true" style="display: none;">
-      <div class="size-chart-modal__overlay" id="size-chart-modal-overlay"></div>
-      <div
-        class="size-chart-modal__dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="size-chart-modal-title"
-      >
+    <div class="modal-talles-overlay" id="modal-guia-talles-overlay" aria-hidden="true"></div>
+    <div
+      class="modal-talles"
+      id="modal-guia-talles"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-guia-talles-titulo"
+      aria-hidden="true"
+    >
+      <button
+        type="button"
+        class="modal-talles__cerrar"
+        id="modal-guia-talles-cerrar"
+        aria-label="Cerrar guía de talles"
+      >&times;</button>
+      <h2 class="modal-talles__titulo" id="modal-guia-talles-titulo">📐 Guía de talles</h2>
+      <div class="modal-talles__pestanas" id="modal-guia-talles-pestanas" role="tablist" aria-label="Tipo de medidas">
         <button
-          class="size-chart-modal__close"
-          id="size-chart-modal-close"
           type="button"
-          aria-label="Cerrar tabla de medidas"
-        >
-          <span aria-hidden="true">&times;</span>
-        </button>
-        <h2 class="size-chart-modal__title" id="size-chart-modal-title">
-          <span class="size-chart-modal__title-icon" aria-hidden="true">📐</span>
-          <span id="size-chart-modal-title-text">TABLA DE MEDIDAS (REFERENCIA DE PRENDA)</span>
-        </h2>
-        <p class="size-chart-modal__subtitle" id="size-chart-modal-subtitle">
-          <span class="size-chart-modal__subtitle-icon" aria-hidden="true">✏️</span>
-          <span id="size-chart-modal-subtitle-text">Medidas tomadas sobre la prenda en plano. Tomá una remera tuya que te quede bien y compará el ancho (axila a axila).</span>
-        </p>
-        <div class="size-chart-modal__table-wrap">
-          <table class="size-chart-modal__table">
-            <thead>
-              <tr id="size-chart-modal-head">
-                <th scope="col">Talle</th>
-                <th scope="col">Ancho (Axila a Axila)</th>
-                <th scope="col">Largo (cm)</th>
-              </tr>
-            </thead>
-            <tbody id="size-chart-modal-body"></tbody>
-          </table>
-        </div>
+          class="modal-talles__pestana activo"
+          id="modal-guia-talles-pestana-ropa"
+          data-tipo="ropa"
+          role="tab"
+          aria-selected="true"
+          aria-controls="modal-guia-talles-panel"
+        >Medidas Remeras</button>
+        <button
+          type="button"
+          class="modal-talles__pestana"
+          id="modal-guia-talles-pestana-calzado"
+          data-tipo="calzado"
+          role="tab"
+          aria-selected="false"
+          aria-controls="modal-guia-talles-panel"
+        >Medidas Calzado</button>
+      </div>
+      <p class="modal-talles__subtitulo" id="modal-guia-talles-subtitulo">
+        Medidas tomadas sobre la prenda en plano. Compará la sisa y el largo con una prenda tuya que te quede bien.
+      </p>
+      <div class="modal-talles__panel" id="modal-guia-talles-panel" role="tabpanel">
+        <table class="tabla-medidas" id="modal-guia-talles-tabla">
+          <thead>
+            <tr id="modal-guia-talles-head">
+              <th scope="col">Talle</th>
+              <th scope="col">Sisa (cm)</th>
+              <th scope="col">Largo (cm)</th>
+            </tr>
+          </thead>
+          <tbody id="modal-guia-talles-body"></tbody>
+        </table>
       </div>
     </div>
 
@@ -669,6 +695,13 @@
             <p class="checkout-cupon__msg" id="checkout-cupon-msg" hidden></p>
           </div>
 
+          <div class="contenedor-envio-gratis" id="contenedor-envio-gratis" hidden>
+            <p id="mensaje-envio-gratis">¡Te faltan $ 0,00 para conseguir envío gratis! 🚚</p>
+            <div class="barra-progreso-fondo">
+              <div id="barra-progreso-llenado" class="barra-progreso-llenado" style="width: 0%;"></div>
+            </div>
+          </div>
+
           <div class="checkout-form__summary" id="checkout-summary">
             <div class="checkout-form__summary-row checkout-form__summary-row--muted" id="checkout-summary-subtotal-row" hidden>
               <span>Subtotal</span>
@@ -684,7 +717,7 @@
             </div>
           </div>
 
-          <div id="contenedor-ahorro-transferencia" class="tarjeta-metodo-pago destacado-ahorro" style="display: none;">
+          <div id="contenedor-ahorro-transferencia" class="tarjeta-metodo-pago destacado-ahorro" hidden>
             <div class="info-pago">
               <span class="metodo-etiqueta">TRANSFERENCIA BANCARIA (-10%)</span>
               <h3 class="monto-destacado" id="total-con-transferencia">$0,00</h3>
@@ -1626,6 +1659,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
   <script src="js/api.js"></script>
-  <script src="js/app.js?v=11.6"></script>
+  <script src="js/app.js?v=11.9"></script>
 </body>
 </html>

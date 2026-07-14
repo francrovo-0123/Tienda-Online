@@ -203,6 +203,56 @@ function obtenerImagenesProducto(producto) {
   return [frente];
 }
 
+/** Imágenes normalizadas para tarjetas del catálogo (frente + espalda opcional). */
+function obtenerImagenesTarjetaCatalogo(producto) {
+  const imagenes = obtenerImagenesProducto(producto);
+  const primaria = optimizarUrlImagenProducto(imagenes[0] || '');
+  const secundariaUrl = imagenes[1] || '';
+  const tieneSecundaria = Boolean(secundariaUrl && secundariaUrl !== imagenes[0]);
+  const secundaria = tieneSecundaria
+    ? optimizarUrlImagenProducto(secundariaUrl)
+    : '';
+
+  return { primaria, secundaria, tieneSecundaria };
+}
+
+function crearHtmlImagenesTarjetaProducto(producto) {
+  const { primaria, secundaria, tieneSecundaria } = obtenerImagenesTarjetaCatalogo(producto);
+  const nombre = escaparHtmlTexto(producto.nombre || 'Producto');
+
+  if (!primaria) {
+    return `
+      <div class="product-card__image product-card__image--placeholder img-primaria" aria-hidden="true"></div>
+    `;
+  }
+
+  const imgPrimaria = `
+    <img
+      class="product-card__image img-primaria"
+      src="${escaparAtributoHtml(primaria)}"
+      alt="${nombre} — frente"
+      loading="lazy"
+      decoding="async"
+      width="600"
+      height="600"
+    >`;
+
+  if (!tieneSecundaria) return imgPrimaria;
+
+  return `
+    ${imgPrimaria}
+    <img
+      class="product-card__image img-secundaria"
+      src="${escaparAtributoHtml(secundaria)}"
+      alt="${nombre} — espalda"
+      loading="lazy"
+      decoding="async"
+      width="600"
+      height="600"
+      aria-hidden="true"
+    >`;
+}
+
 function obtenerImagenPrincipal(producto) {
   return obtenerImagenFrente(producto);
 }
@@ -217,6 +267,7 @@ const ADMIN_TOKEN_KEY = 'admin_jwt_token';
 const CLIENTE_TOKEN_KEY = 'cliente_jwt_token';
 const CARRITO_LEGACY_KEY = 'carrito';
 const CARRITO_USUARIO_PREFIX = 'carrito_usuario_';
+const MONTO_ENVIO_GRATIS = 85000;
 const CHECKOUT_PERFIL_KEY = 'jerseys_checkout_perfiles';
 const SEARCH_STATS_KEY = 'jerseys_busquedas_stats';
 /**
@@ -259,6 +310,22 @@ const TALLES_CALZADO_DISPONIBLES = [
 ];
 /** @deprecated Usar obtenerTallesDisponiblesPorTipo(); se mantiene para compatibilidad interna. */
 const TALLES_DISPONIBLES = TALLES_ROPA_DISPONIBLES;
+const TABLA_MEDIDAS_ROPA_REFERENCIA = [
+  { talle: 'S', ancho: '50', largo: '69' },
+  { talle: 'M', ancho: '54', largo: '71' },
+  { talle: 'L', ancho: '58', largo: '73' },
+  { talle: 'XL', ancho: '62', largo: '75' },
+  { talle: 'XXL', ancho: '66', largo: '77' },
+];
+const TABLA_MEDIDAS_CALZADO_REFERENCIA = [
+  { talle: '39', largoPlantilla: '25.0' },
+  { talle: '40', largoPlantilla: '25.5' },
+  { talle: '41', largoPlantilla: '26.0' },
+  { talle: '42', largoPlantilla: '26.5' },
+  { talle: '43', largoPlantilla: '27.0' },
+  { talle: '44', largoPlantilla: '27.5' },
+  { talle: '45', largoPlantilla: '28.0' },
+];
 
 const seccionesEjemplo = [
   { id: 1, nombre: 'Remeras', escudo: '', grupo: 'general', esFija: false, padreId: null },
@@ -612,20 +679,27 @@ function mostrarToast(mensaje, tipo = 'success', opciones = {}) {
   });
 }
 
-function crearHtmlSkeletonTarjeta() {
+function generarSkeletonTarjeta() {
   return `
-    <div class="skeleton-card" aria-hidden="true">
-      <div class="skeleton-card__image"></div>
-      <div class="skeleton-card__body">
-        <div class="skeleton-card__line skeleton-card__line--title"></div>
-        <div class="skeleton-card__line skeleton-card__line--price"></div>
-      </div>
+    <div class="producto-card skeleton" aria-hidden="true">
+      <div class="skeleton-imagen"></div>
+      <div class="skeleton-texto skeleton-titulo"></div>
+      <div class="skeleton-texto skeleton-precio"></div>
+    </div>
+  `;
+}
+
+function generarSkeletons(cantidad = 8) {
+  const skeletons = Array.from({ length: cantidad }, () => generarSkeletonTarjeta()).join('');
+  return `
+    <div class="products-grid products-grid--loading" aria-busy="true" aria-label="Cargando productos">
+      ${skeletons}
     </div>
   `;
 }
 
 function obtenerCantidadSkeletons() {
-  return window.matchMedia('(min-width: 768px)').matches ? 6 : 4;
+  return window.matchMedia('(min-width: 768px)').matches ? 8 : 4;
 }
 
 function obtenerContenedorTienda() {
@@ -642,14 +716,7 @@ function renderizarSkeletonProductos(container) {
   const destino = container || obtenerContenedorTienda();
   if (!destino) return;
 
-  const cantidad = obtenerCantidadSkeletons();
-  const skeletons = Array.from({ length: cantidad }, () => crearHtmlSkeletonTarjeta()).join('');
-
-  destino.innerHTML = `
-    <div class="products-grid products-grid--loading" aria-busy="true" aria-label="Cargando productos">
-      ${skeletons}
-    </div>
-  `;
+  destino.innerHTML = generarSkeletons(obtenerCantidadSkeletons());
 }
 
 function solicitarRenderizadoProductos(opciones = {}) {
@@ -1979,6 +2046,31 @@ function obtenerStockTallesProducto(producto) {
   return resultado;
 }
 
+function obtenerTallesGrillaProducto(producto) {
+  if (!producto) return [];
+
+  const categoriaTipo = obtenerCategoriaTipoProducto(producto);
+  const tallesBase = obtenerTallesDisponiblesPorTipo(categoriaTipo);
+  const stockTalles = obtenerStockTallesProducto(producto);
+
+  if (Array.isArray(producto.talles) && producto.talles.length > 0) {
+    return producto.talles
+      .map(normalizarClaveTalleFront)
+      .filter(Boolean)
+      .sort(compararTallesFront);
+  }
+
+  const desdeStock = Object.keys(stockTalles).sort(compararTallesFront);
+  if (desdeStock.length) return desdeStock;
+
+  return [...tallesBase];
+}
+
+function obtenerStockTalleProducto(producto, talle) {
+  const stockTalles = obtenerStockTallesProducto(producto);
+  return Math.max(0, Math.floor(Number(stockTalles[talle]) || 0));
+}
+
 function obtenerTallesProducto(producto) {
   if (!productoTieneStock(producto)) return [];
 
@@ -2282,45 +2374,83 @@ function obtenerTablaMedidasProducto(producto) {
   return producto.tablaMedidas.filter(filaTablaMedidasTieneDatos);
 }
 
+function obtenerTablaMedidasReferencia(categoriaTipo = 'ropa') {
+  return categoriaTipo === 'calzado'
+    ? TABLA_MEDIDAS_CALZADO_REFERENCIA
+    : TABLA_MEDIDAS_ROPA_REFERENCIA;
+}
+
+function resolverTablaMedidasProducto(producto) {
+  const especificas = obtenerTablaMedidasProducto(producto);
+  if (especificas.length) return especificas;
+
+  const categoriaTipo = obtenerCategoriaTipoProducto(producto);
+  const referencia = obtenerTablaMedidasReferencia(categoriaTipo);
+  const tallesProducto = new Set(
+    obtenerTallesGrillaProducto(producto).map(normalizarClaveTalleFront)
+  );
+
+  if (!tallesProducto.size) return referencia;
+
+  const filtradas = referencia.filter((fila) =>
+    tallesProducto.has(normalizarClaveTalleFront(fila.talle))
+  );
+  return filtradas.length ? filtradas : referencia;
+}
+
+function obtenerTallesSeleccionablesProducto(producto) {
+  return obtenerTallesGrillaProducto(producto)
+    .filter((talle) => obtenerStockTalleProducto(producto, talle) > 0);
+}
+
 function crearHtmlEnlaceTablaMedidas(productoId) {
   return `
     <button
       type="button"
-      class="tabla-medidas-link"
-      onclick="event.stopPropagation(); abrirTablaMedidas(${Number(productoId)})"
-    >Ver tabla de medidas</button>
+      class="btn-guia-talles"
+      data-product-id="${Number(productoId)}"
+    >📐 Guía de talles</button>
   `;
 }
 
 function crearHtmlBotonesTalles(producto, opciones = {}) {
   const { incluirEnlaceMedidas = true } = opciones;
-  const talles = obtenerTallesProducto(producto);
+  const talles = obtenerTallesGrillaProducto(producto);
   if (!talles.length) return '';
 
   const talleActivo = tallesSeleccionados[producto.id] ?? null;
 
   const botones = talles
-    .map(
-      (talle) => `
+    .map((talle) => {
+      const sinStock = obtenerStockTalleProducto(producto, talle) <= 0;
+      const seleccionado = !sinStock && talle === talleActivo;
+      const clases = [
+        'boton-talle',
+        seleccionado ? 'talle-seleccionado' : '',
+        sinStock ? 'sin-stock' : '',
+      ].filter(Boolean).join(' ');
+
+      return `
         <button
           type="button"
-          class="talle-btn${talle === talleActivo ? ' selected' : ''}"
+          class="${clases}"
           data-product-id="${producto.id}"
           data-talle="${escaparAtributoHtml(talle)}"
-          onclick="seleccionarTalle(${producto.id}, '${escaparAtributoHtml(talle).replace(/'/g, "\\'")}')"
-          aria-label="Talle ${escaparHtmlTexto(talle)}"
-          aria-pressed="${talle === talleActivo}"
+          ${sinStock
+          ? 'disabled aria-disabled="true"'
+          : `aria-pressed="${seleccionado ? 'true' : 'false'}"`}
+          aria-label="Talle ${escaparHtmlTexto(talle)}${sinStock ? ' sin stock' : ''}"
         >${escaparHtmlTexto(talle)}</button>
-      `
-    )
+      `;
+    })
     .join('');
 
-  const enlaceMedidas = incluirEnlaceMedidas && obtenerTablaMedidasProducto(producto).length
+  const enlaceMedidas = incluirEnlaceMedidas
     ? crearHtmlEnlaceTablaMedidas(producto.id)
     : '';
 
   return `
-    <span class="selector-talles__label">Talle</span>
+    <span class="grilla-talles__label">Talle</span>
     ${botones}
     ${enlaceMedidas}
   `;
@@ -2339,7 +2469,7 @@ function renderizarFilasTablaMedidas(tablaMedidas, talleSeleccionado = null, cat
     })
     : [];
   if (!filas.length) {
-    return `<tr><td colspan="${colspan}"><p class="size-chart-modal__empty">No hay medidas cargadas para este producto.</p></td></tr>`;
+    return `<tr><td colspan="${colspan}"><p class="modal-talles__vacio">No hay medidas cargadas para este producto.</p></td></tr>`;
   }
 
   const talleActivo = normalizarTextoMedida(talleSeleccionado).toUpperCase();
@@ -2374,41 +2504,144 @@ function renderizarFilasTablaMedidas(tablaMedidas, talleSeleccionado = null, cat
 
 function actualizarEncabezadoTablaMedidasModal(categoriaTipo = 'ropa') {
   const tipo = categoriaTipo === 'calzado' ? 'calzado' : 'ropa';
-  const titleText = document.getElementById('size-chart-modal-title-text');
-  const subtitleText = document.getElementById('size-chart-modal-subtitle-text');
-  const head = document.getElementById('size-chart-modal-head');
+  const subtitleText = document.getElementById('modal-guia-talles-subtitulo');
+  const head = document.getElementById('modal-guia-talles-head');
+  const pestanaRopa = document.getElementById('modal-guia-talles-pestana-ropa');
+  const pestanaCalzado = document.getElementById('modal-guia-talles-pestana-calzado');
+
+  pestanaRopa?.classList.toggle('activo', tipo === 'ropa');
+  pestanaCalzado?.classList.toggle('activo', tipo === 'calzado');
+  pestanaRopa?.setAttribute('aria-selected', tipo === 'ropa' ? 'true' : 'false');
+  pestanaCalzado?.setAttribute('aria-selected', tipo === 'calzado' ? 'true' : 'false');
 
   if (tipo === 'calzado') {
-    if (titleText) titleText.textContent = 'TABLA DE MEDIDAS (CALZADO)';
     if (subtitleText) {
       subtitleText.textContent =
-        'Medidas tomadas sobre la plantilla interna. Tomá la plantilla de una zapatilla tuya que te quede bien y medí su largo de punta a talón.';
+        'Medidas tomadas sobre la plantilla interna. Compará el largo con una zapatilla tuya que te quede bien.';
     }
     if (head) {
       head.innerHTML = `
         <th scope="col">Talle (AR)</th>
-        <th scope="col">Largo de Plantilla (cm)</th>
+        <th scope="col">Largo plantilla (cm)</th>
       `;
     }
     return;
   }
 
-  if (titleText) titleText.textContent = 'TABLA DE MEDIDAS (REFERENCIA DE PRENDA)';
   if (subtitleText) {
     subtitleText.textContent =
-      'Medidas tomadas sobre la prenda en plano. Tomá una remera tuya que te quede bien y compará el ancho (axila a axila).';
+      'Medidas tomadas sobre la prenda en plano. Compará la sisa y el largo con una prenda tuya que te quede bien.';
   }
   if (head) {
     head.innerHTML = `
       <th scope="col">Talle</th>
-      <th scope="col">Ancho (Axila a Axila)</th>
+      <th scope="col">Sisa (cm)</th>
       <th scope="col">Largo (cm)</th>
     `;
   }
 }
 
+function poblarTablaMedidasModal(producto, talleSeleccionado = null) {
+  const tbody = document.getElementById('modal-guia-talles-body');
+  if (!producto || !tbody) return;
+
+  const categoriaTipo = obtenerCategoriaTipoProducto(producto);
+  actualizarEncabezadoTablaMedidasModal(categoriaTipo);
+  tbody.innerHTML = renderizarFilasTablaMedidas(
+    resolverTablaMedidasProducto(producto),
+    talleSeleccionado,
+    categoriaTipo
+  );
+}
+
+function abrirTablaMedidas(productoId) {
+  const producto = productos.find((item) => item.id === Number(productoId));
+  const modal = document.getElementById('modal-guia-talles');
+  const overlay = document.getElementById('modal-guia-talles-overlay');
+  if (!producto || !modal || !overlay) return;
+
+  const talleSeleccionado = tallesSeleccionados[producto.id] ?? null;
+  poblarTablaMedidasModal(producto, talleSeleccionado);
+  modal.dataset.productId = String(producto.id);
+  modal.dataset.categoriaTipo = obtenerCategoriaTipoProducto(producto);
+
+  overlay.classList.add('activo');
+  overlay.setAttribute('aria-hidden', 'false');
+  modal.classList.add('activo');
+  modal.setAttribute('aria-hidden', 'false');
+  document.body.style.overflow = 'hidden';
+}
+
+function cerrarTablaMedidas() {
+  const modal = document.getElementById('modal-guia-talles');
+  const overlay = document.getElementById('modal-guia-talles-overlay');
+  if (!modal?.classList.contains('activo')) return;
+
+  modal.classList.remove('activo');
+  modal.setAttribute('aria-hidden', 'true');
+  overlay?.classList.remove('activo');
+  overlay?.setAttribute('aria-hidden', 'true');
+  delete modal.dataset.productId;
+  delete modal.dataset.categoriaTipo;
+  document.body.style.overflow = '';
+}
+
+function cambiarPestanaGuiaTalles(tipo) {
+  const modal = document.getElementById('modal-guia-talles');
+  const productoId = Number(modal?.dataset.productId);
+  const producto = productos.find((item) => item.id === productoId);
+  if (!producto) return;
+
+  const categoriaTipo = obtenerCategoriaTipoProducto(producto);
+  if (tipo !== categoriaTipo) return;
+
+  actualizarEncabezadoTablaMedidasModal(tipo);
+  const tbody = document.getElementById('modal-guia-talles-body');
+  if (!tbody) return;
+
+  tbody.innerHTML = renderizarFilasTablaMedidas(
+    resolverTablaMedidasProducto(producto),
+    tallesSeleccionados[producto.id] ?? null,
+    tipo
+  );
+}
+
+function inicializarTablaMedidas() {
+  const overlay = document.getElementById('modal-guia-talles-overlay');
+  const closeBtn = document.getElementById('modal-guia-talles-cerrar');
+  const pestanas = document.getElementById('modal-guia-talles-pestanas');
+
+  closeBtn?.addEventListener('click', cerrarTablaMedidas);
+  overlay?.addEventListener('click', cerrarTablaMedidas);
+
+  pestanas?.addEventListener('click', (event) => {
+    const pestana = event.target.closest('.modal-talles__pestana');
+    if (!pestana) return;
+    cambiarPestanaGuiaTalles(pestana.dataset.tipo);
+  });
+
+  document.addEventListener('click', (event) => {
+    const btnTalle = event.target.closest('.boton-talle');
+    if (btnTalle && !btnTalle.disabled && !btnTalle.classList.contains('sin-stock')) {
+      event.stopPropagation();
+      const productoId = Number(btnTalle.dataset.productId);
+      const talle = btnTalle.dataset.talle;
+      if (Number.isFinite(productoId) && talle) {
+        seleccionarTalle(productoId, talle);
+      }
+      return;
+    }
+
+    const btn = event.target.closest('.btn-guia-talles');
+    if (!btn) return;
+    event.stopPropagation();
+    const productoId = Number(btn.dataset.productId);
+    if (productoId) abrirTablaMedidas(productoId);
+  });
+}
+
 function crearHtmlTablaMedidasProducto(producto, talleSeleccionado = null) {
-  const filas = obtenerTablaMedidasProducto(producto);
+  const filas = resolverTablaMedidasProducto(producto);
   if (!filas.length) return '';
 
   const categoriaTipo = obtenerCategoriaTipoProducto(producto);
@@ -2448,56 +2681,6 @@ function crearHtmlTablaMedidasProducto(producto, talleSeleccionado = null) {
   `;
 }
 
-function abrirTablaMedidas(productoId) {
-  const producto = productos.find((item) => item.id === Number(productoId));
-  const modal = document.getElementById('size-chart-modal');
-  const tbody = document.getElementById('size-chart-modal-body');
-  if (!producto || !modal || !tbody) return;
-
-  const categoriaTipo = obtenerCategoriaTipoProducto(producto);
-  const talleSeleccionado = tallesSeleccionados[producto.id] ?? null;
-  actualizarEncabezadoTablaMedidasModal(categoriaTipo);
-  tbody.innerHTML = renderizarFilasTablaMedidas(
-    obtenerTablaMedidasProducto(producto),
-    talleSeleccionado,
-    categoriaTipo
-  );
-  modal.dataset.productId = String(producto.id);
-  modal.dataset.categoriaTipo = categoriaTipo;
-  modal.style.display = 'flex';
-  modal.classList.add('is-open');
-  modal.setAttribute('aria-hidden', 'false');
-
-  requestAnimationFrame(() => {
-    modal.classList.add('is-visible');
-  });
-}
-
-function cerrarTablaMedidas() {
-  const modal = document.getElementById('size-chart-modal');
-  if (!modal || modal.style.display === 'none') return;
-
-  modal.classList.remove('is-visible');
-  modal.setAttribute('aria-hidden', 'true');
-  delete modal.dataset.productId;
-
-  const finalizarCierre = () => {
-    modal.classList.remove('is-open');
-    modal.style.display = 'none';
-    modal.removeEventListener('transitionend', finalizarCierre);
-  };
-
-  modal.addEventListener('transitionend', finalizarCierre);
-  window.setTimeout(finalizarCierre, 320);
-}
-
-function inicializarTablaMedidas() {
-  const overlay = document.getElementById('size-chart-modal-overlay');
-  const closeBtn = document.getElementById('size-chart-modal-close');
-  closeBtn?.addEventListener('click', cerrarTablaMedidas);
-  overlay?.addEventListener('click', cerrarTablaMedidas);
-}
-
 function renderizarTallesDetalleProducto(producto) {
   const contenedor = document.getElementById('product-detail-talles');
   if (!contenedor) return;
@@ -2508,10 +2691,7 @@ function renderizarTallesDetalleProducto(producto) {
     return;
   }
 
-  const conStock = productoTieneStock(producto);
-  const tallesHtml = conStock
-    ? crearHtmlBotonesTalles(producto, { incluirEnlaceMedidas: false })
-    : '';
+  const tallesHtml = crearHtmlBotonesTalles(producto, { incluirEnlaceMedidas: true });
 
   if (tallesHtml) {
     contenedor.innerHTML = tallesHtml;
@@ -2695,7 +2875,9 @@ function inicializarDetalleProducto() {
 
 function crearHtmlTarjetaProducto(producto) {
   const sinStock = !productoTieneStock(producto);
-  const tallesHtml = sinStock ? '' : crearHtmlBotonesTalles(producto);
+  const tallesHtml = obtenerTallesGrillaProducto(producto).length
+    ? crearHtmlBotonesTalles(producto)
+    : '';
   const enOferta = tieneOfertaValida(producto);
 
   let precioHtml;
@@ -2740,35 +2922,17 @@ function crearHtmlTarjetaProducto(producto) {
     </div>
   `;
 
-  const imagenFrente = optimizarUrlImagenProducto(obtenerImagenFrente(producto));
-  const imagenEspalda = optimizarUrlImagenProducto(obtenerImagenEspalda(producto));
-
   return `
-    <article class="product-card${sinStock ? ' product-card--sin-stock' : ''}" role="listitem" data-id="${producto.id}">
+    <article class="product-card producto-card${sinStock ? ' product-card--sin-stock' : ''}" role="listitem" data-id="${producto.id}">
       <div
-        class="product-card__image-wrapper"
+        class="product-card__image-wrapper producto-imagen-contenedor"
         role="button"
         tabindex="0"
         onclick="abrirDetalleProducto(${producto.id})"
         onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); abrirDetalleProducto(${producto.id}); }"
         aria-label="Ver detalle de ${producto.nombre}"
       >
-        <img
-          class="product-card__image img-frente"
-          src="${imagenFrente}"
-          alt="${producto.nombre} — frente"
-          loading="lazy"
-          width="600"
-          height="750"
-        >
-        <img
-          class="product-card__image img-espalda"
-          src="${imagenEspalda}"
-          alt="${producto.nombre} — espalda"
-          loading="lazy"
-          width="600"
-          height="750"
-        >
+        ${crearHtmlImagenesTarjetaProducto(producto)}
         ${badgesFila}
         ${sinStock ? '<span class="product-card__stock-badge">SIN STOCK</span>' : ''}
       </div>
@@ -2776,7 +2940,7 @@ function crearHtmlTarjetaProducto(producto) {
         <h3 class="product-card__name">${producto.nombre}</h3>
         ${badgeGenero}
         ${precioHtml}
-        ${tallesHtml ? `<div class="selector-talles" id="talles-${producto.id}">${tallesHtml}</div>` : ''}
+        ${tallesHtml ? `<div class="grilla-talles" id="talles-${producto.id}">${tallesHtml}</div>` : ''}
         ${techFooter}
         <button
           class="product-card__add-btn"
@@ -2792,28 +2956,34 @@ function crearHtmlTarjetaProducto(producto) {
 }
 
 function actualizarBotonesTalleUI(productoId) {
-  const nuevoTalle = tallesSeleccionados[productoId] ?? null;
+  const talleActivo = normalizarClaveTalleFront(tallesSeleccionados[productoId] ?? '');
   const contenedores = [
     document.getElementById(`talles-${productoId}`),
     document.getElementById('product-detail-talles'),
   ].filter(Boolean);
 
   contenedores.forEach((contenedor) => {
-    contenedor.querySelectorAll(`.talle-btn[data-product-id="${productoId}"]`).forEach((btn) => {
-      const activo = btn.dataset.talle === nuevoTalle;
-      btn.classList.toggle('selected', activo);
+    contenedor.querySelectorAll(`.boton-talle[data-product-id="${productoId}"]`).forEach((btn) => {
+      if (btn.disabled || btn.classList.contains('sin-stock')) return;
+      const activo = Boolean(talleActivo)
+        && normalizarClaveTalleFront(btn.dataset.talle) === talleActivo;
+      btn.classList.toggle('talle-seleccionado', activo);
       btn.setAttribute('aria-pressed', activo ? 'true' : 'false');
     });
   });
 }
 
 function seleccionarTalle(productoId, talle) {
-  const yaSeleccionado = tallesSeleccionados[productoId] === talle;
+  const producto = productos.find((item) => item.id === Number(productoId));
+  const talleNormalizado = normalizarClaveTalleFront(talle);
+  if (!producto || !talleNormalizado || obtenerStockTalleProducto(producto, talleNormalizado) <= 0) return;
+
+  const yaSeleccionado = tallesSeleccionados[productoId] === talleNormalizado;
 
   if (yaSeleccionado) {
     delete tallesSeleccionados[productoId];
   } else {
-    tallesSeleccionados[productoId] = talle;
+    tallesSeleccionados[productoId] = talleNormalizado;
   }
 
   actualizarBotonesTalleUI(productoId);
@@ -2827,20 +2997,14 @@ function seleccionarTalle(productoId, talle) {
     if (producto) renderizarMedidasDetalleProducto(producto);
   }
 
-  const modalMedidas = document.getElementById('size-chart-modal');
+  const modalMedidas = document.getElementById('modal-guia-talles');
   if (
-    modalMedidas?.classList.contains('is-open')
+    modalMedidas?.classList.contains('activo')
     && Number(modalMedidas.dataset.productId) === Number(productoId)
   ) {
     const producto = productos.find((item) => item.id === Number(productoId));
-    const tbody = document.getElementById('size-chart-modal-body');
-    if (producto && tbody) {
-      const categoriaTipo = obtenerCategoriaTipoProducto(producto);
-      tbody.innerHTML = renderizarFilasTablaMedidas(
-        obtenerTablaMedidasProducto(producto),
-        tallesSeleccionados[productoId] ?? null,
-        categoriaTipo
-      );
+    if (producto) {
+      poblarTablaMedidasModal(producto, tallesSeleccionados[productoId] ?? null);
     }
   }
 }
@@ -3787,96 +3951,88 @@ function obtenerProductoMasBuscado() {
   return 'Camiseta Titular 2025';
 }
 
-function obtenerContenedorResultadosPredictivos() {
-  return document.getElementById('contenedor-resultados-predicativos');
+function obtenerContenedorBusquedaFlotante() {
+  return document.getElementById('resultados-busqueda-flotante');
 }
 
-function crearHtmlSugerenciaBusqueda(producto) {
-  const productoLocal = productos.find((item) => item.id === producto.id) || producto;
-  const sinStock = !productoTieneStock(productoLocal);
-  const imagen = optimizarUrlImagenProducto(producto.imagenFrente || obtenerImagenPrincipal(productoLocal));
-  const enOferta = tieneOfertaValida(productoLocal);
-  const precioHtml = enOferta
-    ? `<span class="precio-tachado">${formatearPrecio(productoLocal.precio)}</span> <span class="product-card__price-actual">${formatearPrecio(productoLocal.precioOferta)}</span>`
-    : formatearPrecio(productoLocal.precio ?? producto.precio);
+function productoCoincideBusquedaRapida(producto, termino) {
+  const q = termino.toLowerCase();
+  const nombre = (producto.nombre || '').toLowerCase();
+  const club = (producto.categoria || '').toLowerCase();
+  const pais = String(producto.pais || producto.liga || '').toLowerCase();
+  const descripcion = (producto.descripcion || '').toLowerCase();
+
+  return (
+    nombre.includes(q) ||
+    club.includes(q) ||
+    pais.includes(q) ||
+    descripcion.includes(q)
+  );
+}
+
+function filtrarProductosBusquedaRapida(termino) {
+  const consulta = termino.trim();
+  if (consulta.length < 2) return [];
+
+  return productos
+    .filter((producto) => producto.activo !== false && productoCoincideBusquedaRapida(producto, consulta))
+    .slice(0, 5);
+}
+
+function crearHtmlItemBusquedaRapida(producto) {
+  const imagen = optimizarUrlImagenProducto(producto.imagenFrente || obtenerImagenPrincipal(producto));
+  const enOferta = tieneOfertaValida(producto);
+  const precio = enOferta
+    ? formatearPrecio(producto.precioOferta)
+    : formatearPrecio(producto.precio);
 
   return `
-    <div class="search-suggestion" role="option" data-suggestion-id="${producto.id}">
-      <img class="search-suggestion__thumb" src="${imagen}" alt="" loading="lazy">
-      <div class="search-suggestion__info">
-        <span class="search-suggestion__name">${producto.nombre}</span>
-        <span class="search-suggestion__price">${precioHtml}</span>
+    <div class="item-busqueda-rapida" role="option" data-producto-id="${producto.id}">
+      <img class="img-busqueda-rapida" src="${escaparAtributoHtml(imagen)}" alt="" loading="lazy">
+      <div class="info-busqueda-rapida">
+        <span class="nombre-busqueda-rapida">${escaparHtmlTexto(producto.nombre)}</span>
+        <span class="precio-busqueda-rapida">${precio}</span>
       </div>
-      <button
-        type="button"
-        class="search-suggestion__add"
-        data-suggestion-add="${producto.id}"
-        aria-label="${sinStock ? `${producto.nombre} sin stock` : `Agregar ${producto.nombre} al carrito`}"
-        ${sinStock ? 'disabled' : ''}
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M8.25 7.5V6.75A2.25 2.25 0 0110.5 4.5h3a2.25 2.25 0 012.25 2.25V7.5"/>
-          <path d="M6 8.25h12a1.5 1.5 0 011.5 1.5v9a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 18.75v-9A1.5 1.5 0 016 8.25z"/>
-        </svg>
-      </button>
     </div>
   `;
 }
 
-function renderizarResultadosPredictivos(resultados, termino) {
-  const dropdown = obtenerContenedorResultadosPredictivos();
+function renderizarBusquedaFlotante(resultados, termino) {
+  const contenedor = obtenerContenedorBusquedaFlotante();
   const input = document.getElementById('input-busqueda');
-  if (!dropdown || !input) return;
+  if (!contenedor || !input) return;
 
   const consulta = termino.trim();
 
-  if (!consulta) {
-    dropdown.hidden = true;
-    dropdown.innerHTML = '';
+  if (consulta.length < 2) {
+    contenedor.style.display = 'none';
+    contenedor.innerHTML = '';
     input.setAttribute('aria-expanded', 'false');
     return;
   }
 
   if (!resultados.length) {
-    dropdown.hidden = false;
-    dropdown.innerHTML = '<p class="search-suggestions__empty">No encontramos productos con ese nombre.</p>';
+    contenedor.style.display = 'block';
+    contenedor.innerHTML = '<p class="search-suggestions__empty">No encontramos productos con ese nombre.</p>';
     input.setAttribute('aria-expanded', 'true');
     return;
   }
 
-  dropdown.hidden = false;
-  dropdown.innerHTML = resultados.map(crearHtmlSugerenciaBusqueda).join('');
+  contenedor.style.display = 'block';
+  contenedor.innerHTML = resultados.map(crearHtmlItemBusquedaRapida).join('');
   input.setAttribute('aria-expanded', 'true');
 }
 
-async function buscarProductosPredictivo(termino) {
-  const consulta = termino.trim();
-  if (consulta.length < 2) {
-    renderizarResultadosPredictivos([], consulta);
-    return;
-  }
-
-  try {
-    const resultados = await fetch(
-      `${API_BASE}/api/productos/buscar?q=${encodeURIComponent(consulta)}`
-    ).then((respuesta) => {
-      if (!respuesta.ok) throw new Error('No se pudo completar la búsqueda.');
-      return respuesta.json();
-    });
-
-    renderizarResultadosPredictivos(Array.isArray(resultados) ? resultados : [], consulta);
-  } catch (error) {
-    console.error('Error en búsqueda predictiva:', error);
-    renderizarResultadosPredictivos([], consulta);
-  }
+function ejecutarBusquedaRapida(termino) {
+  renderizarBusquedaFlotante(filtrarProductosBusquedaRapida(termino), termino);
 }
 
 function ocultarSugerenciasBusqueda() {
-  const dropdown = obtenerContenedorResultadosPredictivos();
+  const contenedor = obtenerContenedorBusquedaFlotante();
   const input = document.getElementById('input-busqueda');
-  if (dropdown) {
-    dropdown.hidden = true;
-    dropdown.innerHTML = '';
+  if (contenedor) {
+    contenedor.style.display = 'none';
+    contenedor.innerHTML = '';
   }
   input?.setAttribute('aria-expanded', 'false');
 }
@@ -4211,7 +4367,7 @@ function inicializarHeaderScroll() {
 
 function inicializarBuscador() {
   const input = document.getElementById('input-busqueda');
-  const dropdown = obtenerContenedorResultadosPredictivos();
+  const contenedor = obtenerContenedorBusquedaFlotante();
 
   input?.addEventListener('input', (e) => {
     const valor = e.target.value;
@@ -4220,13 +4376,13 @@ function inicializarBuscador() {
 
     clearTimeout(busquedaPredictivaTimer);
     busquedaPredictivaTimer = setTimeout(() => {
-      buscarProductosPredictivo(valor);
-    }, 300);
+      ejecutarBusquedaRapida(valor);
+    }, 200);
   });
 
   input?.addEventListener('focus', () => {
     if (input.value.trim().length >= 2) {
-      buscarProductosPredictivo(input.value);
+      ejecutarBusquedaRapida(input.value);
     }
   });
 
@@ -4248,36 +4404,16 @@ function inicializarBuscador() {
     }
   });
 
-  dropdown?.addEventListener('click', (event) => {
-    const addBtn = event.target.closest('[data-suggestion-add]');
-    if (addBtn) {
-      event.stopPropagation();
-      const id = Number(addBtn.dataset.suggestionAdd);
-      const producto = productos.find((item) => item.id === id);
-      if (producto) {
-        registrarBusquedaProducto(producto.nombre);
-        agregarAlCarrito(id);
-        ocultarSugerenciasBusqueda();
-        input.value = '';
-        busquedaActiva = '';
-        renderizarProductos();
-      }
-      return;
-    }
-
-    const item = event.target.closest('[data-suggestion-id]');
+  contenedor?.addEventListener('click', (event) => {
+    const item = event.target.closest('[data-producto-id]');
     if (!item) return;
 
-    const id = Number(item.dataset.suggestionId);
+    const id = Number(item.dataset.productoId);
     const producto = productos.find((p) => p.id === id);
     if (!producto) return;
 
     registrarBusquedaProducto(producto.nombre);
-    input.value = '';
-    busquedaActiva = '';
-    renderizarProductos();
     ocultarSugerenciasBusqueda();
-    document.getElementById('coleccion')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     abrirDetalleProducto(id);
   });
 }
@@ -4892,6 +5028,23 @@ function obtenerClaveCarritoUsuario(email) {
   return `${CARRITO_USUARIO_PREFIX}${normalizarEmail(email)}`;
 }
 
+function normalizarItemCarrito(item) {
+  if (!item || item.id == null) return null;
+
+  const precio = Number(item.precio);
+  const cantidad = Math.max(1, Math.floor(Number(item.cantidad) || 1));
+
+  return {
+    id: item.id,
+    id_talle: String(item.id_talle ?? item.id),
+    talle: item.talle ?? null,
+    nombre: String(item.nombre ?? 'Producto'),
+    precio: Number.isFinite(precio) && precio >= 0 ? precio : 0,
+    imagen: item.imagen ?? '',
+    cantidad,
+  };
+}
+
 function cargarCarritoDeSesion() {
   const sesion = obtenerSesionUsuario();
   if (!sesion?.email || sesion.rol === 'admin') {
@@ -4902,21 +5055,16 @@ function cargarCarritoDeSesion() {
   const clave = obtenerClaveCarritoUsuario(sesion.email);
 
   try {
-    const guardado = localStorage.getItem(clave);
-    if (guardado) {
-      carrito = JSON.parse(guardado) || [];
-      return;
-    }
+    const raw = localStorage.getItem(clave) || localStorage.getItem(CARRITO_LEGACY_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    carrito = (Array.isArray(parsed) ? parsed : [])
+      .map(normalizarItemCarrito)
+      .filter(Boolean);
 
-    const legacy = localStorage.getItem(CARRITO_LEGACY_KEY);
-    if (legacy) {
-      carrito = JSON.parse(legacy) || [];
+    if (localStorage.getItem(CARRITO_LEGACY_KEY)) {
       localStorage.setItem(clave, JSON.stringify(carrito));
       localStorage.removeItem(CARRITO_LEGACY_KEY);
-      return;
     }
-
-    carrito = [];
   } catch {
     carrito = [];
   }
@@ -4937,7 +5085,50 @@ function vaciarCarritoDeSesion() {
 }
 
 function calcularTotal() {
-  return carrito.reduce((total, item) => total + item.precio * item.cantidad, 0);
+  const total = carrito.reduce((suma, item) => {
+    const precio = Number(item.precio);
+    const cantidad = Math.max(1, Math.floor(Number(item.cantidad) || 1));
+    if (!Number.isFinite(precio) || precio < 0) return suma;
+    return suma + precio * cantidad;
+  }, 0);
+
+  return redondearMontoCheckout(total);
+}
+
+function actualizarBarraEnvioGratis(totalCarrito, ids = {}) {
+  const {
+    mensajeId = 'mensaje-envio-gratis',
+    barraId = 'barra-progreso-llenado',
+    contenedorId = 'contenedor-envio-gratis',
+  } = ids;
+
+  const mensaje = document.getElementById(mensajeId);
+  const barra = document.getElementById(barraId);
+  const contenedor = document.getElementById(contenedorId);
+
+  if (!mensaje && !barra && !contenedor) return;
+
+  const total = Math.max(0, Number(totalCarrito) || 0);
+  const vacio = carrito.length === 0;
+  const alcanzado = !vacio && total >= MONTO_ENVIO_GRATIS;
+  const porcentaje = vacio ? 0 : Math.min(100, (total / MONTO_ENVIO_GRATIS) * 100);
+  const faltante = Math.max(0, MONTO_ENVIO_GRATIS - total);
+
+  if (contenedor) {
+    contenedor.hidden = vacio;
+    contenedor.classList.toggle('contenedor-envio-gratis--completo', alcanzado);
+  }
+
+  if (mensaje) {
+    mensaje.textContent = alcanzado
+      ? '🎉 ¡Felicitaciones! Tenés envío gratis sin cargo.'
+      : `¡Te faltan ${formatearPrecio(faltante)} para conseguir envío gratis! 🚚`;
+  }
+
+  if (barra) {
+    barra.style.width = `${porcentaje}%`;
+    barra.style.backgroundColor = alcanzado ? '#10b981' : '#3b82f6';
+  }
 }
 
 function redondearMontoCheckout(valor) {
@@ -5130,16 +5321,36 @@ function calcularDesgloseCheckout() {
   };
 }
 
+function actualizarMiniCartResumen(desglose) {
+  const checkoutBtn = document.getElementById('mini-cart-checkout');
+  const subtotalEl = document.getElementById('mini-cart-subtotal');
+  const descuentoRow = document.getElementById('mini-cart-descuento-row');
+  const descuentoEl = document.getElementById('mini-cart-descuento');
+  const descuentoLabel = document.getElementById('mini-cart-descuento-label');
+  const { subtotal, descuentoCupon, codigoCupon } = desglose;
+  const hayDescuento = Boolean(cuponAplicado && descuentoCupon > 0);
+
+  if (subtotalEl) subtotalEl.textContent = formatearPrecio(subtotal);
+  if (descuentoRow) descuentoRow.hidden = !hayDescuento;
+  if (descuentoEl) descuentoEl.textContent = `−${formatearPrecio(descuentoCupon)}`;
+  if (descuentoLabel) {
+    descuentoLabel.textContent = hayDescuento
+      ? `Descuento${codigoCupon ? ` (${codigoCupon})` : ''}`
+      : 'Descuento';
+  }
+  if (checkoutBtn) checkoutBtn.disabled = carrito.length === 0;
+}
+
 function actualizarTotalCheckoutUI() {
+  const desglose = calcularDesgloseCheckout();
   const {
     subtotal,
     descuentoCupon,
     totalConCupon,
-    descuentoTransferencia,
     totalTransferencia,
     totalAhorrado,
     codigoCupon,
-  } = calcularDesgloseCheckout();
+  } = desglose;
   const summaryTotal = document.getElementById('checkout-summary-total');
   const subtotalRow = document.getElementById('checkout-summary-subtotal-row');
   const subtotalEl = document.getElementById('checkout-summary-subtotal');
@@ -5172,8 +5383,17 @@ function actualizarTotalCheckoutUI() {
     montoAhorradoEl.textContent = formatearPrecio(totalAhorrado);
   }
   if (contenedorAhorro) {
-    contenedorAhorro.style.display = totalAhorrado > 0 ? 'block' : 'none';
+    contenedorAhorro.hidden = totalAhorrado <= 0;
   }
+
+  // Una sola vez por contenedor (checkout + drawer lateral)
+  actualizarBarraEnvioGratis(totalConCupon);
+  actualizarBarraEnvioGratis(totalConCupon, {
+    mensajeId: 'mensaje-envio-gratis-drawer',
+    barraId: 'barra-progreso-llenado-drawer',
+    contenedorId: 'contenedor-envio-gratis-drawer',
+  });
+  actualizarMiniCartResumen(desglose);
 }
 
 async function aplicarCuponCheckout() {
@@ -5269,16 +5489,17 @@ function actualizarContador() {
 }
 
 function actualizarTotal() {
-  const totalEl = document.getElementById('cart-total');
-  const checkoutBtn = document.getElementById('cart-checkout');
-  const total = calcularTotal();
-
-  if (totalEl) totalEl.textContent = formatearPrecio(total);
-  if (checkoutBtn) checkoutBtn.disabled = carrito.length === 0;
+  const desglose = calcularDesgloseCheckout();
+  actualizarMiniCartResumen(desglose);
+  actualizarBarraEnvioGratis(desglose.totalConCupon, {
+    mensajeId: 'mensaje-envio-gratis-drawer',
+    barraId: 'barra-progreso-llenado-drawer',
+    contenedorId: 'contenedor-envio-gratis-drawer',
+  });
 }
 
 function renderizarCarrito() {
-  const container = document.getElementById('cart-items-container');
+  const container = document.getElementById('mini-cart-items-container');
   if (!container) return;
 
   if (carrito.length === 0) {
@@ -5347,23 +5568,23 @@ function actualizarCarritoUI() {
   renderizarCarrito();
 }
 
-function abrirCarrito() {
-  const overlay = document.getElementById('cart-overlay');
-  const drawer = document.getElementById('cart-drawer');
+function abrirMiniCart() {
+  const overlay = document.getElementById('mini-cart-overlay');
+  const drawer = document.getElementById('mini-cart-drawer');
 
-  overlay?.classList.add('is-open');
-  drawer?.classList.add('is-open');
+  overlay?.classList.add('activo');
+  drawer?.classList.add('abierto');
   overlay?.setAttribute('aria-hidden', 'false');
   drawer?.setAttribute('aria-hidden', 'false');
   document.body.classList.add('cart-open');
 }
 
-function cerrarCarrito() {
-  const overlay = document.getElementById('cart-overlay');
-  const drawer = document.getElementById('cart-drawer');
+function cerrarMiniCart() {
+  const overlay = document.getElementById('mini-cart-overlay');
+  const drawer = document.getElementById('mini-cart-drawer');
 
-  overlay?.classList.remove('is-open');
-  drawer?.classList.remove('is-open');
+  overlay?.classList.remove('activo');
+  drawer?.classList.remove('abierto');
   overlay?.setAttribute('aria-hidden', 'true');
   drawer?.setAttribute('aria-hidden', 'true');
   document.body.classList.remove('cart-open');
@@ -5374,7 +5595,7 @@ function abrirCheckout() {
 
   const sesion = obtenerSesionUsuario();
   if (!sesion?.email) {
-    cerrarCarrito();
+    cerrarMiniCart();
     mostrarToast('Para comprar tenés que iniciar sesión o registrarte.', 'error');
     abrirAuthModal();
     return;
@@ -5386,7 +5607,7 @@ function abrirCheckout() {
   modal?.classList.add('is-open');
   modal?.setAttribute('aria-hidden', 'false');
   document.body.classList.add('checkout-open');
-  cerrarCarrito();
+  cerrarMiniCart();
 }
 
 function obtenerPerfilesEntrega() {
@@ -5514,21 +5735,29 @@ function renderizarResumenCheckout() {
 
   const itemsHtml = carrito
     .map((item) => {
-      const nombre = item.talle ? `${item.nombre} — Talle ${item.talle}` : item.nombre;
+      const nombreBase = escaparHtmlTexto(item.nombre || 'Producto');
+      const variante = item.variante ? ` ${escaparHtmlTexto(item.variante)}` : '';
+      const talleParte = item.talle ? ` — Talle ${escaparHtmlTexto(item.talle)}` : '';
+      const nombre = `${nombreBase}${variante}${talleParte}`;
+      const precio = Number(item.precio);
+      const cantidad = Math.max(1, Math.floor(Number(item.cantidad) || 1));
+      const subtotalItem = Number.isFinite(precio) ? precio * cantidad : 0;
+
       return `
         <li class="checkout-resumen__item">
           <span class="checkout-resumen__name">${nombre}</span>
-          <span class="checkout-resumen__qty">x${item.cantidad}</span>
-          <span class="checkout-resumen__price">${formatearPrecio(item.precio * item.cantidad)}</span>
+          <span class="checkout-resumen__qty">x${cantidad}</span>
+          <span class="checkout-resumen__price">${formatearPrecio(subtotalItem)}</span>
         </li>
       `;
     })
     .join('');
 
+  const cantidadTotal = obtenerCantidadTotal();
   container.innerHTML = `
     <div class="checkout-resumen__header">
       <span class="checkout-resumen__title">Tu pedido</span>
-      <span class="checkout-resumen__count">${obtenerCantidadTotal()} ${obtenerCantidadTotal() === 1 ? 'producto' : 'productos'}</span>
+      <span class="checkout-resumen__count">${cantidadTotal} ${cantidadTotal === 1 ? 'producto' : 'productos'}</span>
     </div>
     <ul class="checkout-resumen__list">${itemsHtml}</ul>
   `;
@@ -5589,12 +5818,22 @@ function validarFormularioCheckout() {
     return { ok: false };
   }
 
-  const nombre = document.getElementById('checkout-nombre').value.trim();
-  const telefono = document.getElementById('checkout-telefono').value.trim();
-  const direccion = document.getElementById('checkout-direccion').value.trim();
-  const localidad = document.getElementById('checkout-localidad')?.value.trim() || '';
-  const provincia = document.getElementById('checkout-provincia')?.value.trim() || '';
-  const codigoPostal = (document.getElementById('checkout-codigo-postal')?.value || '').trim().toUpperCase();
+  const nombreInput = document.getElementById('checkout-nombre');
+  const telefonoInput = document.getElementById('checkout-telefono');
+  const direccionInput = document.getElementById('checkout-direccion');
+  const localidadInput = document.getElementById('checkout-localidad');
+  const provinciaInput = document.getElementById('checkout-provincia');
+  const codigoPostalInput = document.getElementById('checkout-codigo-postal');
+
+  if (!nombreInput || !telefonoInput) return { ok: false };
+  if (!direccionInput) return { ok: false };
+
+  const nombre = nombreInput.value.trim();
+  const telefono = telefonoInput.value.trim();
+  const direccion = direccionInput.value.trim();
+  const localidad = localidadInput?.value.trim() || '';
+  const provincia = provinciaInput?.value.trim() || '';
+  const codigoPostal = (codigoPostalInput?.value || '').trim().toUpperCase();
 
   if (nombre.length <= 2) {
     mostrarToast('Por favor, ingresá tu nombre completo.', 'error');
@@ -5681,7 +5920,7 @@ async function procesarPedido(event) {
     guardarCarritoEnLocalStorage();
     actualizarCarritoUI();
     cerrarCheckout();
-    cerrarCarrito();
+    cerrarMiniCart();
     document.getElementById('checkout-form')?.reset();
     window.location.href = respuestaPago.init_point;
   } catch (error) {
@@ -5744,7 +5983,7 @@ async function procesarPedidoTransferencia() {
     guardarCarritoEnLocalStorage();
     actualizarCarritoUI();
     cerrarCheckout();
-    cerrarCarrito();
+    cerrarMiniCart();
     document.getElementById('checkout-form')?.reset();
     mostrarToast('Pedido creado. Coordiná la transferencia por WhatsApp.');
   } catch (error) {
@@ -6232,7 +6471,7 @@ function agregarAlCarrito(id) {
   const producto = productos.find((p) => p.id === id);
   if (!producto || !productoTieneStock(producto)) return;
 
-  const talles = obtenerTallesProducto(producto);
+  const talles = obtenerTallesSeleccionablesProducto(producto);
   const talle = tallesSeleccionados[id];
 
   if (talles.length && !talle) {
@@ -6262,7 +6501,7 @@ function agregarAlCarrito(id) {
   mostrarToast(producto.nombre, 'success', {
     titulo: 'Agregado al carrito',
   });
-  abrirCarrito();
+  abrirMiniCart();
 
   const btn = document.querySelector(`.product-card[data-id="${id}"] .product-card__add-btn`);
   if (btn && !btn.disabled) {
@@ -6313,14 +6552,48 @@ function eliminarDelCarrito(id_talle) {
 
 function inicializarCarrito() {
   const cartBtn = document.getElementById('cart-btn');
-  const cartClose = document.getElementById('cart-close');
-  const cartOverlay = document.getElementById('cart-overlay');
-  const checkoutBtn = document.getElementById('cart-checkout');
+  const cartClose = document.getElementById('mini-cart-close');
+  const cartOverlay = document.getElementById('mini-cart-overlay');
+  const checkoutBtn = document.getElementById('mini-cart-checkout');
 
-  cartBtn?.addEventListener('click', abrirCarrito);
-  cartClose?.addEventListener('click', cerrarCarrito);
-  cartOverlay?.addEventListener('click', cerrarCarrito);
+  cartBtn?.addEventListener('click', abrirMiniCart);
+  cartClose?.addEventListener('click', cerrarMiniCart);
+  cartOverlay?.addEventListener('click', cerrarMiniCart);
   checkoutBtn?.addEventListener('click', abrirCheckout);
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && document.getElementById('mini-cart-drawer')?.classList.contains('abierto')) {
+      cerrarMiniCart();
+    }
+  });
+
+  window.addEventListener('storage', (event) => {
+    const sesion = obtenerSesionUsuario();
+    if (!sesion?.email || sesion.rol === 'admin') return;
+
+    const clave = obtenerClaveCarritoUsuario(sesion.email);
+    if (event.key !== clave) return;
+
+    try {
+      const parsed = JSON.parse(event.newValue || '[]') || [];
+      carrito = (Array.isArray(parsed) ? parsed : [])
+        .map(normalizarItemCarrito)
+        .filter(Boolean);
+    } catch {
+      carrito = [];
+    }
+
+    cuponAplicado = null;
+    actualizarCarritoUI();
+
+    const checkoutAbierto = document
+      .getElementById('checkout-modal')
+      ?.classList.contains('is-open');
+    if (checkoutAbierto) {
+      renderizarResumenCheckout();
+      actualizarTotalCheckoutUI();
+    }
+  });
 
   actualizarCarritoUI();
 }
@@ -6474,8 +6747,8 @@ function inicializarTeclado() {
       return;
     }
 
-    const sizeChartModal = document.getElementById('size-chart-modal');
-    if (sizeChartModal?.classList.contains('is-open')) {
+    const sizeChartModal = document.getElementById('modal-guia-talles');
+    if (sizeChartModal?.classList.contains('activo')) {
       cerrarTablaMedidas();
       return;
     }
@@ -6486,7 +6759,7 @@ function inicializarTeclado() {
       return;
     }
 
-    cerrarCarrito();
+    cerrarMiniCart();
   });
 }
 
