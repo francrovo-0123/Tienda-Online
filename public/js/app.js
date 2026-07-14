@@ -5108,8 +5108,38 @@ function limpiarCuponCheckout() {
   actualizarTotalCheckoutUI();
 }
 
-function actualizarTotalCheckoutUI() {
+function calcularDesgloseCheckout() {
   const { subtotal, descuentoMonto, totalFinal } = calcularTotalConCupon();
+  const totalConCupon = Number(totalFinal) || 0;
+  const descuentoCupon = Number(descuentoMonto) || 0;
+  const descuentoTransferencia = redondearMontoCheckout(totalConCupon * 0.10);
+  const totalTransferencia = Math.max(
+    0,
+    redondearMontoCheckout(totalConCupon - descuentoTransferencia)
+  );
+  const totalAhorrado = redondearMontoCheckout(descuentoCupon + descuentoTransferencia);
+
+  return {
+    subtotal,
+    descuentoCupon,
+    totalConCupon,
+    descuentoTransferencia,
+    totalTransferencia,
+    totalAhorrado,
+    codigoCupon: obtenerCodigoCuponCheckout(),
+  };
+}
+
+function actualizarTotalCheckoutUI() {
+  const {
+    subtotal,
+    descuentoCupon,
+    totalConCupon,
+    descuentoTransferencia,
+    totalTransferencia,
+    totalAhorrado,
+    codigoCupon,
+  } = calcularDesgloseCheckout();
   const summaryTotal = document.getElementById('checkout-summary-total');
   const subtotalRow = document.getElementById('checkout-summary-subtotal-row');
   const subtotalEl = document.getElementById('checkout-summary-subtotal');
@@ -5117,36 +5147,26 @@ function actualizarTotalCheckoutUI() {
   const descuentoEl = document.getElementById('checkout-summary-descuento');
   const descuentoLabel = document.getElementById('checkout-summary-descuento-label');
 
-  if (summaryTotal) summaryTotal.textContent = formatearPrecio(totalFinal);
+  if (summaryTotal) summaryTotal.textContent = formatearPrecio(totalConCupon);
 
-  const hayDescuento = Boolean(cuponAplicado && descuentoMonto > 0);
+  const hayDescuento = Boolean(cuponAplicado && descuentoCupon > 0);
 
   if (subtotalRow) subtotalRow.hidden = !hayDescuento;
   if (descuentoRow) descuentoRow.hidden = !hayDescuento;
   if (subtotalEl) subtotalEl.textContent = formatearPrecio(subtotal);
-  if (descuentoEl) descuentoEl.textContent = `−${formatearPrecio(descuentoMonto)}`;
+  if (descuentoEl) descuentoEl.textContent = `−${formatearPrecio(descuentoCupon)}`;
   if (descuentoLabel) {
     descuentoLabel.textContent = hayDescuento
-      ? `Descuento por cupón${cuponAplicado?.codigo ? ` (${cuponAplicado.codigo})` : ''}`
+      ? `Descuento por cupón${codigoCupon ? ` (${codigoCupon})` : ''}`
       : 'Descuento por cupón';
   }
-
-  // Descuento por transferencia: 10% compuesto sobre el total post-cupón.
-  const totalConCupon = Number(totalFinal) || 0;
-  const descuentoCupon = Number(descuentoMonto) || 0;
-  const descuentoPorTransferencia = redondearMontoCheckout(totalConCupon * 0.10);
-  const montoFinalTransferencia = Math.max(
-    0,
-    redondearMontoCheckout(totalConCupon - descuentoPorTransferencia)
-  );
-  const totalAhorrado = redondearMontoCheckout(descuentoCupon + descuentoPorTransferencia);
 
   const totalConTransferenciaEl = document.getElementById('total-con-transferencia');
   const montoAhorradoEl = document.getElementById('monto-ahorrado-total');
   const contenedorAhorro = document.getElementById('contenedor-ahorro-transferencia');
 
   if (totalConTransferenciaEl) {
-    totalConTransferenciaEl.textContent = formatearPrecio(montoFinalTransferencia);
+    totalConTransferenciaEl.textContent = formatearPrecio(totalTransferencia);
   }
   if (montoAhorradoEl) {
     montoAhorradoEl.textContent = formatearPrecio(totalAhorrado);
@@ -5707,7 +5727,7 @@ async function procesarPedidoTransferencia() {
       body: JSON.stringify(construirBodyCheckout(datosEntrega, items, { metodoPago: 'Transferencia' })),
     });
 
-    enviarAWhatsApp({
+    abrirWhatsAppTransferencia({
       idPedido: pedido.numeroPedido || pedido.id,
       nombre: datosEntrega.nombre,
       telefono: datosEntrega.telefono,
@@ -5715,7 +5735,6 @@ async function procesarPedidoTransferencia() {
       localidad: datosEntrega.localidad,
       provincia: datosEntrega.provincia,
       codigoPostal: datosEntrega.codigoPostal,
-      metodoPago: 'Transferencia bancaria (-10%)',
       productos: pedido.productos || [],
       total: pedido.total,
     });
@@ -5737,7 +5756,7 @@ async function procesarPedidoTransferencia() {
   }
 }
 
-function enviarAWhatsApp({
+function abrirWhatsAppTransferencia({
   idPedido,
   nombre,
   telefono,
@@ -5745,7 +5764,6 @@ function enviarAWhatsApp({
   localidad,
   provincia,
   codigoPostal,
-  metodoPago,
   productos,
   total,
 }) {
@@ -5763,7 +5781,7 @@ function enviarAWhatsApp({
     ? `Envío a domicilio (${[direccion, localidad, provincia, codigoPostal].filter(Boolean).join(', ')})`
     : 'Retiro en local';
 
-  const itemsDetalle = productos
+  const itemsDetalle = (productos || [])
     .map((item) => {
       const nombreLinea = item.talle
         ? `${item.cantidad}x ${item.nombre} - Talle ${item.talle}`
@@ -5778,15 +5796,15 @@ function enviarAWhatsApp({
 ${emojiCliente} *Cliente:* ${nombre}
 ${emojiTelefono} *Teléfono:* ${telefono}
 ${emojiEntrega} *Entrega:* ${textoEntrega}
-${emojiPago} *Pago:* ${metodoPago}
+${emojiPago} *Pago:* Transferencia bancaria (-10%)
 ---------------------------------
 ${emojiDetalle} *Detalle del Pedido:*
 ${itemsDetalle}
 ---------------------------------
 ${emojiTotal} *Total a Pagar: ${formatearPrecio(total)}*`;
 
-  const mensajeEncriptado = encodeURIComponent(mensaje);
-  window.open(`https://wa.me/${WHATSAPP_NUMERO}?text=${mensajeEncriptado}`, '_blank');
+  const url = `https://wa.me/${WHATSAPP_NUMERO}?text=${encodeURIComponent(mensaje)}`;
+  window.open(url, '_blank', 'noopener,noreferrer');
 }
 
 function buscarPedidos(telefono) {
