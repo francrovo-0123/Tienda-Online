@@ -4,7 +4,7 @@
   display: block;
   clear: both;
   width: 100%;
-  margin-top: 20px;
+  margin-top: var(--space-5);
   height: min(78vh, 720px);
   min-height: 420px;
   overflow: hidden;
@@ -22,7 +22,9 @@
   inset: 0;
   opacity: 0;
   visibility: hidden;
-  transition: opacity 0.7s ease, visibility 0.7s ease;
+  transition:
+    opacity var(--duration-slow) var(--ease-out-premium),
+    visibility var(--duration-slow) var(--ease-out-premium);
   pointer-events: none;
 }
 
@@ -37,7 +39,7 @@
   inset: 0;
   overflow: hidden;
   transform: scale(1.04);
-  transition: transform 6s ease;
+  transition: transform 7s var(--ease-out-premium);
 }
 
 .hero-slide.is-active .hero-slide__media {
@@ -184,9 +186,9 @@
 .offer-marquee__track {
   display: flex;
   align-items: center;
-  gap: 1.75rem;
+  gap: var(--space-7);
   width: max-content;
-  padding: 0.85rem 1rem;
+  padding: var(--space-3) var(--space-4);
   font-family: var(--font-display);
   font-size: 0.75rem;
   font-weight: 600;
@@ -226,7 +228,7 @@
   width: 100%;
   max-width: 1440px;
   margin: 0 auto;
-  padding: 0 40px;
+  padding: 0 var(--container-pad-x);
   position: relative;
 }
 
@@ -234,9 +236,9 @@
   position: relative;
   z-index: 1;
   display: block;
-  margin-top: 30px;
-  margin-bottom: 25px;
-  padding: 0 1rem;
+  margin-top: var(--space-8);
+  margin-bottom: var(--space-6);
+  padding: 0 var(--space-4);
   font-family: var(--font-display);
   font-size: clamp(1.375rem, 3vw, 1.875rem);
   font-weight: 700;
@@ -258,7 +260,7 @@
 }
 
 .stadium-block + .stadium-block .stadium-section__title {
-  margin-top: 30px;
+  margin-top: var(--space-8);
 }
 
 /* ── Carrusel productos ── */
@@ -293,13 +295,13 @@
 }
 
 .stadium-carousel__track {
-  --carousel-gap: 16px;
+  --carousel-gap: var(--space-4);
   display: flex;
   gap: var(--carousel-gap);
   width: max-content;
   min-width: 100%;
   margin: 0;
-  padding: 1rem 0;
+  padding: var(--space-4) 0;
   transform: translate3d(0, 0, 0); /* fuerza capa GPU del track */
   backface-visibility: hidden;
 }
@@ -311,9 +313,8 @@
   scroll-snap-align: start;
   background: #fff;
   border: 1px solid rgba(0, 0, 0, 0.06);
-  transform: translate3d(0, 0, 0); /* capa compuesta independiente por tarjeta */
+  transform: translate3d(0, 0, 0);
   backface-visibility: hidden;
-  will-change: transform;
 }
 
 .stadium-carousel__track .product-card:last-child {
@@ -323,7 +324,7 @@
 /* Tablet: 3 tarjetas visibles */
 @media (min-width: 768px) {
   .stadium-carousel__track {
-    --carousel-gap: 24px;
+    --carousel-gap: var(--space-6);
   }
 
   .stadium-carousel__track .product-card {
@@ -580,7 +581,12 @@ body.is-coleccion-filtrada .offer-marquee--alt {
   border-radius: var(--radius-pill);
   box-shadow: var(--box-shadow);
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition:
+    color var(--transition-base),
+    background-color var(--transition-base),
+    border-color var(--transition-base),
+    box-shadow var(--transition-base),
+    transform var(--transition-fast);
 }
 
 .btn-dropdown-trigger:hover {
@@ -673,7 +679,7 @@ body.is-coleccion-filtrada .offer-marquee--alt {
 .products-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
-  gap: 1.75rem;
+  gap: var(--space-7);
   max-width: var(--max-width);
   margin: 0 auto;
 }
@@ -741,7 +747,9 @@ body.is-coleccion-filtrada .offer-marquee--alt {
   overflow: hidden;
   box-shadow: none;
   /* Solo props compositables: evita reflow en hover/animación */
-  transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.3s ease;
+  transition:
+    transform var(--duration-base) var(--ease-out-premium),
+    opacity var(--duration-base) var(--ease-standard);
   transform: translate3d(0, 0, 0);
   backface-visibility: hidden;
 }
@@ -751,7 +759,7 @@ body.is-coleccion-filtrada .offer-marquee--alt {
   .product-card:focus-within {
     border-color: transparent;
     box-shadow: none;
-    transform: translate3d(0, 0, 0); /* mantiene la capa GPU en hover */
+    transform: translate3d(0, -4px, 0);
   }
 }
 
@@ -764,8 +772,9 @@ body.is-coleccion-filtrada .offer-marquee--alt {
 @media (hover: hover) and (pointer: fine) {
   .stadium-carousel__track .product-card:hover,
   .stadium-carousel__track .product-card:focus-within {
-    border-color: transparent;
+    border-color: rgba(0, 0, 0, 0.1);
     box-shadow: none;
+    transform: translate3d(0, -4px, 0);
   }
 }
 
@@ -931,14 +940,14 @@ body.is-coleccion-filtrada .offer-marquee--alt {
 
 .grilla-talles {
   display: flex;
-  gap: 10px;
+  gap: var(--space-3);
   flex-wrap: wrap;
-  margin: 15px 0;
+  margin: var(--space-4) 0;
 }
 
 .grilla-talles__label {
   flex: 1 1 100%;
-  margin-bottom: 0.25rem;
+  margin-bottom: var(--space-1);
   font-size: 0.6875rem;
   font-weight: var(--font-weight-semibold);
   letter-spacing: 0.1em;
@@ -951,12 +960,18 @@ body.is-coleccion-filtrada .offer-marquee--alt {
   border: 1.5px solid #e5e7eb;
   color: #000;
   font-weight: 700;
-  padding: 12px 20px;
-  min-width: 55px;
+  padding: var(--space-3) var(--space-5);
+  min-width: var(--touch-min);
+  min-height: var(--touch-min);
   text-align: center;
   cursor: pointer;
   border-radius: 4px;
-  transition: all 0.2s ease-in-out;
+  transition:
+    color var(--transition-fast),
+    background-color var(--transition-fast),
+    border-color var(--transition-fast),
+    transform var(--transition-fast),
+    opacity var(--transition-fast);
   font-size: 0.9rem;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
@@ -993,8 +1008,9 @@ body.is-coleccion-filtrada .offer-marquee--alt {
 
 .product-card__add-btn {
   width: 100%;
-  margin-top: 0.75rem;
-  padding: 0.8125rem 0.875rem;
+  margin-top: auto;
+  padding: var(--space-3) var(--space-4);
+  min-height: var(--touch-min);
   font-size: 0.625rem;
   font-weight: var(--font-weight-bold);
   letter-spacing: 0.1em;
@@ -1008,10 +1024,10 @@ body.is-coleccion-filtrada .offer-marquee--alt {
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
   transition:
-    transform 0.3s ease,
-    color 0.3s ease,
-    background-color 0.3s ease,
-    box-shadow 0.3s ease;
+    transform var(--transition-fast),
+    color var(--transition-base),
+    background-color var(--transition-base),
+    box-shadow var(--transition-base);
 }
 
 .product-card__add-btn:hover:not(:disabled) {
@@ -1059,14 +1075,15 @@ body.is-coleccion-filtrada .offer-marquee--alt {
   display: flex;
   flex-direction: column;
   flex: 1;
-  padding: 1rem 1rem 1.125rem;
+  padding: var(--space-4);
+  gap: var(--space-2);
 }
 
 .product-card__name {
-  margin-bottom: 0.5rem;
+  margin-bottom: 0;
   font-size: 0.875rem;
   font-weight: var(--font-weight-bold);
-  line-height: var(--line-height-relaxed);
+  line-height: 1.4;
   color: #111;
 }
 
@@ -1100,9 +1117,9 @@ body.is-coleccion-filtrada .offer-marquee--alt {
 .product-card__tech {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-2);
   margin-top: auto;
-  padding-top: 0.75rem;
+  padding-top: var(--space-3);
   border-top: 1px solid rgba(0, 0, 0, 0.08);
 }
 
@@ -1132,12 +1149,12 @@ body.is-coleccion-filtrada .offer-marquee--alt {
 /* ── Micro-interacciones del carrito ── */
 @keyframes bouncePop {
   0% { transform: scale(1); }
-  50% { transform: scale(1.3); }
+  45% { transform: scale(1.12); }
   100% { transform: scale(1); }
 }
 
 .cart-icon-animate {
-  animation: bouncePop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: bouncePop var(--duration-base) var(--ease-spring-soft);
   transform-origin: center;
 }
 
@@ -1161,13 +1178,13 @@ body.is-coleccion-filtrada .offer-marquee--alt {
 .skeleton-texto {
   background: #e5e7eb;
   border-radius: 4px;
-  margin-top: 10px;
+  margin-top: var(--space-3);
   position: relative;
   overflow: hidden;
 }
 
 .producto-card.skeleton .skeleton-texto {
-  margin-left: 1rem;
+  margin-left: var(--space-4);
 }
 
 .skeleton-titulo {
@@ -1178,7 +1195,7 @@ body.is-coleccion-filtrada .offer-marquee--alt {
 .skeleton-precio {
   height: 14px;
   width: 40%;
-  margin-top: 6px;
+  margin-top: var(--space-2);
 }
 
 .skeleton-imagen::after,
@@ -1214,18 +1231,18 @@ body.is-coleccion-filtrada .offer-marquee--alt {
 @keyframes productFadeIn {
   from {
     opacity: 0;
-    transform: translateY(14px);
+    transform: translate3d(0, 12px, 0);
   }
 
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translate3d(0, 0, 0);
   }
 }
 
 .product-card--fade-in {
   opacity: 0;
-  animation: productFadeIn 0.5s ease forwards;
+  animation: productFadeIn var(--duration-slow) var(--ease-out-premium) forwards;
 }
 
 .products-grid--loaded .product-card--fade-in {
@@ -1492,8 +1509,11 @@ body.is-coleccion-filtrada .offer-marquee--alt {
   text-transform: uppercase;
   cursor: pointer;
   transition:
-    background-color var(--transition-base, 0.2s ease),
-    transform var(--transition-base, 0.2s ease);
+    background-color var(--transition-base),
+    color var(--transition-base),
+    transform var(--transition-fast),
+    opacity var(--transition-fast),
+    box-shadow var(--transition-fast);
 }
 
 .product-detail-modal__add-btn:hover:not(:disabled) {
@@ -1508,6 +1528,7 @@ body.is-coleccion-filtrada .offer-marquee--alt {
   background: #d1d5db;
   color: #6b7280;
   cursor: not-allowed;
+  opacity: 0.9;
 }
 
 .product-detail-modal__add-btn.btn-success-soft {
@@ -1524,8 +1545,9 @@ body.is-coleccion-filtrada .offer-marquee--alt {
   font-weight: 500;
   color: #4b5563;
   cursor: pointer;
-  margin-top: 5px;
-  padding: 0;
+  margin-top: var(--space-1);
+  padding: var(--space-2) 0;
+  min-height: var(--touch-min);
   text-align: left;
   transition: color 0.2s ease;
 }
@@ -1563,13 +1585,15 @@ body.is-coleccion-filtrada .offer-marquee--alt {
   left: 50%;
   transform: translate(-50%, -50%) scale(0.9);
   background: #fff;
-  padding: 30px;
+  padding: var(--space-8);
   border-radius: 8px;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
   z-index: 2000;
   display: none;
   opacity: 0;
-  transition: all 0.3s ease-in-out;
+  transition:
+    opacity var(--transition-base),
+    transform var(--transition-base);
   width: 90%;
   max-width: 500px;
   max-height: 90dvh;
@@ -1584,13 +1608,13 @@ body.is-coleccion-filtrada .offer-marquee--alt {
 
 .modal-talles__cerrar {
   position: absolute;
-  top: 12px;
-  right: 12px;
+  top: var(--space-3);
+  right: var(--space-3);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2rem;
-  height: 2rem;
+  width: var(--touch-min);
+  height: var(--touch-min);
   padding: 0;
   border: none;
   border-radius: 999px;
@@ -1673,13 +1697,13 @@ body.is-coleccion-filtrada .offer-marquee--alt {
 .tabla-medidas {
   width: 100%;
   border-collapse: collapse;
-  margin-top: 15px;
+  margin-top: var(--space-4);
 }
 
 .tabla-medidas th,
 .tabla-medidas td {
   border: 1px solid #e5e7eb;
-  padding: 10px;
+  padding: var(--space-3);
   text-align: center;
   font-size: 0.9rem;
 }
@@ -1716,7 +1740,7 @@ body.is-coleccion-filtrada .offer-marquee--alt {
     width: 100%;
     max-width: none;
     max-height: 92dvh;
-    padding: 28px 20px 24px;
+    padding: var(--space-7) var(--space-5) var(--space-6);
     border-radius: 16px 16px 0 0;
     transform: translateY(100%);
   }
@@ -1728,7 +1752,7 @@ body.is-coleccion-filtrada .offer-marquee--alt {
 
 @media (max-width: 768px) {
   .carousel-container-wide {
-    padding: 0 16px;
+    padding: 0 var(--container-pad-x-sm);
   }
 
   .stadium-section {
@@ -1738,15 +1762,15 @@ body.is-coleccion-filtrada .offer-marquee--alt {
   .stadium-section__title {
     position: relative;
     z-index: 1;
-    margin-top: 30px;
-    margin-bottom: 25px;
-    padding: 0 1rem;
+    margin-top: var(--space-8);
+    margin-bottom: var(--space-6);
+    padding: 0 var(--space-4);
     transform: none;
   }
 
   .stadium-carousel {
-    padding-top: 16px;
-    padding-bottom: 16px;
+    padding-top: var(--space-4);
+    padding-bottom: var(--space-4);
   }
 
   .products-section {
@@ -1761,7 +1785,7 @@ body.is-coleccion-filtrada .offer-marquee--alt {
   .filtros-container {
     padding-inline: 0;
     margin-bottom: var(--space-md);
-    gap: 0.625rem;
+    gap: var(--space-3);
   }
 
   .store-section {
@@ -1769,11 +1793,11 @@ body.is-coleccion-filtrada .offer-marquee--alt {
   }
 
   .products-grid {
-    gap: 1.125rem;
+    gap: var(--space-5);
   }
 
   .product-card__info {
-    padding: 0.875rem 0.875rem 1rem;
+    padding: var(--space-3) var(--space-3) var(--space-4);
   }
 
   .product-card__image-wrapper,
@@ -1782,8 +1806,8 @@ body.is-coleccion-filtrada .offer-marquee--alt {
   }
 
   .stadium-carousel__track {
-    gap: var(--carousel-gap, 16px);
-    padding: 1rem 0;
+    gap: var(--carousel-gap, var(--space-4));
+    padding: var(--space-4) 0;
     scroll-padding-inline: 0;
   }
 
@@ -1795,7 +1819,7 @@ body.is-coleccion-filtrada .offer-marquee--alt {
   .product-detail-modal__dialog {
     grid-template-columns: 1fr;
     max-height: 92dvh;
-    padding-bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(var(--space-6) + env(safe-area-inset-bottom, 0px));
   }
 
   .products-section {

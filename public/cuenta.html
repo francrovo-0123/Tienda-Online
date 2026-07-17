@@ -8,10 +8,10 @@
   <link rel="icon" href="/favicon.ico" sizes="32x32">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/favicon.png">
-  <link rel="stylesheet" href="css/global.css?v=3.17">
-  <link rel="stylesheet" href="css/header.css?v=6.5">
-  <link rel="stylesheet" href="css/cart.css?v=2.5">
-  <link rel="stylesheet" href="css/cuenta.css?v=1.1">
+  <link rel="stylesheet" href="css/global.css?v=5.0">
+  <link rel="stylesheet" href="css/header.css?v=7.0">
+  <link rel="stylesheet" href="css/cart.css?v=3.2">
+  <link rel="stylesheet" href="css/cuenta.css?v=1.2">
   <link rel="stylesheet" href="css/footer.css?v=3.2">
 </head>
 <body data-page="cuenta">
@@ -356,7 +356,7 @@
     </div>
   </footer>
 
-  <div class="auth-modal" id="auth-modal" aria-hidden="true">
+  <div class="auth-modal" id="auth-modal" aria-hidden="true" inert>
     <div class="auth-modal__overlay" id="auth-modal-overlay"></div>
     <div class="auth-modal__card" role="dialog" aria-labelledby="auth-modal-title" aria-modal="true">
       <button class="auth-modal__close" id="auth-modal-close" type="button" aria-label="Cerrar">
@@ -420,7 +420,7 @@
               </div>
               <div class="auth-form__field auth-form__field--exclusive">
                 <label for="auth-registro-password" class="auth-form__label">Nueva contraseña</label>
-                <input type="password" id="auth-registro-password" class="auth-form__input" required autocomplete="new-password" placeholder="Mínimo 8 caracteres" minlength="8">
+                <input type="password" id="auth-registro-password" class="auth-form__input" required autocomplete="new-password" placeholder="Mín. 8 caracteres, letra y número" minlength="8">
               </div>
               <p class="auth-form__error hidden" id="auth-registro-error">Este email ya está registrado.</p>
               <button type="submit" class="auth-form__submit">Continuar</button>
@@ -455,6 +455,6 @@
   </div>
 
   <script src="js/api.js"></script>
-  <script src="js/app.js?v=12.5"></script>
+  <script src="js/app.js?v=13.3"></script>
 </body>
 </html>

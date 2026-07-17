@@ -6,10 +6,10 @@
 .footer-nav {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: var(--space-1);
   max-width: var(--max-width);
   margin: 0 auto;
-  padding: 2.5rem 1.25rem 1.5rem;
+  padding: var(--space-10) var(--space-5) var(--space-6);
 }
 
 .footer-nav a {
@@ -41,15 +41,15 @@
   .footer-nav {
     flex-direction: row;
     flex-wrap: wrap;
-    gap: 1.25rem 2rem;
-    padding: 3rem 2rem 1.75rem;
+    gap: var(--space-5) var(--space-8);
+    padding: var(--space-12) var(--space-8) var(--space-7);
   }
 
   .footer-inner {
     grid-template-columns: 1.4fr 1fr 1fr 1.2fr;
-    gap: 2rem;
+    gap: var(--space-8);
     align-items: start;
-    padding-inline: 2rem;
+    padding-inline: var(--space-8);
   }
 }
 

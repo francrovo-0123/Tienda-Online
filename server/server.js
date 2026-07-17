@@ -7,6 +7,8 @@ require('dotenv').config({ path: path.join(__dirname, '.env') });
 const crypto = require('crypto');
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 const fs = require('fs');
 const multer = require('multer');
@@ -14,6 +16,7 @@ const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const { spawn } = require('child_process');
+const { v2: cloudinary } = require('cloudinary');
 const { MercadoPagoConfig, Preference, Payment } = require('mercadopago');
 const {
   verificarConexionSmtp,
@@ -27,13 +30,27 @@ const {
 const app = express();
 const PORT = 3000;
 const JWT_SECRET = process.env.JWT_SECRET;
+const BCRYPT_ROUNDS = 12;
+const JWT_ALGORITHMS = ['HS256'];
+const JWT_EXPIRA_ADMIN = '2h';
+const JWT_EXPIRA_CLIENTE = '7d';
+const EXPIRA_TRANSFERENCIA_MS = 48 * 60 * 60 * 1000;
+const MIME_IMAGENES_PERMITIDAS = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+]);
+const EXT_IMAGENES_POR_MIME = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+  'image/gif': '.gif',
+};
 
 if (!JWT_SECRET || JWT_SECRET.length < 32) {
   console.error('FATAL: JWT_SECRET no está definido o tiene menos de 32 caracteres. El servidor no puede iniciarse de forma segura.');
-  // En local abortamos; en Vercel dejamos que el runtime reporte el error por request.
-  if (!process.env.VERCEL) {
-    process.exit(1);
-  }
+  process.exit(1);
 }
 
 function logError(contexto, error, meta = {}) {
@@ -65,7 +82,26 @@ const MP_ACCESS_TOKEN = String(process.env.MP_ACCESS_TOKEN || '').trim();
 const MP_SANDBOX = String(process.env.MP_SANDBOX || '').toLowerCase() === 'true';
 /** Secret de firma de webhooks (panel MP → Webhooks → Configurar notificaciones). */
 const MP_WEBHOOK_SECRET = String(process.env.MP_WEBHOOK_SECRET || '').trim();
+const CLOUDINARY_API_KEY = String(process.env.CLOUDINARY_API_KEY || '').trim();
+const CLOUDINARY_API_SECRET = String(process.env.CLOUDINARY_API_SECRET || '').trim();
 const USE_NGROK = String(process.env.USE_NGROK || '').toLowerCase() === 'true';
+const COOKIE_AUTH_ADMIN = 'js_admin_token';
+const COOKIE_AUTH_CLIENTE = 'js_cliente_token';
+const ES_PRODUCCION = Boolean(process.env.VERCEL) || process.env.NODE_ENV === 'production';
+
+if (CLOUDINARY_CLOUD_NAME && CLOUDINARY_API_KEY && CLOUDINARY_API_SECRET) {
+  cloudinary.config({
+    cloud_name: CLOUDINARY_CLOUD_NAME,
+    api_key: CLOUDINARY_API_KEY,
+    api_secret: CLOUDINARY_API_SECRET,
+    secure: true,
+  });
+} else if (ES_PRODUCCION && CLOUDINARY_CLOUD_NAME) {
+  console.warn(
+    '=> Seguridad: en producción faltan CLOUDINARY_API_KEY/SECRET. '
+    + 'Las subidas firmadas no estarán disponibles y el preset unsigned no se expone.'
+  );
+}
 const NGROK_AUTHTOKEN = String(process.env.NGROK_AUTHTOKEN || '').trim();
 
 function resolverNgrokBin() {
@@ -114,18 +150,25 @@ const ESTADOS_VENTA_VALIDA = ['listo_empaquetar', 'despachado', 'entregado'];
 const ESTADOS_PEDIDO_ACTIVO = ['pendiente_pago', 'listo_empaquetar'];
 
 /**
- * [ALTO-02] CORS restringido a la URL oficial de la tienda (APP_BASE_URL).
- * Sin Origin (cron, webhooks server-to-server, herramientas) se permite;
- * orígenes de navegador distintos al de la tienda se rechazan.
+ * CORS: APP_BASE_URL + ALLOWED_ORIGINS (lista separada por comas).
+ * Sin Origin (cron, webhooks server-to-server) se permite;
+ * orígenes de navegador no listados se rechazan.
  * APP_BASE_URL puede actualizarse en runtime (p. ej. ngrok).
  */
+function listaOrigenesPermitidos() {
+  const base = String(APP_BASE_URL || '').replace(/\/$/, '');
+  const extras = String(process.env.ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((o) => String(o || '').trim().replace(/\/$/, ''))
+    .filter(Boolean);
+
+  return new Set([base, ...extras].filter(Boolean));
+}
+
 function origenPermitido(origin) {
   if (!origin) return true;
-
-  const permitido = String(APP_BASE_URL || '').replace(/\/$/, '');
   const solicitado = String(origin).replace(/\/$/, '');
-
-  return Boolean(permitido) && solicitado === permitido;
+  return listaOrigenesPermitidos().has(solicitado);
 }
 
 app.use(cors({
@@ -139,8 +182,39 @@ app.use(cors({
   credentials: true,
 }));
 
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
+app.use(helmet({
+  contentSecurityPolicy: {
+    useDefaults: true,
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", 'https://cdn.jsdelivr.net', 'https://sdk.mercadopago.com'],
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+      fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
+      imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
+      connectSrc: [
+        "'self'",
+        'https://api.cloudinary.com',
+        'https://api.mercadopago.com',
+        'https://sdk.mercadopago.com',
+      ],
+      frameSrc: ["'self'", 'https://www.mercadopago.com', 'https://www.mercadopago.com.ar'],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+      frameAncestors: ["'none'"],
+      ...(process.env.NODE_ENV === 'production' || process.env.VERCEL
+        ? { upgradeInsecureRequests: [] }
+        : {}),
+    },
+  },
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+}));
+
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+app.use(cookieParser());
 
 // Confiar en el primer proxy (Vercel, Cloudflare, Nginx) para leer la IP real del cliente.
 // Sin esto, express-rate-limit vería la IP del proxy y podría bloquear a muchos usuarios a la vez.
@@ -171,6 +245,90 @@ const limitadorContacto = rateLimit({
   legacyHeaders: false,
   message: { error: 'Demasiados mensajes. Esperá unos minutos e intentá de nuevo.' },
 });
+
+const limitadorCheckout = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiados intentos de compra. Esperá unos minutos e intentá de nuevo.' },
+});
+
+const limitadorPassword = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiados cambios de contraseña. Esperá un rato e intentá de nuevo.' },
+});
+
+/** Techo general anti-abuso sobre /api (los limitadores de ruta siguen aplicando). */
+const limitadorApiGeneral = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 600,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiadas solicitudes. Esperá unos minutos e intentá de nuevo.' },
+});
+
+app.use('/api/', limitadorApiGeneral);
+
+/**
+ * CSRF defense-in-depth: peticiones mutantes autenticadas por cookie deben
+ * venir de un Origin/Referer permitido. Webhooks/cron y Bearer puro no aplican.
+ */
+function verificarOrigenMutacion(req, res, next) {
+  const metodo = String(req.method || '').toUpperCase();
+  if (metodo === 'GET' || metodo === 'HEAD' || metodo === 'OPTIONS') {
+    return next();
+  }
+
+  const ruta = String(req.path || '');
+  if (ruta.startsWith('/api/webhooks/') || ruta.startsWith('/api/cron/')) {
+    return next();
+  }
+
+  const tieneCookieAuth = Boolean(
+    req.cookies?.[COOKIE_AUTH_ADMIN] || req.cookies?.[COOKIE_AUTH_CLIENTE]
+  );
+  if (!tieneCookieAuth) {
+    return next();
+  }
+
+  const origin = String(req.get('Origin') || '').trim();
+  if (origin && origenPermitido(origin)) {
+    return next();
+  }
+
+  const referer = String(req.get('Referer') || '').trim();
+  if (referer) {
+    try {
+      const refOrigin = new URL(referer).origin;
+      if (origenPermitido(refOrigin)) {
+        return next();
+      }
+    } catch {
+      // Referer malformado → rechazar abajo.
+    }
+  }
+
+  return res.status(403).json({ error: 'Origen de la petición no permitido.' });
+}
+
+app.use(verificarOrigenMutacion);
+
+function esUrlHttpSegura(valor, { permitirVacio = true } = {}) {
+  const url = String(valor || '').trim();
+  if (!url) return permitirVacio;
+  try {
+    const parsed = new URL(url, APP_BASE_URL);
+    if (parsed.protocol === 'https:') return true;
+    if (parsed.protocol === 'http:' && esHostLocal(parsed.href)) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -224,7 +382,8 @@ const almacenamientoBanners = multer.diskStorage({
     cb(null, BANNERS_DIR);
   },
   filename(_req, file, cb) {
-    const ext = path.extname(file.originalname || '').toLowerCase() || '.jpg';
+    const mime = String(file.mimetype || '').toLowerCase();
+    const ext = EXT_IMAGENES_POR_MIME[mime] || '.jpg';
     const indexRaw = _req.body?.index ?? _req.body?.slot;
     const index = String(indexRaw ?? 'x').replace(/\D/g, '');
     cb(null, `banner-${index || 'x'}-${Date.now()}${ext}`);
@@ -235,8 +394,9 @@ const uploadBanner = multer({
   storage: almacenamientoBanners,
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter(_req, file, cb) {
-    if (!file.mimetype || !file.mimetype.startsWith('image/')) {
-      cb(new Error('Solo se permiten archivos de imagen.'));
+    const mime = String(file.mimetype || '').toLowerCase();
+    if (!MIME_IMAGENES_PERMITIDAS.has(mime)) {
+      cb(new Error('Solo se permiten JPEG, PNG, WebP o GIF.'));
       return;
     }
     cb(null, true);
@@ -264,8 +424,16 @@ const CATEGORIAS_TIPO_PRODUCTO = ['ropa', 'calzado'];
 const GENEROS_PERMITIDOS = ['hombre', 'mujer', 'ninos'];
 /** Estados del panel de administración (flujo de fulfillment). */
 const ESTADOS_PEDIDO = ['pendiente_pago', 'listo_empaquetar', 'despachado', 'entregado'];
-/** Incluye cancelado para expiración / rechazo de Mercado Pago. */
+/** Incluye cancelado para expiración / rechazo de Mercado Pago / cancelación admin. */
 const ESTADOS_PEDIDO_SCHEMA = [...ESTADOS_PEDIDO, 'cancelado'];
+/** Transiciones permitidas en /api/pedidos/cambiar-estado. */
+const TRANSICIONES_ESTADO_PEDIDO = {
+  pendiente_pago: ['listo_empaquetar', 'cancelado'],
+  listo_empaquetar: ['despachado', 'pendiente_pago', 'cancelado'],
+  despachado: ['entregado', 'listo_empaquetar'],
+  entregado: [],
+  cancelado: [],
+};
 const ESTADO_PEDIDO_INICIAL = 'pendiente_pago';
 const ESTADO_PEDIDO_MP_PENDIENTE = 'pendiente_pago';
 const ESTADOS_PEDIDO_LEGACY = {
@@ -432,6 +600,8 @@ const usuarioSchema = new mongoose.Schema({
     emailsPromos: { type: Boolean, default: true },
     emailsPedidos: { type: Boolean, default: true },
   },
+  /** Incrementar invalida JWTs/cookies emitidos antes (logout global / cambio de password). */
+  tokenVersion: { type: Number, default: 0 },
 });
 
 const registroPendienteSchema = new mongoose.Schema({
@@ -439,6 +609,7 @@ const registroPendienteSchema = new mongoose.Schema({
   password: { type: String, required: true },
   codigoVerificacion: { type: String, required: true },
   codigoVerificacionExpira: { type: Date, required: true },
+  intentosFallidos: { type: Number, default: 0 },
   creadoEn: { type: Date, default: Date.now },
 });
 
@@ -581,8 +752,7 @@ function validarDatosEntregaCliente(cliente = {}) {
 }
 
 function generarIdPedido() {
-  const numero = Math.floor(1000 + Math.random() * 9000);
-  return `#PED-${numero}`;
+  return `#PED-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
 }
 
 /** Número corto y amigable (ej: "1001") mediante contador atómico en MongoDB. */
@@ -648,39 +818,133 @@ async function notificarConfirmacionCompraSegura(pedido, usuario) {
   }
 }
 
+function opcionesCookieAuth({ admin = false } = {}) {
+  const maxAgeMs = admin
+    ? 2 * 60 * 60 * 1000
+    : 7 * 24 * 60 * 60 * 1000;
+
+  return {
+    httpOnly: true,
+    secure: ES_PRODUCCION,
+    // Admin: Strict reduce CSRF. Cliente: Lax permite volver de Mercado Pago con cookie.
+    sameSite: admin ? 'strict' : 'lax',
+    path: '/',
+    maxAge: maxAgeMs,
+  };
+}
+
+function opcionesClearCookie({ admin = false } = {}) {
+  return {
+    path: '/',
+    httpOnly: true,
+    secure: ES_PRODUCCION,
+    sameSite: admin ? 'strict' : 'lax',
+  };
+}
+
+function establecerCookiesAuth(res, token, rol) {
+  const esAdminRol = rol === 'admin';
+  const nombre = esAdminRol ? COOKIE_AUTH_ADMIN : COOKIE_AUTH_CLIENTE;
+  const otra = esAdminRol ? COOKIE_AUTH_CLIENTE : COOKIE_AUTH_ADMIN;
+
+  res.cookie(nombre, token, opcionesCookieAuth({ admin: esAdminRol }));
+  res.clearCookie(otra, opcionesClearCookie({ admin: !esAdminRol }));
+}
+
+function limpiarCookiesAuth(res) {
+  res.clearCookie(COOKIE_AUTH_ADMIN, opcionesClearCookie({ admin: true }));
+  res.clearCookie(COOKIE_AUTH_CLIENTE, opcionesClearCookie({ admin: false }));
+}
+
+/** Política de contraseña: longitud + letra + número (sin romper cuentas existentes al login). */
+function validarPoliticaPassword(password) {
+  const pwd = String(password || '');
+  if (pwd.length < 8) {
+    return 'La contraseña debe tener al menos 8 caracteres.';
+  }
+  if (pwd.length > 128) {
+    return 'La contraseña es demasiado larga.';
+  }
+  if (!/[A-Za-zÁÉÍÓÚÜáéíóúüÑñ]/.test(pwd) || !/\d/.test(pwd)) {
+    return 'La contraseña debe incluir al menos una letra y un número.';
+  }
+  return null;
+}
+
+function extraerTokenPeticion(req) {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    return authHeader.slice(7);
+  }
+
+  const cookieAdmin = req.cookies?.[COOKIE_AUTH_ADMIN];
+  const cookieCliente = req.cookies?.[COOKIE_AUTH_CLIENTE];
+  return cookieAdmin || cookieCliente || null;
+}
+
 function generarTokenAdmin(usuario) {
   return jwt.sign(
-    { email: usuario.email, rol: usuario.rol },
+    {
+      email: usuario.email,
+      rol: usuario.rol,
+      tv: Number(usuario.tokenVersion) || 0,
+    },
     JWT_SECRET,
-    { expiresIn: '7d' }
+    { expiresIn: JWT_EXPIRA_ADMIN, algorithm: 'HS256' }
   );
 }
 
 function generarTokenCliente(usuario) {
   return jwt.sign(
-    { email: usuario.email, rol: 'cliente' },
+    {
+      email: usuario.email,
+      rol: 'cliente',
+      tv: Number(usuario.tokenVersion) || 0,
+    },
     JWT_SECRET,
-    { expiresIn: '7d' }
+    { expiresIn: JWT_EXPIRA_CLIENTE, algorithm: 'HS256' }
   );
 }
 
-function verificarJWT(req, res, next) {
-  const authHeader = req.headers.authorization;
+async function validarPayloadAuth(payload) {
+  if (!payload || typeof payload !== 'object' || !payload.email || !payload.rol) {
+    return null;
+  }
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  const usuario = await Usuario.findOne({ email: normalizarEmail(payload.email) })
+    .select('email rol verificado tokenVersion')
+    .lean();
+
+  if (!usuario) return null;
+  if (usuario.rol !== 'admin' && usuario.verificado === false) return null;
+
+  const tvActual = Number(usuario.tokenVersion) || 0;
+  const tvToken = Number(payload.tv) || 0;
+  if (tvActual !== tvToken) return null;
+
+  return {
+    email: usuario.email,
+    rol: usuario.rol,
+    tv: tvActual,
+  };
+}
+
+async function verificarJWT(req, res, next) {
+  const token = extraerTokenPeticion(req);
+
+  if (!token) {
     return res.status(401).json({ error: 'Acceso denegado. Se requiere autenticación.' });
   }
 
-  const token = authHeader.slice(7);
-
   try {
-    const payload = jwt.verify(token, JWT_SECRET);
+    const payload = jwt.verify(token, JWT_SECRET, { algorithms: JWT_ALGORITHMS });
+    const usuario = await validarPayloadAuth(payload);
 
-    if (!payload || typeof payload !== 'object' || !payload.email || !payload.rol) {
+    if (!usuario || usuario.rol !== 'admin') {
       return res.status(403).json({ error: 'Token inválido.' });
     }
 
-    req.usuario = payload;
+    req.usuario = usuario;
     next();
   } catch (error) {
     logError('JWT_VERIFICACION', error, { ruta: req.path, metodo: req.method });
@@ -691,24 +955,22 @@ function verificarJWT(req, res, next) {
   }
 }
 
-function verificarClienteJWT(req, res, next) {
-  const authHeader = req.headers.authorization;
+async function verificarClienteJWT(req, res, next) {
+  const token = extraerTokenPeticion(req);
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  if (!token) {
     return res.status(401).json({ error: 'Acceso denegado. Se requiere autenticación.' });
   }
 
-  const token = authHeader.slice(7);
-
   try {
-    const payload = jwt.verify(token, JWT_SECRET);
-    const rol = payload?.rol;
+    const payload = jwt.verify(token, JWT_SECRET, { algorithms: JWT_ALGORITHMS });
+    const usuario = await validarPayloadAuth(payload);
 
-    if (rol !== 'cliente' && rol !== 'admin') {
+    if (!usuario || (usuario.rol !== 'cliente' && usuario.rol !== 'admin')) {
       return res.status(403).json({ error: 'Acceso denegado.' });
     }
 
-    req.usuario = payload;
+    req.usuario = usuario;
     next();
   } catch (error) {
     logError('JWT_CLIENTE', error, { ruta: req.path, metodo: req.method });
@@ -731,6 +993,38 @@ function esAdmin(req, res, next) {
 }
 
 const verificarAdminJWT = [verificarJWT, esAdmin];
+
+function detectarMimeImagenPorMagicBytes(buffer) {
+  if (!buffer || buffer.length < 12) return null;
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return 'image/jpeg';
+  if (
+    buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47
+  ) return 'image/png';
+  if (
+    buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x38
+  ) return 'image/gif';
+  if (
+    buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46
+    && buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50
+  ) return 'image/webp';
+  return null;
+}
+
+function validarArchivoImagenSubido(rutaArchivo, mimeDeclarado) {
+  const buffer = fs.readFileSync(rutaArchivo);
+  const mimeReal = detectarMimeImagenPorMagicBytes(buffer);
+  if (!mimeReal || !MIME_IMAGENES_PERMITIDAS.has(mimeReal)) {
+    return { ok: false, error: 'El archivo no es una imagen JPEG, PNG, WebP o GIF válida.' };
+  }
+  if (mimeDeclarado && mimeDeclarado !== mimeReal) {
+    // Permitimos mismatch leve jpeg/jpg; rechazamos spoofing grave.
+    const jpegPair = mimeDeclarado === 'image/jpeg' && mimeReal === 'image/jpeg';
+    if (!jpegPair && mimeDeclarado !== mimeReal) {
+      return { ok: false, error: 'El tipo de archivo no coincide con su contenido.' };
+    }
+  }
+  return { ok: true, mime: mimeReal };
+}
 
 function sanitizarUsuario(usuario) {
   const datos = usuario.toObject ? usuario.toObject() : usuario;
@@ -1698,12 +1992,23 @@ function obtenerConfiguracionDesdeEnv() {
 
 function formatearConfiguracion(config) {
   const datos = config?.toObject ? config.toObject() : config || {};
+  const cloudName = String(datos.cloudinaryCloudName || CLOUDINARY_CLOUD_NAME || '').trim();
+  const firmado = Boolean(cloudName && CLOUDINARY_API_KEY && CLOUDINARY_API_SECRET);
+  const presetUnsigned = String(
+    datos.cloudinaryUploadPreset || CLOUDINARY_UPLOAD_PRESET || ''
+  ).trim();
+
+  // En producción no exponemos preset unsigned (abuso de subidas). Solo firmado o vacío.
+  const cloudinaryUploadPreset = firmado
+    ? ''
+    : (ES_PRODUCCION ? '' : presetUnsigned);
 
   return {
     nombreTienda: String(datos.nombreTienda || NOMBRE_TIENDA_DEFECTO || 'Jersey Store').trim(),
     whatsappNumero: String(datos.whatsappNumero || '').replace(/^\+/, '').trim(),
-    cloudinaryCloudName: String(datos.cloudinaryCloudName || '').trim(),
-    cloudinaryUploadPreset: String(datos.cloudinaryUploadPreset || '').trim(),
+    cloudinaryCloudName: cloudName,
+    cloudinaryUploadPreset,
+    cloudinaryFirmado: firmado,
     afipLink: String(datos.afipLink || '').trim(),
   };
 }
@@ -1843,6 +2148,7 @@ async function inicializarConfiguracion() {
 async function inicializarAdministrador() {
   const email = normalizarEmail(process.env.ADMIN_INICIAL_EMAIL);
   const password = String(process.env.ADMIN_INICIAL_PASS || '');
+  const forzarReset = String(process.env.ADMIN_FORCE_RESET || '').toLowerCase() === 'true';
   const adminExistente = await Usuario.findOne({ rol: 'admin' });
 
   if (!email || !password) {
@@ -1863,6 +2169,17 @@ async function inicializarAdministrador() {
       return;
     }
 
+    // Por defecto NUNCA sobrescribir credenciales de un admin ya existente.
+    // Solo con ADMIN_FORCE_RESET=true (y luego quitarlo del .env).
+    if (!forzarReset) {
+      console.log(`=> Base de datos lista: Administrador verificado (${adminExistente.email}).`);
+      console.warn(
+        '=> ADMIN_INICIAL_* difiere del admin en DB. No se sobrescribe. '
+        + 'Definí ADMIN_FORCE_RESET=true solo si querés resetear, y sacalo después.'
+      );
+      return;
+    }
+
     if (!emailCoincide) {
       const emailOcupado = await Usuario.findOne({
         email,
@@ -1878,12 +2195,14 @@ async function inicializarAdministrador() {
     }
 
     adminExistente.email = email;
-    adminExistente.password = await bcrypt.hash(password, 10);
+    adminExistente.password = await bcrypt.hash(password, BCRYPT_ROUNDS);
     adminExistente.rol = 'admin';
     adminExistente.verificado = true;
+    adminExistente.tokenVersion = (Number(adminExistente.tokenVersion) || 0) + 1;
     await adminExistente.save();
 
-    console.log(`=> Éxito: Credenciales de administrador actualizadas desde .env (${email}).`);
+    console.log(`=> Éxito: Credenciales de administrador reseteadas con ADMIN_FORCE_RESET (${email}).`);
+    console.warn('=> Importante: quitá ADMIN_FORCE_RESET del .env ahora.');
     return;
   }
 
@@ -1895,7 +2214,7 @@ async function inicializarAdministrador() {
     return;
   }
 
-  const passwordHasheada = await bcrypt.hash(password, 10);
+  const passwordHasheada = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
   await new Usuario({
     email,
@@ -2216,25 +2535,11 @@ async function validarItemsYReservarStock(items) {
     const actualizado = await Producto.findOneAndUpdate(filtro, update, { new: true });
 
     if (!actualizado) {
-      const productoActual = await Producto.findById(productoIdStr);
-      const usaPorTalle = documentoTrackeaStockPorTalle(productoActual?.stockTalles);
-      const disponible = talle && usaPorTalle
-        ? leerStockDeTalle(productoActual?.stockTalles, talle)
-        : normalizarStock(productoActual?.stock ?? 0);
-      const nombreProducto = linea?.producto?.nombre || productoActual?.nombre || 'Producto';
-
       await revertirDecrementosStock(decrementosRealizados);
 
-      if (productoActual?.activo === false || disponible <= 0) {
-        return {
-          error: `No hay unidades disponibles de «${nombreProducto}»${talle ? ` (talle ${talle})` : ''}.`,
-          status: 400,
-        };
-      }
-
       return {
-        error: `Stock insuficiente para «${nombreProducto}»${talle ? ` (talle ${talle})` : ''}. Disponible: ${disponible}, solicitado: ${cantidad}.`,
-        status: 400,
+        error: `Lo sentimos, el producto ${linea.producto.nombre} en talle ${talle || 'único'} se agotó debido a una compra simultánea.`,
+        status: 409,
       };
     }
 
@@ -2744,6 +3049,33 @@ app.get('/api/config', async (_req, res) => {
   }
 });
 
+app.post('/api/admin/cloudinary-firma', verificarAdminJWT, async (req, res) => {
+  try {
+    if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_API_KEY || !CLOUDINARY_API_SECRET) {
+      return res.status(503).json({
+        error: 'Subida firmada no configurada. Definí CLOUDINARY_API_KEY y CLOUDINARY_API_SECRET.',
+      });
+    }
+
+    const timestamp = Math.round(Date.now() / 1000);
+    const folder = 'jerseys-store/productos';
+    const paramsToSign = { timestamp, folder };
+    const signature = cloudinary.utils.api_sign_request(paramsToSign, CLOUDINARY_API_SECRET);
+
+    res.json({
+      ok: true,
+      cloudName: CLOUDINARY_CLOUD_NAME,
+      apiKey: CLOUDINARY_API_KEY,
+      timestamp,
+      folder,
+      signature,
+    });
+  } catch (error) {
+    logError('CLOUDINARY_FIRMA', error);
+    res.status(500).json({ error: 'No se pudo generar la firma de subida.' });
+  }
+});
+
 app.put('/api/config', verificarJWT, esAdmin, async (req, res) => {
   try {
     const nombreTienda = String(req.body?.nombreTienda || '').trim();
@@ -2758,6 +3090,10 @@ app.put('/api/config', verificarJWT, esAdmin, async (req, res) => {
 
     if (!whatsappNumero) {
       return res.status(400).json({ error: 'El número de WhatsApp es obligatorio.' });
+    }
+
+    if (afipLink && !esUrlHttpSegura(afipLink, { permitirVacio: false })) {
+      return res.status(400).json({ error: 'El enlace AFIP debe ser una URL http(s) válida.' });
     }
 
     let config = await Configuracion.findOne();
@@ -2827,7 +3163,20 @@ app.post('/api/admin/banners', verificarAdminJWT, (req, res) => {
         return res.status(400).json({ error: 'Debés subir una imagen para el banner.' });
       }
 
-      const enlace = String(req.body?.enlace || '').trim();
+      const validacionArchivo = validarArchivoImagenSubido(req.file.path, req.file.mimetype);
+      if (!validacionArchivo.ok) {
+        if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        return res.status(400).json({ error: validacionArchivo.error });
+      }
+
+      const enlaceRaw = String(req.body?.enlace || '').trim();
+      if (enlaceRaw && !esUrlHttpSegura(enlaceRaw, { permitirVacio: false })) {
+        if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        return res.status(400).json({
+          error: 'El enlace del banner debe ser una URL http(s) válida.',
+        });
+      }
+      const enlace = enlaceRaw;
       const titulo = String(req.body?.titulo || '').trim();
       const imagenUrl = `/images/banners/${req.file.filename}`;
       const banners = obtenerBannersActuales();
@@ -2872,6 +3221,11 @@ app.post('/api/admin/banners/link', verificarAdminJWT, (req, res) => {
     }
 
     const enlace = String(req.body?.enlace || req.body?.link || '').trim();
+    if (enlace && !esUrlHttpSegura(enlace, { permitirVacio: false })) {
+      return res.status(400).json({
+        error: 'El enlace del banner debe ser una URL http(s) válida.',
+      });
+    }
     const titulo = req.body?.titulo !== undefined
       ? String(req.body.titulo || '').trim()
       : undefined;
@@ -3176,27 +3530,28 @@ app.delete('/api/secciones/:id', verificarAdminJWT, async (req, res) => {
 
 // ── Productos ──
 
-// Catálogo público. ?todos=true expone inactivos → solo admin JWT (antes era público).
+// Catálogo público. ?todos=true expone inactivos → solo admin (cookie HttpOnly o Bearer).
 app.get('/api/productos', async (req, res) => {
   try {
     const incluirInactivos = req.query.todos === 'true';
 
     if (incluirInactivos) {
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      const token = extraerTokenPeticion(req);
+      if (!token) {
         return res.status(401).json({
           error: 'Acceso denegado. Se requiere autenticación de administrador.',
         });
       }
 
       try {
-        const payload = jwt.verify(authHeader.slice(7), JWT_SECRET);
-        if (payload?.rol !== 'admin') {
+        const payload = jwt.verify(token, JWT_SECRET, { algorithms: JWT_ALGORITHMS });
+        const auth = await validarPayloadAuth(payload);
+        if (!auth || auth.rol !== 'admin') {
           return res.status(403).json({
             error: 'Acceso denegado. Se requiere rol de administrador.',
           });
         }
-        req.usuario = payload;
+        req.usuario = auth;
       } catch (error) {
         if (error?.name === 'TokenExpiredError') {
           return res.status(401).json({ error: 'Tu sesión expiró. Volvé a iniciar sesión.' });
@@ -3246,7 +3601,7 @@ app.get('/api/productos', async (req, res) => {
 
 app.get('/api/productos/buscar', async (req, res) => {
   try {
-    const consulta = String(req.query.q || '').trim();
+    const consulta = String(req.query.q || '').trim().slice(0, 80);
 
     if (consulta.length < 2) {
       return res.json([]);
@@ -3490,7 +3845,7 @@ app.post('/api/productos', verificarAdminJWT, async (req, res) => {
     }
 
     const nuevoProducto = await new Producto({
-      nombre: String(nombre).trim(),
+      nombre: String(nombre).trim().slice(0, 200),
       precio: precioNumerico,
       precioOferta: precioOfertaNormalizado,
       destacado: parsearBooleano(req.body.destacado),
@@ -3503,7 +3858,7 @@ app.post('/api/productos', verificarAdminJWT, async (req, res) => {
       stock,
       stockTalles: encodeStockTallesParaDB(stockTalles),
       talles,
-      descripcion: String(descripcion || '').trim(),
+      descripcion: String(descripcion || '').trim().slice(0, 5000),
       tablaMedidas: tablaMedidasNormalizada,
     }).save();
 
@@ -3534,7 +3889,7 @@ app.put('/api/productos/:id', verificarAdminJWT, async (req, res) => {
     const precioOfertaNormalizado = normalizarPrecioOferta(ofertaRaw, precioNumerico);
 
     const actualizacion = {
-      nombre: String(nombre).trim(),
+      nombre: String(nombre).trim().slice(0, 200),
       precio: precioNumerico,
       precioOferta: precioOfertaNormalizado,
       categoria: categoriaNombre,
@@ -3545,7 +3900,7 @@ app.put('/api/productos/:id', verificarAdminJWT, async (req, res) => {
       stock,
       stockTalles: encodeStockTallesParaDB(stockTalles),
       talles,
-      descripcion: String(descripcion || '').trim(),
+      descripcion: String(descripcion || '').trim().slice(0, 5000),
       tablaMedidas: tablaMedidasNormalizada,
     };
 
@@ -3621,10 +3976,17 @@ app.get('/api/pedidos/mios', verificarClienteJWT, async (req, res) => {
   }
 });
 
-app.post('/api/pedidos', verificarClienteJWT, async (req, res) => {
+app.post('/api/pedidos', limitadorCheckout, verificarClienteJWT, async (req, res) => {
   try {
     const { cliente, items, metodoPago } = req.body;
     const email = normalizarEmail(req.usuario.email);
+
+    // Solo transferencia por este endpoint. Mercado Pago va por /api/pagar + webhook.
+    if (!esMetodoPagoTransferencia(metodoPago)) {
+      return res.status(400).json({
+        error: 'Este endpoint solo acepta pedidos por transferencia. Usá Mercado Pago desde el checkout.',
+      });
+    }
 
     const usuario = await obtenerUsuarioVerificado(email);
     if (!usuario) {
@@ -3662,7 +4024,6 @@ app.post('/api/pedidos', verificarClienteJWT, async (req, res) => {
     }
 
     const { productosPedido, totalPedido, decrementosRealizados } = resultadoItems;
-    const esTransferencia = esMetodoPagoTransferencia(metodoPago);
     let { totalFinal } = aplicarDescuentoCuponAlTotal(
       totalPedido,
       resultadoCupon.cupon,
@@ -3679,10 +4040,7 @@ app.post('/api/pedidos', verificarClienteJWT, async (req, res) => {
       return res.status(envio.status).json({ error: envio.error });
     }
 
-    if (esTransferencia) {
-      ({ totalFinal } = aplicarDescuentoTransferenciaAlTotal(totalFinal));
-    }
-
+    ({ totalFinal } = aplicarDescuentoTransferenciaAlTotal(totalFinal));
     totalFinal = redondearMonto(totalFinal + envio.costoEnvio);
 
     let nuevoPedido;
@@ -3693,17 +4051,18 @@ app.post('/api/pedidos', verificarClienteJWT, async (req, res) => {
         id: generarIdPedido(),
         numeroPedido,
         emailUsuario: email,
-        cliente: String(cliente.nombre).trim(),
-        telefono: String(cliente.telefono).trim(),
+        cliente: String(cliente.nombre).trim().slice(0, 120),
+        telefono: String(cliente.telefono).trim().slice(0, 30),
         direccion: datosEntrega.direccion,
         localidad: datosEntrega.localidad,
         provincia: datosEntrega.provincia,
         codigoPostal: datosEntrega.codigoPostal,
-        pago: esTransferencia ? 'Transferencia' : (metodoPago || 'Efectivo'),
+        pago: 'Transferencia',
         productos: productosPedido,
         total: totalFinal,
         costoEnvio: envio.costoEnvio,
-        estado: esTransferencia ? ESTADO_PEDIDO_INICIAL : 'listo_empaquetar',
+        estado: ESTADO_PEDIDO_INICIAL,
+        expiraEn: new Date(Date.now() + EXPIRA_TRANSFERENCIA_MS),
         fecha: new Date(),
       }).save();
     } catch (saveError) {
@@ -3712,23 +4071,6 @@ app.post('/api/pedidos', verificarClienteJWT, async (req, res) => {
     }
 
     res.status(201).json(formatearPedido(nuevoPedido));
-
-    if (!esTransferencia) {
-      // Pedido confirmado al crear: contador de ventas + desactivar stock 0.
-      setImmediate(async () => {
-        try {
-          await incrementarVentasContadorDesdePedido(nuevoPedido);
-        } catch (ventasError) {
-          logError('PEDIDO_VENTAS_CONTADOR', ventasError, { pedidoId: nuevoPedido.id });
-        }
-        try {
-          await desactivarProductosSinStockDesdePedido(nuevoPedido);
-        } catch (stockError) {
-          logError('PEDIDO_DESACTIVAR_SIN_STOCK', stockError, { pedidoId: nuevoPedido.id });
-        }
-        notificarConfirmacionCompraSegura(nuevoPedido, usuario);
-      });
-    }
   } catch (error) {
     logError('CREAR_PEDIDO', error, {
       emailUsuario: normalizarEmail(req.usuario?.email),
@@ -3737,7 +4079,7 @@ app.post('/api/pedidos', verificarClienteJWT, async (req, res) => {
   }
 });
 
-app.post('/api/pagar', verificarClienteJWT, async (req, res) => {
+app.post('/api/pagar', limitadorCheckout, verificarClienteJWT, async (req, res) => {
   try {
     if (!MP_ACCESS_TOKEN) {
       return res.status(503).json({ error: 'Mercado Pago no está configurado. Contactá a la tienda.' });
@@ -3800,7 +4142,8 @@ app.post('/api/pagar', verificarClienteJWT, async (req, res) => {
 
     totalFinal = redondearMonto(totalFinal + envio.costoEnvio);
     const pedidoId = generarIdPedido();
-    const nombreCliente = String(cliente.nombre).trim();
+    const nombreCliente = String(cliente.nombre).trim().slice(0, 120);
+    const telefonoCliente = String(cliente.telefono).trim().slice(0, 30);
     const partesNombre = nombreCliente.split(/\s+/).filter(Boolean);
     const payerName = partesNombre[0] || nombreCliente;
     const payerSurname = partesNombre.slice(1).join(' ') || 'Cliente';
@@ -3878,7 +4221,7 @@ app.post('/api/pagar', verificarClienteJWT, async (req, res) => {
         numeroPedido,
         emailUsuario: email,
         cliente: nombreCliente,
-        telefono: String(cliente.telefono).trim(),
+        telefono: telefonoCliente,
         direccion: datosEntrega.direccion,
         localidad: datosEntrega.localidad,
         provincia: datosEntrega.provincia,
@@ -4211,12 +4554,12 @@ app.get('/api/admin/cupones', verificarAdminJWT, async (req, res) => {
 
 app.post('/api/admin/cupones', verificarAdminJWT, async (req, res) => {
   try {
-    const codigo = String(req.body?.codigo || '').trim().toUpperCase();
+    const codigo = String(req.body?.codigo || '').trim().toUpperCase().slice(0, 40);
     const porcentajeRaw = req.body?.descuentoPorcentaje ?? req.body?.porcentaje;
     const descuentoPorcentaje = Number(porcentajeRaw);
 
-    if (!codigo) {
-      return res.status(400).json({ error: 'El código del cupón es obligatorio.' });
+    if (!codigo || codigo.length < 2) {
+      return res.status(400).json({ error: 'El código del cupón es obligatorio (mínimo 2 caracteres).' });
     }
 
     if (
@@ -4274,9 +4617,9 @@ app.put('/api/admin/cupones/:id', verificarAdminJWT, async (req, res) => {
     }
 
     if (req.body?.codigo !== undefined) {
-      const codigo = String(req.body.codigo || '').trim().toUpperCase();
-      if (!codigo) {
-        return res.status(400).json({ error: 'El código del cupón es obligatorio.' });
+      const codigo = String(req.body.codigo || '').trim().toUpperCase().slice(0, 40);
+      if (!codigo || codigo.length < 2) {
+        return res.status(400).json({ error: 'El código del cupón es obligatorio (mínimo 2 caracteres).' });
       }
       const otro = await Cupon.findOne({ codigo, _id: { $ne: cupon._id } });
       if (otro) {
@@ -4538,16 +4881,83 @@ app.post('/api/pedidos/cambiar-estado', verificarAdminJWT, async (req, res) => {
 
     const estadoEntrada = String(nuevoEstado).trim();
     const estadoNormalizado = normalizarEstadoPedido(estadoEntrada);
+    const estadosDestinoValidos = [...ESTADOS_PEDIDO, 'cancelado'];
 
-    if (!ESTADOS_PEDIDO.includes(estadoEntrada) && !ESTADOS_PEDIDO_LEGACY[estadoEntrada]) {
+    if (
+      !estadosDestinoValidos.includes(estadoEntrada)
+      && !ESTADOS_PEDIDO_LEGACY[estadoEntrada]
+      && estadoEntrada !== 'cancelado'
+    ) {
+      return res.status(400).json({
+        error: `Estado inválido. Usá uno de: ${estadosDestinoValidos.join(', ')}.`,
+      });
+    }
+
+    if (!estadosDestinoValidos.includes(estadoNormalizado)) {
+      return res.status(400).json({
+        error: `Estado inválido. Usá uno de: ${estadosDestinoValidos.join(', ')}.`,
+      });
+    }
+
+    const pedidoActual = mongoose.isValidObjectId(String(id))
+      ? await Pedido.findById(id)
+      : await Pedido.findOne({ id: String(id) });
+
+    if (!pedidoActual) {
+      return res.status(404).json({ error: 'Pedido no encontrado.' });
+    }
+
+    const estadoActual = normalizarEstadoPedido(pedidoActual.estado);
+
+    if (estadoActual === estadoNormalizado) {
+      return res.json({ ok: true, pedido: formatearPedido(pedidoActual) });
+    }
+
+    if (estadoActual === 'cancelado') {
+      return res.status(400).json({
+        error: 'Un pedido cancelado no puede cambiar de estado.',
+      });
+    }
+
+    if (estadoNormalizado === 'cancelado') {
+      if (!['pendiente_pago', 'listo_empaquetar'].includes(estadoActual)) {
+        return res.status(400).json({
+          error: 'Solo se pueden cancelar pedidos pendientes de pago o listos para empaquetar.',
+        });
+      }
+
+      // Claim atómico: evita doble restauración de stock (carrera con cron/webhook).
+      const pedidoCancelado = await Pedido.findOneAndUpdate(
+        {
+          _id: pedidoActual._id,
+          estado: { $in: ['pendiente_pago', 'listo_empaquetar'] },
+        },
+        { $set: { estado: 'cancelado' } },
+        { new: true }
+      );
+
+      if (!pedidoCancelado) {
+        return res.status(409).json({
+          error: 'El pedido ya no está en un estado cancelable.',
+        });
+      }
+
+      await restaurarStockDesdePedido(pedidoCancelado);
+      return res.json({ ok: true, pedido: formatearPedido(pedidoCancelado) });
+    }
+
+    const permitidos = TRANSICIONES_ESTADO_PEDIDO[estadoActual];
+    // Compatibilidad panel: permitir cualquier estado de fulfillment salvo desde cancelado.
+    // TRANSICIONES documenta el flujo ideal; acá se permiten saltos entre ESTADOS_PEDIDO.
+    if (!ESTADOS_PEDIDO.includes(estadoNormalizado)) {
       return res.status(400).json({
         error: `Estado inválido. Usá uno de: ${ESTADOS_PEDIDO.join(', ')}.`,
       });
     }
 
-    if (!ESTADOS_PEDIDO.includes(estadoNormalizado)) {
+    if (Array.isArray(permitidos) && permitidos.length === 0) {
       return res.status(400).json({
-        error: `Estado inválido. Usá uno de: ${ESTADOS_PEDIDO.join(', ')}.`,
+        error: `No se puede cambiar el estado desde «${estadoActual}».`,
       });
     }
 
@@ -4647,30 +5057,24 @@ app.post('/api/admin/pedidos/:id/notificar-despacho', verificarAdminJWT, async (
 
 /**
  * Etiqueta de envío imprimible (HTML).
- * Acepta JWT por Authorization Bearer o ?token= (necesario para window.open / Ctrl+P).
+ * Cookie HttpOnly o Authorization Bearer.
  */
-function verificarAdminJWTEtiqueta(req, res, next) {
-  const authHeader = req.headers.authorization;
-  let token = null;
-
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    token = authHeader.slice(7);
-  } else {
-    token = String(req.query?.token || '').trim() || null;
-  }
+async function verificarAdminJWTEtiqueta(req, res, next) {
+  const token = extraerTokenPeticion(req);
 
   if (!token) {
     return res.status(401).send(htmlErrorEtiqueta('Acceso denegado. Se requiere autenticación de administrador.'));
   }
 
   try {
-    const payload = jwt.verify(token, JWT_SECRET);
+    const payload = jwt.verify(token, JWT_SECRET, { algorithms: JWT_ALGORITHMS });
+    const usuario = await validarPayloadAuth(payload);
 
-    if (!payload || typeof payload !== 'object' || !payload.email || payload.rol !== 'admin') {
+    if (!usuario || usuario.rol !== 'admin') {
       return res.status(403).send(htmlErrorEtiqueta('Acceso denegado. Se requiere rol de administrador.'));
     }
 
-    req.usuario = payload;
+    req.usuario = usuario;
     next();
   } catch (error) {
     logError('JWT_ETIQUETA_ENVIO', error, { ruta: req.path });
@@ -5067,12 +5471,23 @@ app.get('/api/admin/pedidos/:id/etiqueta-envio', verificarAdminJWTEtiqueta, asyn
 
 app.post('/api/contacto', limitadorContacto, async (req, res) => {
   try {
-    const nombre = String(req.body?.nombre || '').trim();
+    const nombre = String(req.body?.nombre || '').trim().slice(0, 120);
     const email = normalizarEmail(req.body?.email);
-    const mensaje = String(req.body?.mensaje || '').trim();
+    const mensaje = String(req.body?.mensaje || '')
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
+      .trim()
+      .slice(0, 2000);
 
-    if (!nombre || !email || !mensaje) {
+    if (!nombre || nombre.length < 2) {
+      return res.status(400).json({ error: 'Ingresá un nombre válido (mínimo 2 caracteres).' });
+    }
+
+    if (!email || !mensaje) {
       return res.status(400).json({ error: 'Nombre, email y mensaje son obligatorios.' });
+    }
+
+    if (mensaje.length < 10) {
+      return res.status(400).json({ error: 'El mensaje debe tener al menos 10 caracteres.' });
     }
 
     if (!EMAIL_REGEX.test(email)) {
@@ -5117,14 +5532,20 @@ app.post('/api/auth/registro', limitadorAuth, async (req, res) => {
       return res.status(400).json({ error: 'El formato del email no es válido.' });
     }
 
-    if (password.length < 8) {
-      return res.status(400).json({ error: 'La contraseña debe tener al menos 8 caracteres.' });
+    const errorPassword = validarPoliticaPassword(password);
+    if (errorPassword) {
+      return res.status(400).json({ error: errorPassword });
     }
 
     const usuarioExistente = await Usuario.findOne({ email });
 
     if (usuarioExistente?.verificado) {
-      return res.status(409).json({ error: 'Ya existe un usuario con ese email.' });
+      // Misma respuesta que un registro nuevo: evita enumeración de emails.
+      return res.status(201).json({
+        ok: true,
+        mensaje: 'Si el email es válido, te enviamos un código de verificación. Revisá tu correo.',
+        email,
+      });
     }
 
     // Libera emails de registros incompletos del flujo anterior (Usuario sin verificar).
@@ -5134,7 +5555,7 @@ app.post('/api/auth/registro', limitadorAuth, async (req, res) => {
 
     const codigoVerificacion = generarCodigoVerificacion();
     const codigoVerificacionExpira = generarExpiracionCodigo(10);
-    const passwordHasheada = await bcrypt.hash(password, 10);
+    const passwordHasheada = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
     // 1) Persistir pendiente ANTES de enviar el mail (rollback si el envío falla).
     await RegistroPendiente.findOneAndUpdate(
@@ -5144,6 +5565,7 @@ app.post('/api/auth/registro', limitadorAuth, async (req, res) => {
         password: passwordHasheada,
         codigoVerificacion,
         codigoVerificacionExpira,
+        intentosFallidos: 0,
         creadoEn: new Date(),
       },
       { upsert: true, new: true, setDefaultsOnInsert: true }
@@ -5201,6 +5623,13 @@ app.post('/api/auth/confirmar', limitadorOtp, async (req, res) => {
       return res.status(401).json({ error: 'Código inválido o expirado.' });
     }
 
+    if ((pendiente.intentosFallidos || 0) >= 5) {
+      await RegistroPendiente.deleteOne({ _id: pendiente._id });
+      return res.status(429).json({
+        error: 'Demasiados intentos. Solicitá un nuevo código de verificación.',
+      });
+    }
+
     // Comparación en tiempo constante: evita filtrar bytes correctos por timing.
     const bufEsperado = Buffer.from(String(pendiente.codigoVerificacion), 'utf8');
     const bufRecibido = Buffer.from(codigo, 'utf8');
@@ -5211,6 +5640,17 @@ app.post('/api/auth/confirmar', limitadorOtp, async (req, res) => {
       pendiente.codigoVerificacionExpira && pendiente.codigoVerificacionExpira > new Date();
 
     if (!codigoValido || !noExpirado) {
+      const intentos = (pendiente.intentosFallidos || 0) + 1;
+      if (intentos >= 5) {
+        await RegistroPendiente.deleteOne({ _id: pendiente._id });
+        return res.status(429).json({
+          error: 'Demasiados intentos. Solicitá un nuevo código de verificación.',
+        });
+      }
+      await RegistroPendiente.updateOne(
+        { _id: pendiente._id },
+        { $set: { intentosFallidos: intentos } }
+      );
       return res.status(401).json({ error: 'Código inválido o expirado.' });
     }
 
@@ -5242,8 +5682,9 @@ app.post('/api/auth/confirmar', limitadorOtp, async (req, res) => {
     });
 
     const token = generarTokenCliente(usuario);
+    establecerCookiesAuth(res, token, 'cliente');
     return res.json({
-      token,
+      ok: true,
       usuario: sanitizarUsuario(usuario),
     });
   } catch (error) {
@@ -5269,19 +5710,75 @@ app.post('/api/auth/login', limitadorAuth, async (req, res) => {
 
     if (usuario.rol === 'admin') {
       const token = generarTokenAdmin(usuario);
+      establecerCookiesAuth(res, token, 'admin');
       return res.json({
-        token,
+        ok: true,
         usuario: sanitizarUsuario(usuario),
       });
     }
 
     const token = generarTokenCliente(usuario);
-    res.json({ token, usuario: sanitizarUsuario(usuario) });
+    establecerCookiesAuth(res, token, 'cliente');
+    res.json({
+      ok: true,
+      usuario: sanitizarUsuario(usuario),
+    });
   } catch (error) {
     logError('LOGIN', error, {
       emailUsuario: normalizarEmail(req.body?.email),
     });
     res.status(500).json({ error: 'Error interno del servidor.' });
+  }
+});
+
+app.post('/api/auth/logout', async (req, res) => {
+  try {
+    const token = extraerTokenPeticion(req);
+    if (token) {
+      try {
+        const payload = jwt.verify(token, JWT_SECRET, { algorithms: JWT_ALGORITHMS });
+        if (payload?.email) {
+          await Usuario.updateOne(
+            { email: normalizarEmail(payload.email) },
+            { $inc: { tokenVersion: 1 } }
+          );
+        }
+      } catch {
+        /* cookie/token inválido: igual limpiamos cookies */
+      }
+    }
+  } catch (error) {
+    logError('AUTH_LOGOUT', error);
+  }
+
+  limpiarCookiesAuth(res);
+  return res.json({ ok: true, mensaje: 'Sesión cerrada.' });
+});
+
+app.get('/api/auth/sesion', async (req, res) => {
+  const token = extraerTokenPeticion(req);
+  if (!token) {
+    return res.json({ ok: true, usuario: null });
+  }
+
+  try {
+    const payload = jwt.verify(token, JWT_SECRET, { algorithms: JWT_ALGORITHMS });
+    const auth = await validarPayloadAuth(payload);
+    if (!auth) {
+      limpiarCookiesAuth(res);
+      return res.json({ ok: true, usuario: null });
+    }
+
+    const usuario = await Usuario.findOne({ email: auth.email });
+    if (!usuario) {
+      limpiarCookiesAuth(res);
+      return res.json({ ok: true, usuario: null });
+    }
+
+    return res.json({ ok: true, usuario: sanitizarUsuario(usuario) });
+  } catch {
+    limpiarCookiesAuth(res);
+    return res.json({ ok: true, usuario: null });
   }
 });
 
@@ -5350,13 +5847,14 @@ app.put('/api/auth/perfil', verificarClienteJWT, async (req, res) => {
   }
 });
 
-app.put('/api/auth/password', verificarClienteJWT, async (req, res) => {
+app.put('/api/auth/password', limitadorPassword, verificarClienteJWT, async (req, res) => {
   try {
     const passwordActual = String(req.body.passwordActual || '');
     const passwordNueva = String(req.body.passwordNueva || '');
 
-    if (passwordNueva.length < 8) {
-      return res.status(400).json({ error: 'La nueva contraseña debe tener al menos 8 caracteres.' });
+    const errorPassword = validarPoliticaPassword(passwordNueva);
+    if (errorPassword) {
+      return res.status(400).json({ error: errorPassword });
     }
 
     const usuario = await obtenerUsuarioCliente(req.usuario.email);
@@ -5368,8 +5866,14 @@ app.put('/api/auth/password', verificarClienteJWT, async (req, res) => {
       return res.status(401).json({ error: 'La contraseña actual no es correcta.' });
     }
 
-    usuario.password = await bcrypt.hash(passwordNueva, 10);
+    usuario.password = await bcrypt.hash(passwordNueva, BCRYPT_ROUNDS);
+    usuario.tokenVersion = (Number(usuario.tokenVersion) || 0) + 1;
     await usuario.save();
+
+    const token = usuario.rol === 'admin'
+      ? generarTokenAdmin(usuario)
+      : generarTokenCliente(usuario);
+    establecerCookiesAuth(res, token, usuario.rol === 'admin' ? 'admin' : 'cliente');
 
     res.json({ ok: true });
   } catch (error) {
