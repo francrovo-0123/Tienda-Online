@@ -8,10 +8,19 @@
   <link rel="icon" href="/favicon.ico" sizes="32x32">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/favicon.png">
-  <link rel="stylesheet" href="css/global.css?v=5.0">
-  <link rel="stylesheet" href="css/header.css?v=7.0">
-  <link rel="stylesheet" href="css/footer.css?v=3.2">
-  <link rel="stylesheet" href="css/info.css?v=1.2">
+  <link rel="stylesheet" href="css/global.css?v=15.2">
+  <link rel="stylesheet" href="css/header.css?v=15.2">
+  <link rel="stylesheet" href="css/footer.css?v=15.2">
+  <link rel="stylesheet" href="css/info.css?v=15.2">
+  <script>
+    (function () {
+      var hash = (location.hash || '').replace(/^#/, '');
+      if (hash === 'terminos') hash = 'cambios';
+      var validos = ['nosotros', 'envios', 'cambios', 'contacto'];
+      var panel = validos.indexOf(hash) >= 0 ? hash : 'nosotros';
+      document.documentElement.setAttribute('data-info-panel-boot', panel);
+    })();
+  </script>
 </head>
 <body data-page="info">
 
@@ -129,7 +138,7 @@
             <h1 class="info-panel__title">Nosotros</h1>
           </header>
           <div class="info-panel__content">
-            <p>En <strong>Jersey Store</strong> vivimos el fútbol con la misma pasión que vos. Nos especializamos en camisetas <strong>G5 y Thai</strong>: réplicas de altísima calidad que replican fielmente los detalles, telas y acabados de las piezas originales.</p>
+            <p>En <strong data-store-brand-text>Jersey Store</strong> vivimos el fútbol con la misma pasión que vos. Nos especializamos en camisetas <strong>G5 y Thai</strong>: réplicas de altísima calidad que replican fielmente los detalles, telas y acabados de las piezas originales.</p>
             <p>Cada prenda que ofrecemos pasa por un control riguroso de calidad. Trabajamos con proveedores de confianza para garantizar costuras resistentes, estampados duraderos y una experiencia de uso que se siente premium desde el primer día.</p>
             <p>Nuestra misión es simple: que puedas lucir la camiseta de tu club o selección con orgullo, sin comprometer la calidad ni el estilo.</p>
           </div>
@@ -387,7 +396,7 @@
     </div>
   </div>
 
-  <script src="js/api.js"></script>
-  <script src="js/app.js?v=13.3"></script>
+  <script src="/store-env.js"></script>
+  <script src="js/app.js?v=15.2"></script>
 </body>
 </html>

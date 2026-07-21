@@ -1,6 +1,8 @@
 const nodemailer = require('nodemailer');
 
-const NOMBRE_TIENDA_DEFECTO = String(process.env.NOMBRE_TIENDA || 'Jersey Store').trim();
+const NOMBRE_TIENDA_DEFECTO = String(
+  process.env.STORE_NAME || process.env.NOMBRE_TIENDA || 'Jersey Store'
+).trim();
 
 function escapeHtml(valor) {
   return String(valor ?? '')

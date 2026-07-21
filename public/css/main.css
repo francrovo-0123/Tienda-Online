@@ -940,14 +940,21 @@ body.is-coleccion-filtrada .offer-marquee--alt {
 
 .grilla-talles {
   display: flex;
-  gap: var(--space-3);
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 0.35rem;
   margin: var(--space-4) 0;
+}
+
+.grilla-talles__inner {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: stretch;
 }
 
 .grilla-talles__label {
   flex: 1 1 100%;
-  margin-bottom: var(--space-1);
+  margin-bottom: 0.15rem;
   font-size: 0.6875rem;
   font-weight: var(--font-weight-semibold);
   letter-spacing: 0.1em;
@@ -960,9 +967,15 @@ body.is-coleccion-filtrada .offer-marquee--alt {
   border: 1.5px solid #e5e7eb;
   color: #000;
   font-weight: 700;
-  padding: var(--space-3) var(--space-5);
-  min-width: var(--touch-min);
-  min-height: var(--touch-min);
+  /* Compactos para que S–XXL entren en una sola fila en la card */
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  padding: 0 0.4rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   text-align: center;
   cursor: pointer;
   border-radius: 4px;
@@ -972,7 +985,8 @@ body.is-coleccion-filtrada .offer-marquee--alt {
     border-color var(--transition-fast),
     transform var(--transition-fast),
     opacity var(--transition-fast);
-  font-size: 0.9rem;
+  font-size: 0.8125rem;
+  line-height: 1;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
 }

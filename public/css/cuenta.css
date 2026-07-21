@@ -1,4 +1,19 @@
 /* ── Área Mi cuenta ── */
+
+/* Evita flash de panel incorrecto al recargar con hash */
+html[data-cuenta-panel-boot]:not([data-cuenta-panel-boot='resumen']) #cuenta-panel-resumen,
+html[data-cuenta-panel-boot]:not([data-cuenta-panel-boot='perfil']) #cuenta-panel-perfil,
+html[data-cuenta-panel-boot]:not([data-cuenta-panel-boot='pedidos']) #cuenta-panel-pedidos,
+html[data-cuenta-panel-boot]:not([data-cuenta-panel-boot='configuracion']) #cuenta-panel-configuracion {
+  display: none !important;
+}
+
+html[data-cuenta-panel-boot='perfil'] #cuenta-panel-perfil,
+html[data-cuenta-panel-boot='pedidos'] #cuenta-panel-pedidos,
+html[data-cuenta-panel-boot='configuracion'] #cuenta-panel-configuracion {
+  display: block !important;
+}
+
 .cuenta-layout {
   max-width: 720px;
   margin: 0 auto;

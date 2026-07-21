@@ -1,4 +1,19 @@
 /* ── Página de información (Nosotros / Envíos / Contacto) ── */
+
+/* Evita flash de panel incorrecto al recargar con hash */
+html[data-info-panel-boot]:not([data-info-panel-boot='nosotros']) #info-panel-nosotros,
+html[data-info-panel-boot]:not([data-info-panel-boot='envios']) #info-panel-envios,
+html[data-info-panel-boot]:not([data-info-panel-boot='cambios']) #info-panel-cambios,
+html[data-info-panel-boot]:not([data-info-panel-boot='contacto']) #info-panel-contacto {
+  display: none !important;
+}
+
+html[data-info-panel-boot='envios'] #info-panel-envios,
+html[data-info-panel-boot='cambios'] #info-panel-cambios,
+html[data-info-panel-boot='contacto'] #info-panel-contacto {
+  display: block !important;
+}
+
 .info-layout {
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr);

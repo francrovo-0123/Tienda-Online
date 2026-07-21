@@ -1,5 +1,59 @@
+/**
+ * Parsea montos numéricos o strings (ARS: "18.900,00", "18900", "$ 18.900").
+ * Evita que Number("18.900,00") === NaN deje el subtotal en $0.
+ */
+function parsearMonto(valor) {
+  if (typeof valor === 'number') {
+    return Number.isFinite(valor) ? valor : NaN;
+  }
+  if (valor == null) return NaN;
+
+  if (typeof valor === 'object') {
+    if (valor.$numberDecimal != null) return parsearMonto(valor.$numberDecimal);
+    if (typeof valor.toString === 'function') {
+      const comoTexto = valor.toString();
+      if (comoTexto && comoTexto !== '[object Object]') {
+        return parsearMonto(comoTexto);
+      }
+    }
+    return NaN;
+  }
+
+  let texto = String(valor).trim();
+  if (!texto) return NaN;
+
+  texto = texto.replace(/[^\d,.\-]/g, '');
+  if (!texto || texto === '-' || texto === '.' || texto === ',') return NaN;
+
+  const tieneComa = texto.includes(',');
+  const tienePunto = texto.includes('.');
+
+  if (tieneComa && tienePunto) {
+    // AR: 18.900,00 | US: 18,900.00
+    if (texto.lastIndexOf(',') > texto.lastIndexOf('.')) {
+      texto = texto.replace(/\./g, '').replace(',', '.');
+    } else {
+      texto = texto.replace(/,/g, '');
+    }
+  } else if (tieneComa) {
+    const partes = texto.split(',');
+    texto = partes.length === 2 && partes[1].length <= 2
+      ? `${partes[0].replace(/\./g, '')}.${partes[1]}`
+      : texto.replace(/,/g, '');
+  } else if (tienePunto) {
+    const partes = texto.split('.');
+    // Miles AR sin decimales: "18.900"
+    if (partes.length > 2 || (partes.length === 2 && partes[1].length === 3)) {
+      texto = texto.replace(/\./g, '');
+    }
+  }
+
+  const numero = Number.parseFloat(texto);
+  return Number.isFinite(numero) ? numero : NaN;
+}
+
 function formatearPrecio(valor) {
-  const numero = Number(valor);
+  const numero = parsearMonto(valor);
   if (!Number.isFinite(numero)) {
     return '$ 0';
   }
@@ -15,13 +69,16 @@ function formatearPrecio(valor) {
 }
 
 function tieneOfertaValida(producto) {
-  const oferta = Number(producto.precioOferta);
-  const precio = Number(producto.precio);
-  return Number.isFinite(oferta) && oferta > 0 && oferta < precio;
+  const oferta = parsearMonto(producto?.precioOferta);
+  const precio = parsearMonto(producto?.precio);
+  return Number.isFinite(oferta) && oferta > 0 && Number.isFinite(precio) && oferta < precio;
 }
 
 function obtenerPrecioEfectivo(producto) {
-  return tieneOfertaValida(producto) ? Number(producto.precioOferta) : Number(producto.precio);
+  if (tieneOfertaValida(producto)) {
+    return parsearMonto(producto.precioOferta);
+  }
+  return parsearMonto(producto?.precio);
 }
 
 function calcularDescuentoPorcentaje(precio, precioOferta) {
@@ -45,16 +102,109 @@ function obtenerDescuentoOfertaFormulario(producto) {
   return String(producto.precioOferta);
 }
 
-function actualizarControlesPreciosMasivo() {
-  const selectTipo = document.getElementById('precios-masivo-tipo');
-  const wrapPorcentaje = document.getElementById('precios-masivo-porcentaje-wrap');
-  const btn = document.getElementById('btn-aplicar-precios-masivo');
-  const quitarOfertas = selectTipo?.value === 'quitar-ofertas';
+const PRECIOS_MASIVO_MAX_PCT = 50;
+const PRECIOS_MASIVO_EJEMPLO = 10000;
 
-  wrapPorcentaje?.classList.toggle('hidden', quitarOfertas);
-  if (btn) {
-    btn.textContent = quitarOfertas ? 'Quitar descuentos' : 'Aplicar actualización';
+function obtenerTipoPreciosMasivo() {
+  const hidden = document.getElementById('precios-masivo-tipo');
+  return hidden?.value === 'descuento' ? 'descuento' : 'aumento';
+}
+
+function setTipoPreciosMasivo(tipo) {
+  const valor = tipo === 'descuento' ? 'descuento' : 'aumento';
+  const hidden = document.getElementById('precios-masivo-tipo');
+  if (hidden) hidden.value = valor;
+
+  document.querySelectorAll('.admin-precios-masivo__op[data-op]').forEach((btn) => {
+    const activo = btn.dataset.op === valor;
+    btn.classList.toggle('is-active', activo);
+    btn.setAttribute('aria-pressed', activo ? 'true' : 'false');
+  });
+
+  actualizarPreviewPreciosMasivo();
+}
+
+function setLoadingPreciosMasivo(btn, loading) {
+  if (!btn) return;
+  btn.classList.toggle('is-loading', loading);
+  btn.disabled = loading || btn.dataset.blocked === 'true';
+  btn.setAttribute('aria-busy', loading ? 'true' : 'false');
+}
+
+function actualizarPreviewPreciosMasivo() {
+  const inputPorcentaje = document.getElementById('precios-masivo-porcentaje');
+  const selectCategoria = document.getElementById('precios-masivo-categoria');
+  const preview = document.getElementById('precios-masivo-preview');
+  const btn = document.getElementById('btn-aplicar-precios-masivo');
+  if (!preview) return;
+
+  const tipo = obtenerTipoPreciosMasivo();
+  const raw = String(inputPorcentaje?.value ?? '').trim();
+  const porcentaje = Number(raw);
+  const categoria = selectCategoria?.value?.trim() || '';
+
+  preview.classList.remove('is-aumento', 'is-descuento', 'is-warning');
+  inputPorcentaje?.classList.remove('is-invalid');
+
+  const bloquear = (mensaje, { warning = false, invalid = false } = {}) => {
+    preview.textContent = mensaje;
+    if (warning) preview.classList.add('is-warning');
+    if (invalid) inputPorcentaje?.classList.add('is-invalid');
+    if (btn) {
+      btn.dataset.blocked = 'true';
+      if (!btn.classList.contains('is-loading')) btn.disabled = true;
+    }
+  };
+
+  const habilitar = () => {
+    if (btn) {
+      btn.dataset.blocked = 'false';
+      if (!btn.classList.contains('is-loading')) btn.disabled = false;
+    }
+  };
+
+  if (!raw || !Number.isFinite(porcentaje) || porcentaje === 0) {
+    bloquear('Ingresa un porcentaje para ver la proyección del cambio.');
+    return;
   }
+
+  if (porcentaje < 0) {
+    bloquear('El porcentaje debe ser un número positivo.', { warning: true, invalid: true });
+    return;
+  }
+
+  if (porcentaje > PRECIOS_MASIVO_MAX_PCT) {
+    bloquear(
+      `⚠ El porcentaje no puede superar el ±${PRECIOS_MASIVO_MAX_PCT}%. Reducí el valor para continuar.`,
+      { warning: true, invalid: true }
+    );
+    return;
+  }
+
+  const precioEjemplo = PRECIOS_MASIVO_EJEMPLO;
+  const factor = tipo === 'descuento' ? 1 - porcentaje / 100 : 1 + porcentaje / 100;
+  const precioNuevo = Math.max(1, Math.round(precioEjemplo * factor));
+  const alcance = categoria
+    ? `la categoría '${categoria}'`
+    : 'TODO EL CATÁLOGO';
+
+  if (tipo === 'descuento') {
+    preview.classList.add('is-descuento');
+    preview.textContent =
+      `➘ Se reducirán los precios de ${alcance} un ${porcentaje}%. ` +
+      `Ejemplo: Un artículo de ${formatearPrecio(precioEjemplo)} pasará a costar ${formatearPrecio(precioNuevo)}.`;
+  } else {
+    preview.classList.add('is-aumento');
+    preview.textContent =
+      `➚ Se incrementarán los precios de ${alcance} un ${porcentaje}%. ` +
+      `Ejemplo: Un artículo de ${formatearPrecio(precioEjemplo)} pasará a costar ${formatearPrecio(precioNuevo)}.`;
+  }
+
+  habilitar();
+}
+
+function actualizarControlesPreciosMasivo() {
+  actualizarPreviewPreciosMasivo();
 }
 
 function actualizarBotonQuitarDescuentoProducto() {
@@ -260,12 +410,11 @@ function obtenerImagenPrincipal(producto) {
 const API_BASE = window.location.origin;
 let NOMBRE_TIENDA = 'Jersey Store';
 let WHATSAPP_NUMERO = '';
+/** Cloud name cacheado tras una firma de subida admin (no proviene del panel de config). */
 let CLOUDINARY_CLOUD_NAME = '';
-let CLOUDINARY_UPLOAD_PRESET = '';
 const SESSION_USER_KEY = 'sesion_usuario';
 const ADMIN_TOKEN_KEY = 'admin_jwt_token'; // legacy: se limpia al restaurar sesión
 const CLIENTE_TOKEN_KEY = 'cliente_jwt_token'; // legacy: se limpia al restaurar sesión
-let CLOUDINARY_FIRMADO = false;
 const CARRITO_LEGACY_KEY = 'carrito';
 const CARRITO_USUARIO_PREFIX = 'carrito_usuario_';
 const MONTO_ENVIO_GRATIS = 85000;
@@ -293,6 +442,14 @@ const ETIQUETAS_ESTADO_PEDIDO = {
   entregado: 'Entregado',
   cancelado: 'Cancelado',
 };
+/** Etiquetas compactas para badges del panel admin. */
+const ETIQUETAS_ESTADO_PEDIDO_ADMIN = {
+  pendiente_pago: 'Pendiente',
+  listo_empaquetar: 'En Preparación',
+  despachado: 'Enviado',
+  entregado: 'Finalizado',
+  cancelado: 'Cancelado',
+};
 const ESTADOS_PEDIDO_LEGACY = {
   'Pendiente de pago': 'pendiente_pago',
   Pendiente: 'pendiente_pago',
@@ -306,7 +463,6 @@ const ESTADOS_PEDIDO_LEGACY = {
   confirmado: 'listo_empaquetar',
   Rechazado: 'cancelado',
 };
-const CLUB_NAV_ESCUDO_MAX = 68;
 const TALLES_ROPA_DISPONIBLES = ['S', 'M', 'L', 'XL', 'XXL'];
 const TALLES_CALZADO_DISPONIBLES = [
   '35', '35.5', '36', '36.5', '37', '37.5', '38', '38.5',
@@ -373,25 +529,35 @@ let modalDetalleSeccionSuspendido = false;
 let estadisticasAdmin = null;
 let metricasDashboard = null;
 
-async function cargarConfiguracionTienda() {
-  try {
-    const respuesta = await fetch(`${API_BASE}/api/config`);
-    if (!respuesta.ok) {
-      throw new Error('No se pudo cargar la configuración de la tienda.');
-    }
+/**
+ * Lee metadata pública inyectada por /store-env.js (desde server/.env).
+ * Acepta camelCase (payload actual) y SCREAMING_SNAKE (alias de las vars de entorno).
+ */
+function leerStoreEnvPublico() {
+  const env = window.__STORE_ENV__ && typeof window.__STORE_ENV__ === 'object'
+    ? window.__STORE_ENV__
+    : {};
 
-    const config = await respuesta.json();
-    NOMBRE_TIENDA = String(config.nombreTienda || 'Jersey Store').trim() || 'Jersey Store';
-    WHATSAPP_NUMERO = String(config.whatsappNumero || '').trim();
-    CLOUDINARY_CLOUD_NAME = String(config.cloudinaryCloudName || '').trim();
-    CLOUDINARY_UPLOAD_PRESET = String(config.cloudinaryUploadPreset || '').trim();
-    CLOUDINARY_FIRMADO = Boolean(config.cloudinaryFirmado);
-    aplicarMarcaTienda();
-    actualizarEnlaceWhatsappFab();
-    actualizarEnlaceAfipDataFiscal(config.afipLink);
-  } catch (error) {
-    console.error('Error al cargar configuración de la tienda:', error);
-  }
+  return {
+    storeName: String(
+      env.storeName || env.STORE_NAME || env.nombreTienda || env.NOMBRE_TIENDA || ''
+    ).trim(),
+    whatsappNumber: String(
+      env.whatsappNumber || env.WHATSAPP_NUMBER || env.whatsapp || env.WHATSAPP_NUMERO || ''
+    ).trim(),
+    afipUrl: String(env.afipUrl || env.AFIP_URL || '').trim(),
+  };
+}
+
+/** Aplica marca / WhatsApp / AFIP desde window.__STORE_ENV__ (sin fetch a APIs de config). */
+function cargarConfiguracionTienda() {
+  const env = leerStoreEnvPublico();
+
+  NOMBRE_TIENDA = env.storeName || 'Jersey Store';
+  WHATSAPP_NUMERO = env.whatsappNumber.replace(/^\+/, '').replace(/\D/g, '').trim();
+  aplicarMarcaTienda();
+  actualizarEnlaceWhatsappFab();
+  actualizarEnlaceAfipDataFiscal(env.afipUrl);
 }
 
 function dividirNombreTienda(nombre) {
@@ -410,8 +576,17 @@ function aplicarMarcaTienda() {
   const nombre = NOMBRE_TIENDA || 'Jersey Store';
   const { marca, sufijo } = dividirNombreTienda(nombre);
   const enAdmin = document.body.classList.contains('admin-active');
+  const page = document.body?.dataset?.page || '';
 
-  document.title = enAdmin ? `${nombre} - Panel de Administración` : nombre;
+  if (page === 'checkout') {
+    document.title = `Checkout — ${nombre}`;
+  } else if (page === 'cuenta' || (typeof esPaginaCuenta === 'function' && esPaginaCuenta())) {
+    document.title = `${nombre} - Mi cuenta`;
+  } else if (page === 'info') {
+    document.title = `${nombre} - Información`;
+  } else {
+    document.title = enAdmin ? `${nombre} - Panel de Administración` : nombre;
+  }
 
   document.querySelectorAll('.logo-text__brand').forEach((el) => {
     el.textContent = marca;
@@ -419,7 +594,7 @@ function aplicarMarcaTienda() {
   document.querySelectorAll('.logo-text__store').forEach((el) => {
     el.textContent = sufijo;
   });
-  document.querySelectorAll('.logo-img[alt], .footer-logo-img[alt], .admin-sidebar__logo-img[alt]').forEach((el) => {
+  document.querySelectorAll('.logo-img[alt], .footer-logo-img[alt], .admin-sidebar__logo-img[alt], .checkout-topbar__logo img[alt]').forEach((el) => {
     el.setAttribute('alt', nombre);
   });
   document.querySelectorAll('.footer-logo').forEach((el) => {
@@ -431,8 +606,11 @@ function aplicarMarcaTienda() {
   document.querySelectorAll('.admin-sidebar__logo').forEach((el) => {
     el.textContent = nombre;
   });
-  document.querySelectorAll('.logo[aria-label]').forEach((el) => {
+  document.querySelectorAll('.logo[aria-label], .checkout-topbar__logo[aria-label]').forEach((el) => {
     el.setAttribute('aria-label', `${nombre} — Inicio`);
+  });
+  document.querySelectorAll('[data-store-brand-text]').forEach((el) => {
+    el.textContent = nombre;
   });
   document.querySelector('meta[name="description"]')?.setAttribute(
     'content',
@@ -471,9 +649,44 @@ function actualizarEnlaceWhatsappFab() {
   }
 }
 
+/**
+ * Sanitiza URLs de banners (espejo de scripts/sanitize-banner-url.js).
+ * Fuerza protocolo https en URLs relativas (`//…`) y remotas http.
+ */
+function sanitizarUrlBanner(valor) {
+  const crudo = String(valor || '').trim();
+  if (!crudo) return '';
+  if (/^(javascript|data|vbscript|file):/i.test(crudo)) return '';
+
+  let candidato = crudo;
+  if (candidato.startsWith('//')) {
+    candidato = `https:${candidato}`;
+  }
+  if (candidato.startsWith('/') && !candidato.startsWith('//')) {
+    return candidato;
+  }
+
+  try {
+    const parsed = new URL(candidato, window.location.origin);
+    if (parsed.protocol === 'https:') return parsed.href;
+    if (parsed.protocol === 'http:') {
+      const host = parsed.hostname.toLowerCase();
+      if (host === 'localhost' || host === '127.0.0.1' || host === '::1') {
+        return parsed.href;
+      }
+      parsed.protocol = 'https:';
+      return parsed.href;
+    }
+    return '';
+  } catch {
+    return '';
+  }
+}
+
 function esUrlHttpSeguraCliente(valor) {
-  const url = String(valor || '').trim();
+  const url = sanitizarUrlBanner(valor);
   if (!url) return false;
+  if (url.startsWith('/') && !url.startsWith('//')) return true;
   try {
     const parsed = new URL(url, window.location.origin);
     return parsed.protocol === 'https:' || parsed.protocol === 'http:';
@@ -497,52 +710,33 @@ function actualizarEnlaceAfipDataFiscal(afipLink) {
 }
 
 async function subirImagenACloudinary(archivo) {
-  if (!CLOUDINARY_CLOUD_NAME) {
-    throw new Error('La subida de imágenes no está configurada en el servidor.');
+  if (!esSesionAdminActiva()) {
+    throw new Error('Debés iniciar sesión como administrador para subir imágenes.');
   }
 
   const formData = new FormData();
   formData.append('file', archivo);
 
-  if (CLOUDINARY_FIRMADO || esSesionAdminActiva()) {
-    try {
-      const firma = await apiFetch('/api/admin/cloudinary-firma', { method: 'POST' });
-      formData.append('api_key', firma.apiKey);
-      formData.append('timestamp', String(firma.timestamp));
-      formData.append('signature', firma.signature);
-      formData.append('folder', firma.folder);
-      const respuesta = await fetch(
-        `https://api.cloudinary.com/v1_1/${firma.cloudName || CLOUDINARY_CLOUD_NAME}/image/upload`,
-        { method: 'POST', body: formData }
-      );
-      const datos = await respuesta.json().catch(() => ({}));
-      if (!respuesta.ok || !datos.secure_url) {
-        throw new Error(datos.error?.message || 'No se pudo subir la imagen a Cloudinary.');
-      }
-      return datos.secure_url;
-    } catch (error) {
-      if (!CLOUDINARY_UPLOAD_PRESET) throw error;
-      // Fallback a preset unsigned si la firma falla.
-    }
-  }
-
-  if (!CLOUDINARY_UPLOAD_PRESET) {
+  const firma = await apiFetch('/api/admin/cloudinary-firma', { method: 'POST' });
+  const cloudName = String(firma.cloudName || '').trim();
+  if (!cloudName) {
     throw new Error('La subida de imágenes no está configurada en el servidor.');
   }
 
-  formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+  CLOUDINARY_CLOUD_NAME = cloudName;
+  formData.append('api_key', firma.apiKey);
+  formData.append('timestamp', String(firma.timestamp));
+  formData.append('signature', firma.signature);
+  formData.append('folder', firma.folder);
 
   const respuesta = await fetch(
-    `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
+    `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
     { method: 'POST', body: formData }
   );
-
   const datos = await respuesta.json().catch(() => ({}));
-
   if (!respuesta.ok || !datos.secure_url) {
     throw new Error(datos.error?.message || 'No se pudo subir la imagen a Cloudinary.');
   }
-
   return datos.secure_url;
 }
 
@@ -633,12 +827,71 @@ async function apiFetch(ruta, opciones = {}) {
     }
 
     if (respuesta.status === 404 && !datos.error) {
-      throw new Error('El servidor no reconoce esta acción. Reiniciá el servidor e intentá de nuevo.');
+      throw crearErrorApi(
+        'El servidor no reconoce esta acción. Reiniciá el servidor e intentá de nuevo.',
+        respuesta.status,
+        datos
+      );
     }
-    throw new Error(extraerMensajeErrorApi(datos, respuesta.status));
+    throw crearErrorApi(
+      extraerMensajeErrorApi(datos, respuesta.status),
+      respuesta.status,
+      datos
+    );
   }
 
   return datos;
+}
+
+/** Error de API con status HTTP para que los catch puedan distinguir 409/400 de stock. */
+function crearErrorApi(mensaje, status, datos = {}) {
+  const error = new Error(mensaje || `Error en la petición al servidor (${status}).`);
+  error.status = Number(status) || 0;
+  error.datos = datos && typeof datos === 'object' ? datos : {};
+  return error;
+}
+
+function esErrorStockInsuficiente(error) {
+  const status = Number(error?.status) || 0;
+  const mensaje = String(error?.message || '').toLowerCase();
+  const porMensaje = (
+    mensaje.includes('agot')
+    || mensaje.includes('stock insuficiente')
+    || mensaje.includes('no hay unidades')
+    || mensaje.includes('compra simultánea')
+    || mensaje.includes('compra simultanea')
+  );
+
+  if (status === 409) return true;
+  if ((status === 400 || status === 409) && porMensaje) return true;
+  return porMensaje;
+}
+
+/**
+ * Feedback de checkout ante stock concurrente: toast claro, carrito intacto,
+ * catálogo refrescado en silencio para alinear unidades disponibles.
+ */
+async function notificarErrorPedidoCheckout(error, fallback) {
+  const mensaje = String(error?.message || fallback || 'No se pudo procesar el pedido.').trim();
+
+  if (esErrorStockInsuficiente(error)) {
+    mostrarToast(mensaje, 'error', {
+      titulo: 'Stock no disponible',
+      duracion: 9000,
+    });
+    try {
+      const lista = await apiFetch('/api/productos');
+      if (Array.isArray(lista)) {
+        productos = lista;
+        actualizarCarritoUI();
+      }
+    } catch {
+      // El aviso al usuario ya se mostró; el refresh es best-effort.
+    }
+    return;
+  }
+
+  mostrarToast(mensaje, 'error');
 }
 
 function formatearFecha(isoString) {
@@ -687,10 +940,12 @@ function mostrarToast(mensaje, tipo = 'success', opciones = {}) {
   const titulo = opciones.titulo || '';
   const tipoToast = TOAST_ICONOS[tipo] ? tipo : 'info';
   const icono = TOAST_ICONOS[tipoToast];
+  const duracion = Number(opciones.duracion);
+  const duracionMs = Number.isFinite(duracion) && duracion > 0 ? duracion : TOAST_DURACION_MS;
 
   const toast = document.createElement('div');
   toast.className = `toast ${tipoToast}`;
-  toast.setAttribute('role', 'status');
+  toast.setAttribute('role', tipoToast === 'error' ? 'alert' : 'status');
   toast.innerHTML = `
     <span class="toast__icon" aria-hidden="true">${icono}</span>
     <div class="toast__content">
@@ -715,7 +970,7 @@ function mostrarToast(mensaje, tipo = 'success', opciones = {}) {
     setTimeout(eliminar, 500);
   };
 
-  const timeoutId = setTimeout(cerrar, TOAST_DURACION_MS);
+  const timeoutId = setTimeout(cerrar, duracionMs);
   toast.addEventListener('click', () => {
     clearTimeout(timeoutId);
     cerrar();
@@ -1015,6 +1270,7 @@ function obtenerClaseBadgeEstado(estado) {
     listo_empaquetar: 'badge-naranja',
     despachado: 'badge-azul',
     entregado: 'badge-verde',
+    cancelado: 'badge-rojo',
   };
   return mapa[estadoNormalizado] || 'badge-amarillo';
 }
@@ -1042,9 +1298,12 @@ function validarPoliticaPasswordCliente(password) {
   return null;
 }
 
-function crearBadgeEstadoPedido(estado) {
+function crearBadgeEstadoPedido(estado, { admin = false } = {}) {
   const clase = obtenerClaseBadgeEstado(estado);
-  const etiqueta = obtenerEtiquetaEstado(estado);
+  const normalizado = normalizarEstadoPedidoCliente(estado);
+  const etiqueta = admin
+    ? (ETIQUETAS_ESTADO_PEDIDO_ADMIN[normalizado] || obtenerEtiquetaEstado(estado))
+    : obtenerEtiquetaEstado(estado);
   return `<span class="pedido-badge ${clase}">${escaparTextoHtml(etiqueta)}</span>`;
 }
 
@@ -1150,7 +1409,6 @@ async function cargarSecciones() {
 function actualizarVistaSecciones() {
   renderizarSeccionesAdmin();
   renderizarSelectCategorias();
-  renderizarCarruselSecciones();
   renderizarProductos();
 }
 
@@ -1269,6 +1527,8 @@ function renderizarSelectCategoriasPreciosMasivo() {
   if (valorActual && (valorActual === '' || asignables.some((seccion) => seccion.nombre === valorActual))) {
     select.value = valorActual;
   }
+
+  actualizarPreviewPreciosMasivo();
 }
 
 function crearHtmlFilaSeccionAdmin(seccion, opciones = {}) {
@@ -1730,12 +1990,7 @@ async function guardarMostrarEnCarruselSeccion() {
     if (indice !== -1) secciones[indice] = actualizada;
 
     sincronizarMostrarEnCarruselEnModal(actualizada);
-    renderizarStadiumCarousel();
-    mostrarToast(
-      mostrarEnCarrusel
-        ? 'La sección se mostrará en el carrusel de la Home.'
-        : 'La sección se ocultó del carrusel de la Home.'
-    );
+    mostrarToast('Preferencia de sección actualizada.');
   } catch (error) {
     checkbox.checked = valorAnterior;
     mostrarToast(error?.message || 'No se pudo actualizar la visibilidad en el carrusel.', 'error');
@@ -2429,16 +2684,18 @@ function renderizarGrillaStockTallesFormulario(producto = null) {
 }
 
 function obtenerTallesActivosDelFormulario() {
-  return [...document.querySelectorAll('#producto-stock-talles [data-talle]')]
+  // Solo filas de talle (no inputs hijos con data-talle duplicado).
+  return [...document.querySelectorAll('#producto-stock-talles .product-form__stock-talle[data-talle]')]
     .map((el) => normalizarClaveTalleFront(el.getAttribute('data-talle')))
     .filter(Boolean);
 }
 
 function obtenerStockTallesDelFormulario() {
   const stockTalles = {};
-  obtenerTallesActivosDelFormulario().forEach((talle) => {
-    const input = document.getElementById(`producto-stock-${escaparIdTalle(talle)}`);
-    stockTalles[talle] = Math.max(0, Math.floor(Number(input?.value) || 0));
+  document.querySelectorAll('#producto-stock-talles .product-form__stock-input[data-talle]').forEach((input) => {
+    const talle = normalizarClaveTalleFront(input.getAttribute('data-talle'));
+    if (!talle) return;
+    stockTalles[talle] = Math.max(0, Math.floor(Number(input.value) || 0));
   });
   return stockTalles;
 }
@@ -2607,6 +2864,19 @@ function escaparHtmlTexto(valor) {
     .replace(/"/g, '&quot;');
 }
 
+/**
+ * M2: estado vacío del catálogo sin innerHTML (evita XSS con filtros/búsqueda).
+ * Usa textContent para que términos de usuario/admin nunca se interpreten como HTML.
+ */
+function mostrarMensajeVacioCatalogo(container, mensaje, className = 'store-section__empty') {
+  if (!container) return;
+  container.replaceChildren();
+  const p = document.createElement('p');
+  p.className = className;
+  p.textContent = String(mensaje ?? '');
+  container.appendChild(p);
+}
+
 function normalizarTextoMedida(valor) {
   const texto = String(valor ?? '').trim();
   return texto || '';
@@ -2691,6 +2961,7 @@ function crearHtmlBotonesTalles(producto, opciones = {}) {
           class="${clases}"
           data-product-id="${producto.id}"
           data-talle="${escaparAtributoHtml(talle)}"
+          translate="no"
           ${sinStock
           ? 'disabled aria-disabled="true"'
           : `aria-pressed="${seleccionado ? 'true' : 'false'}"`}
@@ -2705,8 +2976,10 @@ function crearHtmlBotonesTalles(producto, opciones = {}) {
     : '';
 
   return `
-    <span class="grilla-talles__label">Talle</span>
-    ${botones}
+    <div class="grilla-talles__inner" translate="no" lang="es">
+      <span class="grilla-talles__label">Talle</span>
+      ${botones}
+    </div>
     ${enlaceMedidas}
   `;
 }
@@ -2923,7 +3196,7 @@ function crearHtmlTablaMedidasProducto(producto, talleSeleccionado = null) {
         ${subtitulo}
       </p>
       <div class="product-size-chart__table-wrap">
-        <table class="product-size-chart__table">
+        <table class="product-size-chart__table" translate="no" lang="es">
           <thead>
             ${thead}
           </thead>
@@ -3125,6 +3398,32 @@ function inicializarDetalleProducto() {
     }
   });
 
+  // Delegación en catálogo: CSP bloquea onclick/onkeydown inline (script-src-attr 'none').
+  document.addEventListener('click', (event) => {
+    const addCardBtn = event.target.closest('[data-add-to-cart]');
+    if (addCardBtn) {
+      if (addCardBtn.disabled) return;
+      const productoId = Number(addCardBtn.dataset.addToCart);
+      if (Number.isFinite(productoId)) agregarAlCarrito(productoId);
+      return;
+    }
+
+    const openDetail = event.target.closest('[data-open-detail]');
+    if (openDetail) {
+      const productoId = Number(openDetail.dataset.openDetail);
+      if (Number.isFinite(productoId)) abrirDetalleProducto(productoId);
+    }
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const openDetail = event.target.closest?.('[data-open-detail]');
+    if (!openDetail) return;
+    event.preventDefault();
+    const productoId = Number(openDetail.dataset.openDetail);
+    if (Number.isFinite(productoId)) abrirDetalleProducto(productoId);
+  });
+
   inicializarTablaMedidas();
 }
 
@@ -3186,8 +3485,7 @@ function crearHtmlTarjetaProducto(producto) {
         class="product-card__image-wrapper producto-imagen-contenedor"
         role="button"
         tabindex="0"
-        onclick="abrirDetalleProducto(${productoId})"
-        onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); abrirDetalleProducto(${productoId}); }"
+        data-open-detail="${productoId}"
         aria-label="Ver detalle de ${nombreAttr}"
       >
         ${crearHtmlImagenesTarjetaProducto(producto)}
@@ -3198,11 +3496,12 @@ function crearHtmlTarjetaProducto(producto) {
         <h3 class="product-card__name">${nombreSeguro}</h3>
         ${badgeGenero}
         ${precioHtml}
-        ${tallesHtml ? `<div class="grilla-talles" id="talles-${productoId}">${tallesHtml}</div>` : ''}
+        ${tallesHtml ? `<div class="grilla-talles" data-talles-product="${productoId}">${tallesHtml}</div>` : ''}
         ${techFooter}
         <button
+          type="button"
           class="product-card__add-btn"
-          onclick="agregarAlCarrito(${productoId})"
+          data-add-to-cart="${productoId}"
           ${sinStock ? 'disabled' : ''}
           aria-label="${sinStock ? `${nombreAttr} sin stock` : `Agregar ${nombreAttr} al carrito`}"
         >
@@ -3214,21 +3513,20 @@ function crearHtmlTarjetaProducto(producto) {
 }
 
 function actualizarBotonesTalleUI(productoId) {
-  const talleActivo = normalizarClaveTalleFront(tallesSeleccionados[productoId] ?? '');
-  const contenedores = [
-    document.getElementById(`talles-${productoId}`),
-    document.getElementById('product-detail-talles'),
-  ].filter(Boolean);
+  const id = Number(productoId);
+  if (!Number.isFinite(id)) return;
 
-  contenedores.forEach((contenedor) => {
-    contenedor.querySelectorAll(`.boton-talle[data-product-id="${productoId}"]`).forEach((btn) => {
+  const talleActivo = normalizarClaveTalleFront(tallesSeleccionados[id] ?? '');
+  // Actualizar todas las instancias del producto (grillas duplicadas en home + modal).
+  document
+    .querySelectorAll(`.boton-talle[data-product-id="${id}"]`)
+    .forEach((btn) => {
       if (btn.disabled || btn.classList.contains('sin-stock')) return;
       const activo = Boolean(talleActivo)
         && normalizarClaveTalleFront(btn.dataset.talle) === talleActivo;
       btn.classList.toggle('talle-seleccionado', activo);
       btn.setAttribute('aria-pressed', activo ? 'true' : 'false');
     });
-  });
 }
 
 function seleccionarTalle(productoId, talle) {
@@ -3369,16 +3667,6 @@ function esFiltroSeccionValido(nombre) {
     || secciones.some((seccion) => seccion.nombre === nombre);
 }
 
-function obtenerSeccionesParaCarrusel() {
-  const generales = obtenerSeccionesGenerales();
-  const calzado = obtenerSeccionCalzadoRaiz();
-  const items = [...generales];
-  if (calzado) items.push(calzado);
-  // Solo secciones habilitadas para el carrusel de atajos (home).
-  // El menú hamburguesa usa `secciones` completo y no aplica este filtro.
-  return items.filter((seccion) => seccion.mostrarEnCarrusel !== false);
-}
-
 function obtenerLigaRepresentativaSeccion(seccionNombre) {
   const conteo = {};
 
@@ -3393,24 +3681,12 @@ function obtenerLigaRepresentativaSeccion(seccionNombre) {
   return ligasOrdenadas[0]?.[0] || '';
 }
 
-function obtenerFiltroDesdeItemCarousel(elemento) {
-  const item = elemento?.closest?.('.club-nav__item');
-  if (!item) return null;
-
-  const equipo = item.dataset.equipo || item.dataset.seccion || 'todos';
-  const liga = item.dataset.liga || '';
-  const seccionId = item.dataset.seccionId || '';
-
-  return { equipo, liga, seccionId };
-}
-
 function sincronizarFiltrosCategoriaUi() {
   document.querySelectorAll('#dropdown-categorias-list .dropdown-item').forEach((btn) => {
     const activo = !filtroSoloOfertas && btn.dataset.categoria === categoriaFiltroActiva;
     btn.classList.toggle('active', activo);
   });
 
-  sincronizarCarruselSeccionesActivo();
   sincronizarMenuMobileActivo();
 }
 
@@ -3559,124 +3835,6 @@ function inicializarEnlaceProductos() {
   });
 }
 
-function crearHtmlIconoSeccion(seccion) {
-  const escudo = optimizarUrlEscudo(obtenerEscudoSeccion(seccion));
-  if (esUrlEscudoValida(escudo)) {
-    return `<img class="club-nav__escudo" src="${escaparAtributoHtml(escudo)}" alt="" loading="lazy">`;
-  }
-
-  const inicial = (seccion.nombre || '?').charAt(0).toUpperCase();
-  return `<span class="club-nav__icon-placeholder">${inicial}</span>`;
-}
-
-function crearHtmlItemCarruselSeccion(seccion, activo) {
-  const liga = obtenerLigaRepresentativaSeccion(seccion.nombre);
-  const atributosLiga = liga ? ` data-liga="${escaparAtributoHtml(liga)}"` : '';
-
-  return `
-    <li>
-      <button
-        type="button"
-        class="club-nav__item${activo ? ' active' : ''}"
-        data-seccion="${escaparAtributoHtml(seccion.nombre)}"
-        data-equipo="${escaparAtributoHtml(seccion.nombre)}"
-        data-seccion-id="${seccion.id}"${atributosLiga}
-        aria-pressed="${activo}"
-        aria-label="Filtrar por ${escaparAtributoHtml(seccion.nombre)}"
-      >
-        <span class="club-nav__logo" aria-hidden="true">${crearHtmlIconoSeccion(seccion)}</span>
-        <span class="club-nav__label">${seccion.nombre.toUpperCase()}</span>
-      </button>
-    </li>
-  `;
-}
-
-function obtenerMaxEscudoCarrusel() {
-  return window.matchMedia('(max-width: 768px)').matches ? 56 : CLUB_NAV_ESCUDO_MAX;
-}
-
-function aplicarTamanioUniformeEscudo(img) {
-  const maxEscudo = obtenerMaxEscudoCarrusel();
-  img.style.width = `${maxEscudo}px`;
-  img.style.height = `${maxEscudo}px`;
-  img.style.transform = '';
-}
-
-function equalizarTamanioEscudosCarrusel() {
-  document.querySelectorAll('#club-nav-list .club-nav__escudo').forEach(aplicarTamanioUniformeEscudo);
-}
-
-function sincronizarCarruselSeccionesActivo() {
-  document.querySelectorAll('.club-nav__item').forEach((btn) => {
-    const activo = btn.dataset.seccion === categoriaFiltroActiva;
-    btn.classList.toggle('active', activo);
-    btn.setAttribute('aria-pressed', String(activo));
-  });
-}
-
-function renderizarCarruselSecciones() {
-  const lista = document.getElementById('club-nav-list');
-  if (!lista) return;
-
-  const seccionesCarrusel = obtenerSeccionesParaCarrusel();
-
-  if (
-    categoriaFiltroActiva !== 'todos' &&
-    !seccionesCarrusel.some((seccion) => seccion.nombre === categoriaFiltroActiva) &&
-    !secciones.some((seccion) => seccion.nombre === categoriaFiltroActiva)
-  ) {
-    categoriaFiltroActiva = 'todos';
-  }
-
-  const verTodoActivo = categoriaFiltroActiva === 'todos';
-  const items = [
-    `
-      <li>
-        <button
-          type="button"
-          class="club-nav__item${verTodoActivo ? ' active' : ''}"
-          data-seccion="todos"
-          data-equipo="todos"
-          aria-pressed="${verTodoActivo}"
-          aria-label="Ver todas las secciones"
-        >
-          <span class="club-nav__logo club-nav__logo--all" aria-hidden="true">
-            <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><circle cx="16" cy="16" r="10" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M11 16h10M16 11v10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-          </span>
-          <span class="club-nav__label">VER TODO</span>
-        </button>
-      </li>
-    `,
-    ...seccionesCarrusel.map((seccion) =>
-      crearHtmlItemCarruselSeccion(seccion, categoriaFiltroActiva === seccion.nombre)
-    ),
-  ];
-
-  lista.innerHTML = items.join('');
-
-  lista.querySelectorAll('.club-nav__escudo').forEach((img) => {
-    const nombre = img.closest('.club-nav__item')?.dataset.seccion || '?';
-    img.addEventListener(
-      'load',
-      () => aplicarTamanioUniformeEscudo(img),
-      { once: true }
-    );
-    img.addEventListener(
-      'error',
-      () => {
-        const placeholder = document.createElement('span');
-        placeholder.className = 'club-nav__icon-placeholder';
-        placeholder.textContent = nombre === 'todos' ? '+' : nombre.charAt(0).toUpperCase();
-        img.replaceWith(placeholder);
-      },
-      { once: true }
-    );
-  });
-
-  equalizarTamanioEscudosCarrusel();
-  window.dispatchEvent(new Event('header:remeasure'));
-}
-
 function filtrarPorSeccionCarousel(seccionNombre) {
   aplicarFiltroColeccion({ equipo: seccionNombre });
 }
@@ -3690,89 +3848,12 @@ function filtrarPorOfertas() {
     btn.classList.toggle('active', btn.dataset.categoria === 'todos');
   });
 
-  sincronizarCarruselSeccionesActivo();
   sincronizarMenuMobileActivo();
   actualizarUiFiltroColeccion();
   solicitarRenderizadoProductos({
     skeleton: false,
     onReady: () => requestAnimationFrame(scrollAColeccion),
   });
-}
-
-function obtenerContenedorScrollClubNav() {
-  const lista = document.getElementById('club-nav-list');
-  if (!lista) return null;
-
-  const viewport = lista.closest('.club-nav__viewport');
-  if (window.matchMedia('(max-width: 768px)').matches && viewport) {
-    return viewport;
-  }
-
-  return lista;
-}
-
-function inicializarCarruselClubNav() {
-  const track = document.getElementById('club-nav-list');
-  const prev = document.getElementById('club-nav-prev');
-  const next = document.getElementById('club-nav-next');
-  if (!track) return;
-
-  const desplazar = (direccion) => {
-    const scrollEl = obtenerContenedorScrollClubNav();
-    if (!scrollEl) return;
-
-    const item = track.querySelector('.club-nav__item');
-    const gap = parseFloat(getComputedStyle(track).gap) || 4;
-    const paso = item ? item.closest('li').offsetWidth + gap : 76;
-    const esMobile = window.matchMedia('(max-width: 768px)').matches;
-
-    scrollEl.scrollBy({
-      left: direccion * paso * 2,
-      behavior: esMobile ? 'auto' : 'smooth',
-    });
-  };
-
-  prev?.addEventListener('click', () => desplazar(-1));
-  next?.addEventListener('click', () => desplazar(1));
-}
-
-function manejarInteraccionCarruselEquipos(event) {
-  const objetivoInteractivo = event.target.closest(
-    '.club-nav__item, .club-nav__logo, .club-nav__label, .club-nav__escudo, .club-nav__icon-placeholder'
-  );
-  if (!objetivoInteractivo) return;
-
-  const btn = event.target.closest('.club-nav__item');
-  if (!btn) return;
-
-  event.preventDefault();
-
-  const filtro = obtenerFiltroDesdeItemCarousel(btn);
-  if (!filtro) return;
-
-  const mismoFiltroActivo =
-    !filtroSoloOfertas &&
-    filtro.equipo === categoriaFiltroActiva &&
-    (filtro.equipo !== 'todos' || !ligaFiltroActiva);
-
-  aplicarFiltroColeccion({
-    equipo: filtro.equipo,
-    liga: filtro.equipo === 'todos' ? filtro.liga : '',
-    scroll: !mismoFiltroActivo && filtro.equipo !== 'todos',
-  });
-}
-
-function inicializarClubNav() {
-  const lista = document.getElementById('club-nav-list');
-  lista?.addEventListener('click', manejarInteraccionCarruselEquipos);
-
-  let resizeTimer;
-  window.addEventListener('resize', () => {
-    clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(equalizarTamanioEscudosCarrusel, 150);
-  });
-
-  inicializarCarruselClubNav();
 }
 
 function obtenerProductosDestacados() {
@@ -3841,7 +3922,7 @@ function renderizarCarruselProductos(trackId, lista, mensajeVacio) {
   if (!track) return;
 
   if (!lista.length) {
-    track.innerHTML = `<p class="stadium-carousel__empty">${mensajeVacio}</p>`;
+    mostrarMensajeVacioCatalogo(track, mensajeVacio, 'stadium-carousel__empty');
     track.setAttribute('aria-busy', 'false');
     const carouselId = trackId.replace(/-track$/, '');
     requestAnimationFrame(() => actualizarVisibilidadFlechas(carouselId));
@@ -3941,26 +4022,27 @@ function inicializarStadiumCarousel() {
 let heroStageControlador = null;
 let bannersAdminCache = [];
 
-const BANNERS_HOME_FALLBACK = [
+const BANNERS_HOME_EJEMPLOS = [
   {
-    index: 0,
-    imagenUrl: 'https://images.unsplash.com/photo-1517466787929-bc90951d0974?auto=format&fit=crop&w=1920&q=80',
-    enlace: '',
-    titulo: 'CAMISETAS DE FÚTBOL',
+    titulo: 'NUEVA COLECCIÓN - STREETWEAR',
+    enlace: '/productos?categoria=remeras',
   },
   {
-    index: 1,
-    imagenUrl: 'https://images.unsplash.com/photo-1551958219-acbc608c6377?auto=format&fit=crop&w=1920&q=80',
-    enlace: '',
-    titulo: 'CLUBES ARGENTINOS',
+    titulo: 'BUZOS OVERSIZED & HOODIES',
+    enlace: '/productos?categoria=buzos',
   },
   {
-    index: 2,
-    imagenUrl: 'https://images.unsplash.com/photo-1579952363873-27f3bade9f55?auto=format&fit=crop&w=1920&q=80',
-    enlace: '',
-    titulo: 'SELECCIONES & RETRO',
+    titulo: 'REMERAS & ESSENTIALS',
+    enlace: '/productos?categoria=remeras',
   },
 ];
+
+const BANNERS_HOME_FALLBACK = BANNERS_HOME_EJEMPLOS.map((ejemplo, index) => ({
+  index,
+  imagenUrl: '',
+  enlace: ejemplo.enlace,
+  titulo: ejemplo.titulo,
+}));
 
 function formatearTituloHero(titulo) {
   const texto = String(titulo || '').trim();
@@ -3978,7 +4060,12 @@ function renderizarSlidesHero(banners) {
   if (!viewport) return [];
 
   const lista = (Array.isArray(banners) ? banners : [])
-    .filter((banner) => banner?.imagenUrl)
+    .map((banner) => ({
+      ...banner,
+      imagenUrl: sanitizarUrlBanner(banner?.imagenUrl),
+      enlace: sanitizarUrlBanner(banner?.enlace),
+    }))
+    .filter((banner) => banner.imagenUrl)
     .slice(0, 3);
 
   if (!lista.length) {
@@ -3993,8 +4080,7 @@ function renderizarSlidesHero(banners) {
     const tituloHtml = formatearTituloHero(banner.titulo);
     const aria = escaparHtmlTexto(banner.titulo || `Banner ${index + 1}`);
     const imagen = escaparHtmlTexto(banner.imagenUrl);
-    const enlaceRaw = String(banner.enlace || '').trim();
-    const enlace = esUrlHttpSeguraCliente(enlaceRaw) ? enlaceRaw : '';
+    const enlace = esUrlHttpSeguraCliente(banner.enlace) ? banner.enlace : '';
     const imgTag = `
       <div class="hero-slide__media">
         <img class="hero-slide__img" src="${imagen}" alt="${aria}" loading="${index === 0 ? 'eager' : 'lazy'}">
@@ -4374,7 +4460,6 @@ function renderizarFiltrosCategorias(listaProductos) {
   ) {
     categoriaFiltroActiva = 'todos';
     ligaFiltroActiva = '';
-    sincronizarCarruselSeccionesActivo();
     actualizarUiFiltroColeccion();
   }
 
@@ -4941,14 +5026,12 @@ async function cargarProductos(opciones = {}) {
     productos = await apiFetch(ruta);
     if (!incluirInactivos) {
       renderizarFiltrosCategorias(productos);
-      renderizarCarruselSecciones();
     }
     return true;
   } catch {
     productos = [];
     if (!incluirInactivos) {
       renderizarFiltrosCategorias(productos);
-      renderizarCarruselSecciones();
     }
     if (!incluirInactivos) {
       mostrarToast('Error de conexión con el servidor', 'error');
@@ -5379,9 +5462,10 @@ function renderizarProductos() {
   if (!container) return;
 
   if (secciones.length === 0 && productos.length === 0) {
-    container.innerHTML = `
-      <p class="store-section__empty">Todavía no hay productos disponibles en la tienda.</p>
-    `;
+    mostrarMensajeVacioCatalogo(
+      container,
+      'Todavía no hay productos disponibles en la tienda.'
+    );
     renderizarStadiumCarousel();
     actualizarUiFiltroColeccion();
     return;
@@ -5394,13 +5478,19 @@ function renderizarProductos() {
     const productosFiltrados = ordenarListaProductos(filtrarProductos(productos));
 
     if (!productosFiltrados.length) {
-      const mensajeVacio = filtroSoloOfertas
-        ? 'No hay ofertas disponibles por ahora.'
-        : categoriaFiltroActiva !== 'todos'
-          ? 'No hay productos en esta colección por ahora.'
-          : `No hay productos de ${ligaFiltroActiva} por ahora.`;
+      // M2: ligaFiltroActiva / búsqueda van por textContent (nunca innerHTML).
+      let mensajeVacio = 'Todavía no hay productos disponibles en la tienda.';
+      if (filtroSoloOfertas) {
+        mensajeVacio = 'No hay ofertas disponibles por ahora.';
+      } else if (categoriaFiltroActiva !== 'todos') {
+        mensajeVacio = 'No hay productos en esta colección por ahora.';
+      } else if (ligaFiltroActiva) {
+        mensajeVacio = `No hay productos de ${ligaFiltroActiva} por ahora.`;
+      } else if (busquedaActiva) {
+        mensajeVacio = `No encontramos productos que coincidan con «${busquedaActiva}».`;
+      }
 
-      container.innerHTML = `<p class="store-section__empty">${mensajeVacio}</p>`;
+      mostrarMensajeVacioCatalogo(container, mensajeVacio);
       renderizarStadiumCarousel();
       actualizarUiFiltroColeccion();
       return;
@@ -5498,13 +5588,15 @@ function renderizarProductos() {
   }
 
   if (!bloques.length) {
-    const mensajeVacio = busquedaActiva
-      ? 'No encontramos productos que coincidan con tu búsqueda.'
-      : categoriaFiltroActiva !== 'todos'
-        ? 'No hay productos en esta colección por ahora.'
-        : 'Todavía no hay productos disponibles en la tienda.';
+    // M2: el término de búsqueda / filtros se insertan solo vía textContent.
+    let mensajeVacio = 'Todavía no hay productos disponibles en la tienda.';
+    if (busquedaActiva) {
+      mensajeVacio = `No encontramos productos que coincidan con «${busquedaActiva}».`;
+    } else if (categoriaFiltroActiva !== 'todos') {
+      mensajeVacio = 'No hay productos en esta colección por ahora.';
+    }
 
-    container.innerHTML = `<p class="store-section__empty">${mensajeVacio}</p>`;
+    mostrarMensajeVacioCatalogo(container, mensajeVacio);
     renderizarStadiumCarousel();
     actualizarUiFiltroColeccion();
     return;
@@ -5521,11 +5613,111 @@ function obtenerClaveCarritoUsuario(email) {
   return `${CARRITO_USUARIO_PREFIX}${normalizarEmail(email)}`;
 }
 
+/**
+ * Precio unitario de un ítem del carrito.
+ * Prioriza el valor guardado; si es inválido/0, recupera el precio efectivo del catálogo.
+ */
+function obtenerPrecioUnitarioCarrito(item) {
+  const candidatos = [
+    item?.precio,
+    item?.precioUnitario,
+    item?.precio_unitario,
+    item?.price,
+  ];
+
+  for (const candidato of candidatos) {
+    const precio = parsearMonto(candidato);
+    if (Number.isFinite(precio) && precio > 0) {
+      return redondearMontoCheckout(precio);
+    }
+  }
+
+  if (Array.isArray(productos) && item?.id != null) {
+    const producto = productos.find(
+      (p) => p.id === item.id || String(p.id) === String(item.id)
+    );
+    if (producto) {
+      const efectivo = parsearMonto(obtenerPrecioEfectivo(producto));
+      if (Number.isFinite(efectivo) && efectivo > 0) {
+        return redondearMontoCheckout(efectivo);
+      }
+    }
+  }
+
+  const fallback = parsearMonto(item?.precio);
+  return Number.isFinite(fallback) && fallback >= 0 ? redondearMontoCheckout(fallback) : 0;
+}
+
+/** Repara precios en 0/NaN/mal parseados del carrito usando el catálogo cargado. */
+function sincronizarPreciosCarritoDesdeCatalogo() {
+  if (!Array.isArray(carrito) || !carrito.length) return false;
+  if (!Array.isArray(productos) || !productos.length) return false;
+
+  let cambio = false;
+  carrito.forEach((item) => {
+    const producto = productos.find(
+      (p) => p.id === item.id || String(p.id) === String(item.id)
+    );
+    const precioCatalogo = producto
+      ? parsearMonto(obtenerPrecioEfectivo(producto))
+      : NaN;
+    const precioActual = parsearMonto(item.precio);
+
+    const invalido = !Number.isFinite(precioActual) || precioActual <= 0;
+    // Number("18.900") === 18.9 cuando el catálogo tiene 18900
+    const malParseado = Number.isFinite(precioCatalogo)
+      && Number.isFinite(precioActual)
+      && precioCatalogo > 0
+      && precioActual > 0
+      && Math.abs(precioCatalogo - precioActual) > 0.5
+      && (
+        Math.abs(precioCatalogo / precioActual - 1000) < 1
+        || Math.abs(precioCatalogo / precioActual - 100) < 1
+      );
+
+    if (!invalido && !malParseado) return;
+    if (!Number.isFinite(precioCatalogo) || precioCatalogo <= 0) return;
+
+    item.precio = redondearMontoCheckout(precioCatalogo);
+    if (producto?.nombre) item.nombre = producto.nombre;
+    cambio = true;
+  });
+
+  if (cambio) {
+    guardarCarritoEnLocalStorage();
+  }
+  return cambio;
+}
+
+/**
+ * Garantiza precios unitarios válidos en el carrito antes de sumar.
+ * Usado por el checkout al entrar/volver al paso de pago.
+ */
+function asegurarPreciosCarritoParaCheckout() {
+  if (!Array.isArray(carrito) || !carrito.length) return 0;
+
+  sincronizarPreciosCarritoDesdeCatalogo();
+
+  let subtotal = 0;
+  carrito.forEach((item) => {
+    const precio = obtenerPrecioUnitarioCarrito(item);
+    const cantidad = Math.max(1, Math.floor(Number(item.cantidad) || 1));
+    if (Number.isFinite(precio) && precio > 0 && item.precio !== precio) {
+      item.precio = precio;
+    }
+    if (Number.isFinite(precio) && precio > 0) {
+      subtotal += precio * cantidad;
+    }
+  });
+
+  return redondearMontoCheckout(subtotal);
+}
+
 function normalizarItemCarrito(item) {
   if (!item || item.id == null) return null;
 
-  const precio = Number(item.precio);
   const cantidad = Math.max(1, Math.floor(Number(item.cantidad) || 1));
+  const precio = obtenerPrecioUnitarioCarrito(item);
 
   return {
     id: item.id,
@@ -5639,14 +5831,8 @@ function limpiarCarritoDemo() {
 window.limpiarCarritoDemo = limpiarCarritoDemo;
 
 function calcularTotal() {
-  const total = carrito.reduce((suma, item) => {
-    const precio = Number(item.precio);
-    const cantidad = Math.max(1, Math.floor(Number(item.cantidad) || 1));
-    if (!Number.isFinite(precio) || precio < 0) return suma;
-    return suma + precio * cantidad;
-  }, 0);
-
-  return redondearMontoCheckout(total);
+  // Antes de sumar, reparar precios corruptos (evita subtotal $0 con ítems visibles).
+  return asegurarPreciosCarritoParaCheckout();
 }
 
 function actualizarBarraEnvioGratis(totalCarrito, ids = {}) {
@@ -5711,7 +5897,7 @@ function construirItemsCuponCheckout() {
     const seccion = secciones.find(
       (s) => String(s.nombre || '').toLowerCase() === seccionNombre.toLowerCase()
     );
-    const precio = Number(item.precio);
+    const precio = obtenerPrecioUnitarioCarrito(item);
     const cantidad = Math.max(1, Number(item.cantidad) || 1);
 
     return {
@@ -5777,7 +5963,7 @@ function calcularBaseDescuentoCupon() {
     return redondearMontoCheckout(
       carrito.reduce((suma, item) => {
         if (!ids.has(String(item.id))) return suma;
-        return suma + Number(item.precio) * Math.max(1, Number(item.cantidad) || 1);
+        return suma + obtenerPrecioUnitarioCarrito(item) * Math.max(1, Number(item.cantidad) || 1);
       }, 0)
     );
   }
@@ -5863,16 +6049,29 @@ function limpiarCuponCheckout() {
   actualizarTotalCheckoutUI();
 }
 
+/**
+ * Descuentos (compuestos, misma regla que el servidor):
+ * 1) Cupón % sobre la base elegible del subtotal de productos.
+ * 2) Transferencia −10% sobre el total post-cupón de productos (no sobre el envío).
+ * 3) El costo de envío se suma al final, sin descuentos.
+ *
+ * No son lineales (10%+10%≠20% sobre la base): el 10% de transferencia
+ * se aplica sobre lo que queda después del cupón.
+ */
 function calcularDesgloseCheckout() {
   const { subtotal, descuentoMonto, totalFinal } = calcularTotalConCupon();
   const totalConCupon = Number(totalFinal) || 0;
   const descuentoCupon = Number(descuentoMonto) || 0;
+  // 10% compuesto sobre productos post-cupón (antes de envío).
   const descuentoTransferencia = redondearMontoCheckout(totalConCupon * 0.10);
   const totalTransferenciaProductos = Math.max(
     0,
     redondearMontoCheckout(totalConCupon - descuentoTransferencia)
   );
-  const totalAhorrado = redondearMontoCheckout(descuentoCupon + descuentoTransferencia);
+  // Suma en pesos de ambos descuentos (solo aplica si el método es transferencia).
+  const totalAhorradoTransferencia = redondearMontoCheckout(
+    descuentoCupon + descuentoTransferencia
+  );
 
   // El total cobrado no incluye envío hasta que ENVIO_EN_CHECKOUT_ACTIVO esté activo.
   let costoEnvio = 0;
@@ -5891,12 +6090,40 @@ function calcularDesgloseCheckout() {
     totalConCupon,
     descuentoTransferencia,
     totalTransferencia,
-    totalAhorrado,
+    /** Suma cupón + transferencia (pesos). La UI debe filtrar según método. */
+    totalAhorrado: totalAhorradoTransferencia,
+    totalAhorradoTransferencia,
     costoEnvio,
     envioGratis,
     totalConEnvio,
     codigoCupon: obtenerCodigoCuponCheckout(),
   };
+}
+
+/** Lee el método de pago del checkout multi-paso; null si no hay radios (modal). */
+function obtenerMetodoPagoSeleccionadoUI() {
+  const checked = document.querySelector('input[name="metodo-pago"]:checked');
+  const valor = checked?.value;
+  if (valor === 'mercadopago' || valor === 'transferencia') return valor;
+  return null;
+}
+
+/**
+ * Totales y ahorro según el método elegido.
+ * Mercado Pago: sin −10% transferencia. Transferencia: cupón + transferencia.
+ */
+function resolverTotalesSegunMetodoPago(desglose, metodoPago) {
+  const esTransferencia = metodoPago === 'transferencia';
+  const totalFinal = esTransferencia
+    ? desglose.totalTransferencia
+    : (desglose.totalConEnvio ?? desglose.totalConCupon);
+  const totalAhorrado = esTransferencia
+    ? redondearMontoCheckout(
+      (Number(desglose.descuentoCupon) || 0) + (Number(desglose.descuentoTransferencia) || 0)
+    )
+    : (Number(desglose.descuentoCupon) || 0);
+
+  return { esTransferencia, totalFinal, totalAhorrado };
 }
 
 function actualizarMiniCartResumen(desglose) {
@@ -5924,10 +6151,9 @@ function actualizarTotalCheckoutUI() {
   const {
     subtotal,
     descuentoCupon,
+    descuentoTransferencia,
     totalConCupon,
-    totalConEnvio,
     totalTransferencia,
-    totalAhorrado,
     costoEnvio,
     envioGratis,
     codigoCupon,
@@ -5938,16 +6164,42 @@ function actualizarTotalCheckoutUI() {
   const descuentoRow = document.getElementById('checkout-summary-descuento-row');
   const descuentoEl = document.getElementById('checkout-summary-descuento');
   const descuentoLabel = document.getElementById('checkout-summary-descuento-label');
+  const descuentoTransferenciaRow = document.getElementById(
+    'checkout-summary-descuento-transferencia-row'
+  );
+  const descuentoTransferenciaEl = document.getElementById(
+    'checkout-summary-descuento-transferencia'
+  );
 
   const esPaginaCheckout = document.body?.dataset?.page === 'checkout';
-  const totalAMostrar = esPaginaCheckout ? totalConEnvio : totalConCupon;
-  if (summaryTotal) summaryTotal.textContent = formatearPrecio(totalAMostrar);
+  // En la página multi-paso el total sigue al radio elegido; en el modal el resumen es MP
+  // y la tarjeta verde es el preview de transferencia.
+  const metodoPagina = esPaginaCheckout ? obtenerMetodoPagoSeleccionadoUI() : null;
+  const metodoEfectivo = metodoPagina || 'transferencia';
+  const { esTransferencia, totalFinal, totalAhorrado } = resolverTotalesSegunMetodoPago(
+    desglose,
+    esPaginaCheckout ? metodoEfectivo : 'transferencia'
+  );
 
-  const hayDescuento = Boolean(cuponAplicado && descuentoCupon > 0);
+  const totalResumen = esPaginaCheckout
+    ? totalFinal
+    : totalConCupon;
+  if (summaryTotal) summaryTotal.textContent = formatearPrecio(totalResumen);
+
+  const hayDescuentoCupon = Boolean(cuponAplicado && descuentoCupon > 0);
+  const hayDescuentoTransferencia = esPaginaCheckout
+    && esTransferencia
+    && descuentoTransferencia > 0;
 
   // En la página dedicada el subtotal siempre es visible; en el modal solo con cupón.
-  if (subtotalRow) subtotalRow.hidden = esPaginaCheckout ? false : !hayDescuento;
-  if (descuentoRow) descuentoRow.hidden = !hayDescuento;
+  if (subtotalRow) subtotalRow.hidden = esPaginaCheckout ? false : !hayDescuentoCupon;
+  if (descuentoRow) descuentoRow.hidden = !hayDescuentoCupon;
+  if (descuentoTransferenciaRow) {
+    descuentoTransferenciaRow.hidden = !hayDescuentoTransferencia;
+  }
+  if (descuentoTransferenciaEl && hayDescuentoTransferencia) {
+    descuentoTransferenciaEl.textContent = `−${formatearPrecio(descuentoTransferencia)}`;
+  }
 
   const envioEl = document.getElementById('checkout-summary-envio');
   if (envioEl) {
@@ -5964,7 +6216,7 @@ function actualizarTotalCheckoutUI() {
   if (subtotalEl) subtotalEl.textContent = formatearPrecio(subtotal);
   if (descuentoEl) descuentoEl.textContent = `−${formatearPrecio(descuentoCupon)}`;
   if (descuentoLabel) {
-    descuentoLabel.textContent = hayDescuento
+    descuentoLabel.textContent = hayDescuentoCupon
       ? `Descuento por cupón${codigoCupon ? ` (${codigoCupon})` : ''}`
       : 'Descuento por cupón';
   }
@@ -5972,15 +6224,40 @@ function actualizarTotalCheckoutUI() {
   const totalConTransferenciaEl = document.getElementById('total-con-transferencia');
   const montoAhorradoEl = document.getElementById('monto-ahorrado-total');
   const contenedorAhorro = document.getElementById('contenedor-ahorro-transferencia');
+  const etiquetaMetodo = document.getElementById('etiqueta-metodo-pago-final')
+    || document.querySelector('#contenedor-ahorro-transferencia .metodo-etiqueta');
+  const pildoraAhorro = document.getElementById('pildora-ahorro-total');
 
+  // Monto de la tarjeta verde: en página = método elegido; en modal = siempre transferencia.
+  const montoTarjeta = esPaginaCheckout ? totalFinal : totalTransferencia;
+  const ahorroTarjeta = esPaginaCheckout
+    ? totalAhorrado
+    : redondearMontoCheckout(
+      (Number(descuentoCupon) || 0) + (Number(descuentoTransferencia) || 0)
+    );
+
+  if (etiquetaMetodo) {
+    etiquetaMetodo.textContent = esPaginaCheckout && !esTransferencia
+      ? 'MERCADO PAGO'
+      : 'TRANSFERENCIA BANCARIA (-10%)';
+  }
   if (totalConTransferenciaEl) {
-    totalConTransferenciaEl.textContent = formatearPrecio(totalTransferencia);
+    totalConTransferenciaEl.textContent = formatearPrecio(montoTarjeta);
   }
   if (montoAhorradoEl) {
-    montoAhorradoEl.textContent = formatearPrecio(totalAhorrado);
+    montoAhorradoEl.textContent = formatearPrecio(ahorroTarjeta);
+  }
+  if (pildoraAhorro) {
+    pildoraAhorro.hidden = ahorroTarjeta <= 0;
   }
   if (contenedorAhorro) {
-    contenedorAhorro.hidden = totalAhorrado <= 0;
+    if (esPaginaCheckout) {
+      // Visible en confirmación: refleja el método actual (sin arrastrar datos viejos).
+      contenedorAhorro.hidden = false;
+    } else {
+      // Modal: promo de transferencia cuando hay ahorro real.
+      contenedorAhorro.hidden = ahorroTarjeta <= 0;
+    }
   }
 
   // Una sola vez por contenedor (checkout + drawer lateral)
@@ -6113,26 +6390,30 @@ function renderizarCarrito() {
     .map(
       (item) => {
         const nombreConTalle = item.talle ? `${item.nombre} — Talle ${item.talle}` : item.nombre;
+        const idTalleAttr = escaparAtributoHtml(item.id_talle);
+        const nombreAttr = escaparAtributoHtml(nombreConTalle);
 
         return `
-        <article class="cart-item" data-id-talle="${item.id_talle}">
+        <article class="cart-item" data-id-talle="${idTalleAttr}">
           <img
             class="cart-item__image"
             src="${obtenerImagenPrincipal({ imagen: item.imagen })}"
-            alt="${nombreConTalle}"
+            alt="${nombreAttr}"
             width="72"
             height="96"
           >
           <div class="cart-item__details">
-            <h3 class="cart-item__name">${nombreConTalle}</h3>
+            <h3 class="cart-item__name">${escaparTextoHtml(nombreConTalle)}</h3>
             <p class="cart-item__price">${formatearPrecio(item.precio)} c/u</p>
             <p class="cart-item__subtotal">${formatearPrecio(item.precio * item.cantidad)}</p>
           </div>
           <div class="cart-item__actions">
             <button
+              type="button"
               class="cart-item__remove"
-              onclick="eliminarDelCarrito('${item.id_talle}')"
-              aria-label="Eliminar ${nombreConTalle} del carrito"
+              data-cart-action="remove"
+              data-id-talle="${idTalleAttr}"
+              aria-label="Eliminar ${nombreAttr} del carrito"
             >
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/>
@@ -6140,15 +6421,19 @@ function renderizarCarrito() {
             </button>
             <div class="cart-item__quantity">
               <button
+                type="button"
                 class="cart-item__qty-btn"
-                onclick="disminuirCantidad('${item.id_talle}')"
-                aria-label="Disminuir cantidad de ${nombreConTalle}"
+                data-cart-action="decrease"
+                data-id-talle="${idTalleAttr}"
+                aria-label="Disminuir cantidad de ${nombreAttr}"
               >−</button>
               <span class="cart-item__qty-value">${item.cantidad}</span>
               <button
+                type="button"
                 class="cart-item__qty-btn"
-                onclick="aumentarCantidad('${item.id_talle}')"
-                aria-label="Aumentar cantidad de ${nombreConTalle}"
+                data-cart-action="increase"
+                data-id-talle="${idTalleAttr}"
+                aria-label="Aumentar cantidad de ${nombreAttr}"
               >+</button>
             </div>
           </div>
@@ -6357,9 +6642,10 @@ function renderizarResumenCheckout() {
       const variante = item.variante ? ` ${escaparHtmlTexto(item.variante)}` : '';
       const nombre = `${nombreBase}${variante}`;
       const talleTexto = item.talle ? `Talle ${escaparHtmlTexto(item.talle)}` : '';
-      const precio = Number(item.precio);
+      const precio = obtenerPrecioUnitarioCarrito(item);
       const cantidad = Math.max(1, Math.floor(Number(item.cantidad) || 1));
       const subtotalItem = Number.isFinite(precio) ? precio * cantidad : 0;
+      if (item.precio !== precio) item.precio = precio;
       const imagen = String(item.imagen || '').trim();
 
       if (esPagina) {
@@ -6399,6 +6685,9 @@ function renderizarResumenCheckout() {
     </div>
     <ul class="checkout-resumen__list">${itemsHtml}</ul>
   `;
+
+  // Mantener subtotal/total alineados con los precios recién resueltos del listado.
+  actualizarTotalCheckoutUI();
 }
 
 async function prepararCheckoutModal(sesion) {
@@ -6621,7 +6910,11 @@ async function procesarPedido(event) {
     if (typeof limpiarCheckoutPasoGuardado === 'function') limpiarCheckoutPasoGuardado();
     window.location.href = respuestaPago.init_point;
   } catch (error) {
-    mostrarToast(error?.message || 'No se pudo iniciar el pago. Intentá de nuevo.', 'error');
+    // 409/400 de stock: no vaciar carrito; el catch solo avisa y desbloquea.
+    await notificarErrorPedidoCheckout(
+      error,
+      'No se pudo iniciar el pago. Intentá de nuevo.'
+    );
     checkoutPedidoEnProceso = false;
     desbloquearBotonesCheckout(submitBtn, transferBtn);
   }
@@ -6687,7 +6980,11 @@ async function procesarPedidoTransferencia() {
     checkoutPedidoEnProceso = false;
     desbloquearBotonesCheckout(submitBtn, transferBtn);
   } catch (error) {
-    mostrarToast(error?.message || 'No se pudo crear el pedido. Intentá de nuevo.', 'error');
+    // Stock concurrente (409) u otras validaciones: carrito intacto + toast claro.
+    await notificarErrorPedidoCheckout(
+      error,
+      'No se pudo crear el pedido. Intentá de nuevo.'
+    );
     checkoutPedidoEnProceso = false;
     desbloquearBotonesCheckout(submitBtn, transferBtn);
   }
@@ -7195,7 +7492,7 @@ function agregarAlCarrito(id) {
       id_talle,
       talle: talle || null,
       nombre: producto.nombre,
-      precio: obtenerPrecioEfectivo(producto),
+      precio: parsearMonto(obtenerPrecioEfectivo(producto)) || 0,
       imagen: obtenerImagenPrincipal(producto),
       cantidad: 1,
     });
@@ -7285,11 +7582,26 @@ function inicializarCarrito() {
   const cartClose = document.getElementById('mini-cart-close');
   const cartOverlay = document.getElementById('mini-cart-overlay');
   const checkoutBtn = document.getElementById('mini-cart-checkout');
+  const cartItems = document.getElementById('mini-cart-items-container');
 
   cartBtn?.addEventListener('click', abrirMiniCart);
   cartClose?.addEventListener('click', cerrarMiniCart);
   cartOverlay?.addEventListener('click', cerrarMiniCart);
   checkoutBtn?.addEventListener('click', abrirCheckout);
+
+  // Delegación: CSP bloquea onclick inline (script-src-attr 'none').
+  cartItems?.addEventListener('click', (event) => {
+    const btn = event.target.closest('[data-cart-action]');
+    if (!btn || !cartItems.contains(btn)) return;
+
+    const idTalle = btn.dataset.idTalle;
+    const accion = btn.dataset.cartAction;
+    if (!idTalle || !accion) return;
+
+    if (accion === 'remove') eliminarDelCarrito(idTalle);
+    else if (accion === 'decrease') disminuirCantidad(idTalle);
+    else if (accion === 'increase') aumentarCantidad(idTalle);
+  });
 
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && document.getElementById('mini-cart-drawer')?.classList.contains('abierto')) {
@@ -7337,6 +7649,17 @@ function inicializarCheckout() {
   modalClose?.addEventListener('click', cerrarCheckout);
   modalOverlay?.addEventListener('click', cerrarCheckout);
   btnAplicarCupon?.addEventListener('click', aplicarCuponCheckout);
+  inputCupon?.addEventListener('input', () => {
+    const start = inputCupon.selectionStart;
+    const end = inputCupon.selectionEnd;
+    const valor = String(inputCupon.value || '').toUpperCase();
+    if (inputCupon.value !== valor) {
+      inputCupon.value = valor;
+      if (typeof start === 'number' && typeof end === 'number') {
+        inputCupon.setSelectionRange(start, end);
+      }
+    }
+  });
   inputCupon?.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
       event.preventDefault();
@@ -7344,6 +7667,8 @@ function inicializarCheckout() {
     }
   });
   document.getElementById('checkout-transferencia-btn')?.addEventListener('click', procesarPedidoTransferencia);
+  // CSP (Helmet) bloquea onsubmit inline: el binding debe ser por addEventListener.
+  document.getElementById('checkout-form')?.addEventListener('submit', procesarPedido);
 }
 
 /* ── Página de información ── */
@@ -7694,7 +8019,7 @@ function manejarClickAccesoCuenta() {
 
   if (esSesionAdminActiva()) {
     if (esPaginaCuenta()) {
-      window.location.href = 'index.html';
+      window.location.href = 'index.html#admin';
       return;
     }
     mostrarVistaAdmin();
@@ -7767,36 +8092,254 @@ function actualizarUIUsuario() {
   if (emailEl) emailEl.textContent = '';
 }
 
-function mostrarVistaAdmin() {
+const ADMIN_PANELS = {
+  dashboard: {
+    title: 'Dashboard',
+    subtitle: 'Resumen general de tu negocio',
+  },
+  pedidos: {
+    title: 'Pedidos',
+    subtitle: 'Gestioná los pedidos de tu tienda',
+  },
+  productos: {
+    title: 'Productos',
+    subtitle: 'Administrá el catálogo de tu tienda',
+  },
+  portada: {
+    title: 'Gestión de Portada',
+    subtitle: 'Carrusel de la Home, Destacados y En Oferta',
+  },
+  cupones: {
+    title: 'Cupones',
+    subtitle: 'Creá y administrá códigos de descuento',
+  },
+};
+
+const ADMIN_VIEW_STORAGE_KEY = 'vista_admin_activa';
+let panelAdminActivo = 'dashboard';
+let adminVentasChart = null;
+let sincronizandoRutaVista = false;
+
+function esHashRutaAdmin(hashRaw = window.location.hash) {
+  const hash = String(hashRaw || '').replace(/^#/, '');
+  return hash === 'admin' || hash.startsWith('admin/');
+}
+
+function parsearRutaAdminDesdeHash(hashRaw = window.location.hash) {
+  const hash = String(hashRaw || '').replace(/^#/, '');
+  if (hash === 'admin') {
+    return { activa: true, panel: 'dashboard' };
+  }
+  if (hash.startsWith('admin/')) {
+    const panel = hash.slice('admin/'.length).split(/[/?#]/)[0];
+    return {
+      activa: true,
+      panel: ADMIN_PANELS[panel] ? panel : 'dashboard',
+    };
+  }
+  return { activa: false, panel: null };
+}
+
+function obtenerHashAdmin(panel = panelAdminActivo || 'dashboard') {
+  const destino = ADMIN_PANELS[panel] ? panel : 'dashboard';
+  return destino === 'dashboard' ? '#admin' : `#admin/${destino}`;
+}
+
+function marcarVistaAdminPersistente(panel = panelAdminActivo || 'dashboard') {
+  const destino = ADMIN_PANELS[panel] ? panel : 'dashboard';
+  try {
+    sessionStorage.setItem(ADMIN_VIEW_STORAGE_KEY, destino);
+  } catch {
+    /* ignore */
+  }
+}
+
+function limpiarVistaAdminPersistente() {
+  try {
+    sessionStorage.removeItem(ADMIN_VIEW_STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+function obtenerVistaAdminPersistente() {
+  try {
+    const panel = sessionStorage.getItem(ADMIN_VIEW_STORAGE_KEY);
+    return ADMIN_PANELS[panel] ? panel : null;
+  } catch {
+    return null;
+  }
+}
+
+function sincronizarHashAdmin(panel = panelAdminActivo) {
+  const hash = obtenerHashAdmin(panel);
+  if (window.location.hash === hash) return;
+  sincronizandoRutaVista = true;
+  history.replaceState(null, '', hash);
+  sincronizandoRutaVista = false;
+}
+
+function limpiarHashAdmin() {
+  if (!esHashRutaAdmin()) return;
+  sincronizandoRutaVista = true;
+  history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+  sincronizandoRutaVista = false;
+}
+
+function limpiarBootVistaAdmin() {
+  document.documentElement.classList.remove('view-admin-boot');
+  document.documentElement.removeAttribute('data-admin-panel-boot');
+}
+
+function aplicarShellAdminInmediato(panel) {
+  const destino = ADMIN_PANELS[panel] ? panel : 'dashboard';
+  panelAdminActivo = destino;
+  marcarVistaAdminPersistente(destino);
+
   const storeView = document.getElementById('store-view');
   const adminView = document.getElementById('admin-view');
+  if (storeView) storeView.style.display = 'none';
+  if (adminView) adminView.style.display = 'block';
+  document.body.classList.add('admin-active');
+  document.documentElement.classList.add('view-admin-boot');
+  document.documentElement.setAttribute('data-admin-panel-boot', destino);
+
+  const config = ADMIN_PANELS[destino];
+  const titleEl = document.getElementById('admin-header-title');
+  const subtitleEl = document.getElementById('admin-header-subtitle');
+  if (titleEl) titleEl.textContent = config.title;
+  if (subtitleEl) subtitleEl.textContent = config.subtitle;
+
+  document.querySelectorAll('.admin-panel').forEach((seccion) => {
+    seccion.classList.toggle('hidden', seccion.dataset.adminPanel !== destino);
+  });
+  document.querySelectorAll('.admin-sidebar__link[data-admin-panel]').forEach((link) => {
+    link.classList.toggle('admin-sidebar__link--active', link.dataset.adminPanel === destino);
+  });
+}
+
+function aplicarBootVistaDesdeUrl() {
+  if (document.body?.dataset?.page) return;
+
+  const ruta = parsearRutaAdminDesdeHash();
+  const panelPersistido = obtenerVistaAdminPersistente();
+  const panelBoot = document.documentElement.getAttribute('data-admin-panel-boot');
+
+  if (!ruta.activa && !panelPersistido && !panelBoot) {
+    limpiarBootVistaAdmin();
+    return;
+  }
+
+  if (!esSesionAdminActiva()) {
+    limpiarBootVistaAdmin();
+    limpiarVistaAdminPersistente();
+    return;
+  }
+
+  const panel =
+    (ruta.activa && ruta.panel) ||
+    (ADMIN_PANELS[panelBoot] ? panelBoot : null) ||
+    panelPersistido ||
+    'dashboard';
+
+  aplicarShellAdminInmediato(panel);
+  if (!ruta.activa) sincronizarHashAdmin(panel);
+}
+
+function manejarCambioHashVista() {
+  if (sincronizandoRutaVista || document.body?.dataset?.page) return;
+
+  const ruta = parsearRutaAdminDesdeHash();
+
+  if (ruta.activa) {
+    if (!esSesionAdminActiva()) {
+      limpiarHashAdmin();
+      limpiarBootVistaAdmin();
+      limpiarVistaAdminPersistente();
+      mostrarVistaTienda({ sincronizarHash: false, conTransicion: false });
+      return;
+    }
+
+    if (!document.body.classList.contains('admin-active')) {
+      panelAdminActivo = ruta.panel;
+      mostrarVistaAdmin({ sincronizarHash: false, conTransicion: false, panel: ruta.panel });
+      void cargarPanelAdmin();
+      return;
+    }
+
+    if (ruta.panel !== panelAdminActivo) {
+      cambiarPanelAdmin(ruta.panel, { sincronizarHash: false });
+    }
+    return;
+  }
+
+  if (document.body.classList.contains('admin-active')) {
+    void volverATiendaDesdeAdmin({ sincronizarHash: false });
+  }
+}
+
+function inicializarRutasVista() {
+  if (document.body?.dataset?.page) return;
+  window.addEventListener('hashchange', manejarCambioHashVista);
+}
+
+function mostrarVistaAdmin(opciones = {}) {
+  const {
+    sincronizarHash = true,
+    conTransicion = true,
+    panel = null,
+  } = opciones;
+
+  if (panel && ADMIN_PANELS[panel]) {
+    panelAdminActivo = panel;
+  } else {
+    const ruta = parsearRutaAdminDesdeHash();
+    if (ruta.activa) panelAdminActivo = ruta.panel;
+  }
 
   const aplicar = () => {
+    const storeView = document.getElementById('store-view');
+    const adminView = document.getElementById('admin-view');
+
     if (storeView) storeView.style.display = 'none';
     if (adminView) {
       adminView.style.display = 'block';
-      adminView.classList.remove('view-fade');
-      void adminView.offsetWidth;
-      adminView.classList.add('view-fade');
+      if (conTransicion) {
+        adminView.classList.remove('view-fade');
+        void adminView.offsetWidth;
+        adminView.classList.add('view-fade');
+      }
     }
     document.body.classList.add('admin-active');
+    document.documentElement.classList.add('view-admin-boot');
+    document.documentElement.setAttribute('data-admin-panel-boot', panelAdminActivo);
+    marcarVistaAdminPersistente(panelAdminActivo);
+    if (sincronizarHash) sincronizarHashAdmin(panelAdminActivo);
     aplicarMarcaTienda();
     actualizarUIUsuario();
   };
 
-  ejecutarConTransicionVista(aplicar);
+  if (conTransicion) ejecutarConTransicionVista(aplicar);
+  else aplicar();
 }
 
-function mostrarVistaTienda() {
-  const storeView = document.getElementById('store-view');
-  const adminView = document.getElementById('admin-view');
+function mostrarVistaTienda(opciones = {}) {
+  const {
+    sincronizarHash = true,
+    conTransicion = true,
+  } = opciones;
 
   const aplicar = () => {
+    const storeView = document.getElementById('store-view');
+    const adminView = document.getElementById('admin-view');
+
     if (storeView) {
       storeView.style.display = '';
-      storeView.classList.remove('view-fade');
-      void storeView.offsetWidth;
-      storeView.classList.add('view-fade');
+      if (conTransicion) {
+        storeView.classList.remove('view-fade');
+        void storeView.offsetWidth;
+        storeView.classList.add('view-fade');
+      }
     }
     if (adminView) adminView.style.display = 'none';
 
@@ -7811,6 +8354,9 @@ function mostrarVistaTienda() {
     );
     document.body.style.overflow = '';
     document.documentElement.style.overflow = '';
+    limpiarBootVistaAdmin();
+    limpiarVistaAdminPersistente();
+    if (sincronizarHash) limpiarHashAdmin();
 
     aplicarMarcaTienda();
     cerrarModalPedido();
@@ -7818,14 +8364,14 @@ function mostrarVistaTienda() {
     actualizarUIUsuario();
   };
 
-  ejecutarConTransicionVista(aplicar);
+  if (conTransicion) ejecutarConTransicionVista(aplicar);
+  else aplicar();
 }
 
-async function volverATiendaDesdeAdmin() {
-  mostrarVistaTienda();
+async function volverATiendaDesdeAdmin(opciones = {}) {
+  mostrarVistaTienda(opciones);
   actualizarUIUsuario();
   await cargarSecciones();
-  renderizarCarruselSecciones();
   const ok = await cargarProductos();
   if (ok) {
     renderizarStadiumCarousel();
@@ -7841,10 +8387,11 @@ function completarInicioSesion(usuario) {
 
   if (usuario.rol === 'admin') {
     if (document.body?.dataset?.page === 'cuenta') {
-      window.location.href = 'index.html';
+      window.location.href = 'index.html#admin';
       return;
     }
-    mostrarVistaAdmin();
+    panelAdminActivo = parsearRutaAdminDesdeHash().panel || obtenerVistaAdminPersistente() || 'dashboard';
+    mostrarVistaAdmin({ panel: panelAdminActivo });
     cargarPanelAdmin();
     return;
   }
@@ -8036,10 +8583,22 @@ async function restaurarSesion() {
   localStorage.removeItem(ADMIN_TOKEN_KEY);
   localStorage.removeItem(CLIENTE_TOKEN_KEY);
 
+  const salirDeAdminSinSesion = () => {
+    if (esHashRutaAdmin()) limpiarHashAdmin();
+    limpiarBootVistaAdmin();
+    limpiarVistaAdminPersistente();
+    if (document.getElementById('admin-view') && document.body.classList.contains('admin-active')) {
+      mostrarVistaTienda({ sincronizarHash: false, conTransicion: false });
+    } else if (document.documentElement.classList.contains('view-admin-boot')) {
+      mostrarVistaTienda({ sincronizarHash: false, conTransicion: false });
+    }
+  };
+
   try {
     const respuesta = await apiFetch('/api/auth/sesion');
     if (!respuesta?.usuario) {
       limpiarSesionLocal();
+      salirDeAdminSinSesion();
       return;
     }
 
@@ -8048,7 +8607,7 @@ async function restaurarSesion() {
 
     if (document.body?.dataset?.page === 'cuenta') {
       if (sesion.rol === 'admin') {
-        window.location.href = 'index.html';
+        window.location.href = 'index.html#admin';
         return;
       }
       actualizarUIUsuario();
@@ -8057,16 +8616,43 @@ async function restaurarSesion() {
     }
 
     if (sesion.rol === 'admin') {
-      mostrarVistaAdmin();
-      cargarPanelAdmin();
+      const rutaAdmin = parsearRutaAdminDesdeHash();
+      const panelPersistido = obtenerVistaAdminPersistente();
+      const yaEnAdmin =
+        document.body.classList.contains('admin-active') ||
+        document.documentElement.classList.contains('view-admin-boot');
+
+      // Restaurar panel si la URL lo pide, si quedó marcado en sessionStorage,
+      // o si el boot temprano ya mostró el shell admin.
+      if (rutaAdmin.activa || panelPersistido || yaEnAdmin) {
+        const panel =
+          (rutaAdmin.activa && rutaAdmin.panel) ||
+          panelPersistido ||
+          panelAdminActivo ||
+          'dashboard';
+        panelAdminActivo = panel;
+        mostrarVistaAdmin({ sincronizarHash: true, conTransicion: false, panel });
+        cargarPanelAdmin();
+        return;
+      }
+
+      // Admin navegando la tienda pública: no forzar el panel.
+      limpiarBootVistaAdmin();
+      mostrarVistaTienda({ sincronizarHash: false, conTransicion: false });
       return;
     }
 
+    if (esHashRutaAdmin()) {
+      limpiarHashAdmin();
+      limpiarBootVistaAdmin();
+    }
+    limpiarVistaAdminPersistente();
     cargarCarritoDeSesion();
     actualizarCarritoUI();
-    mostrarVistaTienda();
+    mostrarVistaTienda({ sincronizarHash: false, conTransicion: false });
   } catch {
     limpiarSesionLocal();
+    salirDeAdminSinSesion();
   }
 }
 
@@ -8076,44 +8662,17 @@ function resumirProductos(productos) {
   return nombres.length > 48 ? `${nombres.slice(0, 48)}…` : nombres;
 }
 
-const ADMIN_PANELS = {
-  dashboard: {
-    title: 'Dashboard',
-    subtitle: 'Resumen general de tu negocio',
-  },
-  pedidos: {
-    title: 'Pedidos',
-    subtitle: 'Gestioná los pedidos de tu tienda',
-  },
-  productos: {
-    title: 'Productos',
-    subtitle: 'Administrá el catálogo de tu tienda',
-  },
-  portada: {
-    title: 'Gestión de Portada',
-    subtitle: 'Banners del inicio, Destacados y En Oferta',
-  },
-  configuracion: {
-    title: 'Configuración',
-    subtitle: 'Personalizá los datos públicos de tu tienda',
-  },
-  cupones: {
-    title: 'Cupones',
-    subtitle: 'Creá y administrá códigos de descuento',
-  },
-};
-
-let panelAdminActivo = 'dashboard';
-let adminVentasChart = null;
-
-function cambiarPanelAdmin(panel) {
+function cambiarPanelAdmin(panel, opciones = {}) {
+  const { sincronizarHash = true } = opciones;
   if (!ADMIN_PANELS[panel]) return;
 
   panelAdminActivo = panel;
   const config = ADMIN_PANELS[panel];
 
-  document.getElementById('admin-header-title').textContent = config.title;
-  document.getElementById('admin-header-subtitle').textContent = config.subtitle;
+  const titleEl = document.getElementById('admin-header-title');
+  const subtitleEl = document.getElementById('admin-header-subtitle');
+  if (titleEl) titleEl.textContent = config.title;
+  if (subtitleEl) subtitleEl.textContent = config.subtitle;
 
   document.querySelectorAll('.admin-panel').forEach((seccion) => {
     const activo = seccion.dataset.adminPanel === panel;
@@ -8128,6 +8687,12 @@ function cambiarPanelAdmin(panel) {
   document.querySelectorAll('.admin-sidebar__link[data-admin-panel]').forEach((link) => {
     link.classList.toggle('admin-sidebar__link--active', link.dataset.adminPanel === panel);
   });
+
+  document.documentElement.setAttribute('data-admin-panel-boot', panel);
+  marcarVistaAdminPersistente(panel);
+  if (sincronizarHash && document.body.classList.contains('admin-active')) {
+    sincronizarHashAdmin(panel);
+  }
 
   if (panel === 'productos') {
     renderizarSelectCategoriasPreciosMasivo();
@@ -8144,87 +8709,8 @@ function cambiarPanelAdmin(panel) {
     renderizarGraficoVentasAdmin();
   }
 
-  if (panel === 'configuracion') {
-    cargarFormularioConfiguracion();
-  }
-
   if (panel === 'cupones') {
     cargarCuponesAdmin();
-  }
-}
-
-async function cargarFormularioConfiguracion() {
-  try {
-    const config = await fetch(`${API_BASE}/api/config`).then((respuesta) => {
-      if (!respuesta.ok) throw new Error('No se pudo cargar la configuración.');
-      return respuesta.json();
-    });
-
-    const nombreInput = document.getElementById('config-nombre-tienda');
-    const whatsappInput = document.getElementById('config-whatsapp');
-    const cloudNameInput = document.getElementById('config-cloudinary-cloud-name');
-    const uploadPresetInput = document.getElementById('config-cloudinary-upload-preset');
-    const afipLinkInput = document.getElementById('config-afip-link');
-
-    if (nombreInput) nombreInput.value = String(config.nombreTienda || '').trim();
-    if (whatsappInput) {
-      whatsappInput.value = String(config.whatsappNumero || '').replace(/^\+/, '').trim();
-    }
-    if (cloudNameInput) cloudNameInput.value = String(config.cloudinaryCloudName || '').trim();
-    if (uploadPresetInput) uploadPresetInput.value = String(config.cloudinaryUploadPreset || '').trim();
-    if (afipLinkInput) afipLinkInput.value = String(config.afipLink || '').trim();
-  } catch (error) {
-    mostrarToast(error?.message || 'No se pudo cargar la configuración.', 'error');
-  }
-}
-
-async function guardarConfiguracion(event) {
-  event.preventDefault();
-
-  const nombreTienda = String(document.getElementById('config-nombre-tienda')?.value || '').trim();
-  const whatsappNumero = String(document.getElementById('config-whatsapp')?.value || '')
-    .replace(/^\+/, '')
-    .replace(/\D/g, '')
-    .trim();
-  const cloudinaryCloudName = String(
-    document.getElementById('config-cloudinary-cloud-name')?.value || ''
-  ).trim();
-  const cloudinaryUploadPreset = String(
-    document.getElementById('config-cloudinary-upload-preset')?.value || ''
-  ).trim();
-  const afipLink = String(document.getElementById('config-afip-link')?.value || '').trim();
-  const btn = document.getElementById('btn-guardar-configuracion');
-
-  if (!nombreTienda) {
-    mostrarToast('El nombre de la tienda es obligatorio.', 'error');
-    return;
-  }
-
-  if (!whatsappNumero) {
-    mostrarToast('Ingresá un número de WhatsApp válido (sin el +).', 'error');
-    return;
-  }
-
-  btn?.setAttribute('disabled', 'true');
-
-  try {
-    await apiFetch('/api/config', {
-      method: 'PUT',
-      body: JSON.stringify({
-        nombreTienda,
-        whatsappNumero,
-        cloudinaryCloudName,
-        cloudinaryUploadPreset,
-        afipLink,
-      }),
-    });
-
-    await cargarConfiguracionTienda();
-    mostrarToast('Configuración guardada correctamente.');
-  } catch (error) {
-    mostrarToast(error?.message || 'No se pudo guardar la configuración.', 'error');
-  } finally {
-    btn?.removeAttribute('disabled');
   }
 }
 
@@ -8241,6 +8727,40 @@ function etiquetaAplicaACupon(cupon) {
   return 'Toda la tienda';
 }
 
+function normalizarCodigoCuponInput() {
+  const input = document.getElementById('cupon-codigo');
+  if (!input) return;
+
+  const start = input.selectionStart;
+  const end = input.selectionEnd;
+  const valorNormalizado = String(input.value || '').toUpperCase();
+
+  if (input.value !== valorNormalizado) {
+    input.value = valorNormalizado;
+    if (typeof start === 'number' && typeof end === 'number') {
+      input.setSelectionRange(start, end);
+    }
+  }
+
+  actualizarPreviewCupon();
+}
+
+function actualizarPreviewCupon() {
+  const preview = document.getElementById('cupon-preview');
+  const codigoEl = document.getElementById('cupon-preview-codigo');
+  const descuentoEl = document.getElementById('cupon-preview-descuento');
+  if (!preview || !codigoEl || !descuentoEl) return;
+
+  const codigo = String(document.getElementById('cupon-codigo')?.value || '').trim().toUpperCase();
+  const descuento = Number(document.getElementById('cupon-descuento')?.value);
+  const tieneCodigo = Boolean(codigo);
+  const tieneDescuento = Number.isFinite(descuento) && descuento > 0;
+
+  codigoEl.textContent = tieneCodigo ? codigo : 'TU CÓDIGO';
+  descuentoEl.textContent = tieneDescuento ? `−${descuento}%` : '−0%';
+  preview.classList.toggle('is-ready', tieneCodigo && tieneDescuento);
+}
+
 function renderizarCuponesAdmin(cupones = []) {
   const tbody = document.getElementById('admin-cupones-tbody');
   const wrap = document.getElementById('admin-cupones-table-wrap');
@@ -8250,7 +8770,7 @@ function renderizarCuponesAdmin(cupones = []) {
     wrap?.classList.add('admin-table-wrapper--empty');
     tbody.innerHTML = `
       <tr>
-        <td colspan="5">Todavía no hay cupones. Creá el primero con el formulario de arriba.</td>
+        <td colspan="6">Todavía no hay cupones. Creá el primero con el formulario.</td>
       </tr>
     `;
     return;
@@ -8290,6 +8810,29 @@ function renderizarCuponesAdmin(cupones = []) {
               <span class="admin-toggle__track" aria-hidden="true"></span>
             </label>
           </td>
+          <td>
+            <button
+              type="button"
+              class="admin-cupon-eliminar${activo ? '' : ' is-disabled'}"
+              data-cupon-id="${id}"
+              data-cupon-codigo="${escaparAtributoHtml(cupon.codigo || '')}"
+              data-cupon-activo="${activo ? '1' : '0'}"
+              title="${activo ? 'Dar de baja cupón' : 'Cupón ya dado de baja'}"
+              aria-label="${activo ? `Eliminar cupón ${codigo}` : `Cupón ${codigo} ya inactivo`}"
+              ${activo ? '' : 'disabled'}
+            >
+              <span class="admin-cupon-eliminar__icon" aria-hidden="true">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 6h18"></path>
+                  <path d="M8 6V4h8v2"></path>
+                  <path d="M19 6l-1 14H6L5 6"></path>
+                  <path d="M10 11v6"></path>
+                  <path d="M14 11v6"></path>
+                </svg>
+              </span>
+              Eliminar
+            </button>
+          </td>
         </tr>
       `;
     })
@@ -8298,12 +8841,12 @@ function renderizarCuponesAdmin(cupones = []) {
   animarFilasEntrada(tbody, 'tr[data-cupon-id]');
 }
 
-async function cargarCuponesAdmin() {
+async function cargarCuponesAdmin({ silent = false } = {}) {
   const tbody = document.getElementById('admin-cupones-tbody');
-  if (tbody) {
+  if (!silent && tbody) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="5">Cargando cupones…</td>
+        <td colspan="6">Cargando cupones…</td>
       </tr>
     `;
   }
@@ -8312,14 +8855,46 @@ async function cargarCuponesAdmin() {
     const cupones = await apiFetch('/api/admin/cupones');
     renderizarCuponesAdmin(Array.isArray(cupones) ? cupones : []);
   } catch (error) {
-    if (tbody) {
+    if (!silent && tbody) {
       tbody.innerHTML = `
         <tr>
-          <td colspan="5">No se pudieron cargar los cupones.</td>
+          <td colspan="6">No se pudieron cargar los cupones.</td>
         </tr>
       `;
     }
     mostrarToast(error?.message || 'No se pudieron cargar los cupones.', 'error');
+  }
+}
+
+function actualizarEstadoFilaCupon(id, activo) {
+  const fila = document.querySelector(`#admin-cupones-tbody tr[data-cupon-id="${CSS.escape(String(id))}"]`);
+  if (!fila) return;
+
+  const codigo = fila.querySelector('.admin-cupon-codigo')?.textContent?.trim() || 'cupón';
+  const estado = fila.querySelector('.admin-cupon-estado');
+  if (estado) {
+    estado.textContent = activo ? 'Activo' : 'Inactivo';
+    estado.classList.toggle('admin-cupon-estado--activo', activo);
+    estado.classList.toggle('admin-cupon-estado--inactivo', !activo);
+  }
+
+  const toggle = fila.querySelector('.admin-cupon-toggle');
+  if (toggle) {
+    toggle.checked = activo;
+    toggle.setAttribute('aria-label', `${activo ? 'Desactivar' : 'Activar'} cupón ${codigo}`);
+    toggle.closest('.admin-toggle')?.setAttribute('title', `${activo ? 'Desactivar' : 'Activar'} cupón`);
+  }
+
+  const btnEliminar = fila.querySelector('.admin-cupon-eliminar');
+  if (btnEliminar) {
+    btnEliminar.dataset.cuponActivo = activo ? '1' : '0';
+    btnEliminar.disabled = !activo;
+    btnEliminar.classList.toggle('is-disabled', !activo);
+    btnEliminar.title = activo ? 'Dar de baja cupón' : 'Cupón ya dado de baja';
+    btnEliminar.setAttribute(
+      'aria-label',
+      activo ? `Eliminar cupón ${codigo}` : `Cupón ${codigo} ya inactivo`
+    );
   }
 }
 
@@ -8624,6 +9199,7 @@ async function crearCuponAdmin(event) {
     if (descuentoInput) descuentoInput.value = '';
     if (activoInput) activoInput.checked = true;
     resetearFormularioFiltroCupon();
+    actualizarPreviewCupon();
 
     if (form && !preferReducedMotion()) {
       form.classList.remove('form-motion--error', 'form-motion--success');
@@ -8632,7 +9208,7 @@ async function crearCuponAdmin(event) {
     }
 
     mostrarToast(`Cupón ${codigo} creado (−${descuentoPorcentaje}%).`);
-    await cargarCuponesAdmin();
+    await cargarCuponesAdmin({ silent: true });
   } catch (error) {
     marcarError();
     mostrarToast(error?.message || 'No se pudo crear el cupón.', 'error');
@@ -8650,19 +9226,53 @@ async function toggleCuponActivoAdmin(event) {
 
   const activo = Boolean(toggle.checked);
   toggle.disabled = true;
+  actualizarEstadoFilaCupon(id, activo);
 
   try {
     await apiFetch(`/api/admin/cupones/${id}`, {
       method: 'PATCH',
       body: JSON.stringify({ activo }),
     });
-    await cargarCuponesAdmin();
     mostrarToast(activo ? 'Cupón activado.' : 'Cupón desactivado.');
   } catch (error) {
-    toggle.checked = !activo;
+    actualizarEstadoFilaCupon(id, !activo);
     mostrarToast(error?.message || 'No se pudo actualizar el cupón.', 'error');
   } finally {
     toggle.disabled = false;
+  }
+}
+
+async function eliminarCuponAdmin(event) {
+  const btn = event.target.closest('.admin-cupon-eliminar');
+  if (!btn) return;
+
+  const id = btn.dataset.cuponId;
+  const codigo = String(btn.dataset.cuponCodigo || '').trim().toUpperCase() || 'este cupón';
+  const yaInactivo = btn.dataset.cuponActivo === '0';
+  if (!id) return;
+
+  if (yaInactivo) {
+    mostrarToast(`El cupón ${codigo} ya está dado de baja.`, 'error');
+    return;
+  }
+
+  const confirmar = confirm(
+    `¿Dar de baja el cupón «${codigo}»?\n\nDejará de poder usarse en el checkout.`
+  );
+  if (!confirmar) return;
+
+  btn.disabled = true;
+  actualizarEstadoFilaCupon(id, false);
+
+  try {
+    await apiFetch(`/api/admin/cupones/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ activo: false }),
+    });
+    mostrarToast(`Cupón ${codigo} dado de baja.`);
+  } catch (error) {
+    actualizarEstadoFilaCupon(id, true);
+    mostrarToast(error?.message || 'No se pudo dar de baja el cupón.', 'error');
   }
 }
 
@@ -8881,18 +9491,247 @@ function crearOpcionesEstado(estadoActual) {
 }
 
 let pedidosAdminIdsPrevios = new Set();
+/** Filtro activo del listado admin: 'todos' | estado normalizado. */
+let filtroPedidosAdmin = 'todos';
+/** ID del pedido con accordion abierto en el panel admin. */
+let pedidoAdminExpandidoId = null;
+
+function obtenerPedidosFiltradosAdmin(listaPedidos = pedidos) {
+  if (filtroPedidosAdmin === 'todos') return [...listaPedidos];
+  return listaPedidos.filter(
+    (pedido) => normalizarEstadoPedidoCliente(pedido.estado) === filtroPedidosAdmin
+  );
+}
+
+function contarPedidosPorEstadoAdmin(listaPedidos = pedidos) {
+  const conteos = {
+    todos: listaPedidos.length,
+    pendiente_pago: 0,
+    listo_empaquetar: 0,
+    despachado: 0,
+    entregado: 0,
+    cancelado: 0,
+  };
+
+  listaPedidos.forEach((pedido) => {
+    const estado = normalizarEstadoPedidoCliente(pedido.estado);
+    if (conteos[estado] != null) conteos[estado] += 1;
+  });
+
+  return conteos;
+}
+
+function actualizarTabsFiltroPedidosAdmin(listaPedidos = pedidos) {
+  const tabs = document.getElementById('admin-orders-tabs');
+  if (!tabs) return;
+
+  const conteos = contarPedidosPorEstadoAdmin(listaPedidos);
+
+  tabs.querySelectorAll('[data-orders-filter]').forEach((tab) => {
+    const filtro = tab.dataset.ordersFilter;
+    const activo = filtro === filtroPedidosAdmin;
+    tab.classList.toggle('is-active', activo);
+    tab.setAttribute('aria-selected', activo ? 'true' : 'false');
+  });
+
+  tabs.querySelectorAll('[data-filter-count]').forEach((badge) => {
+    const clave = badge.dataset.filterCount;
+    badge.textContent = String(conteos[clave] ?? 0);
+  });
+}
+
+function actualizarVistaVaciaPedidosAdmin(listaFiltrada, totalPedidos) {
+  const wrapper = document.querySelector('#admin-panel-pedidos .admin-table-wrapper');
+  const emptyEl = document.getElementById('admin-empty');
+  const emptyTitle = document.getElementById('admin-empty-title');
+  const emptyText = document.getElementById('admin-empty-text');
+  const countEl = document.getElementById('orders-count');
+
+  const sinResultados = listaFiltrada.length === 0;
+  wrapper?.classList.toggle('admin-table-wrapper--empty', sinResultados);
+  if (emptyEl) emptyEl.hidden = !sinResultados;
+
+  if (emptyTitle && emptyText) {
+    if (totalPedidos === 0) {
+      emptyTitle.textContent = 'No hay pedidos aún';
+      emptyText.textContent = 'Los pedidos realizados desde la tienda aparecerán aquí automáticamente.';
+    } else {
+      emptyTitle.textContent = 'Sin pedidos en este filtro';
+      emptyText.textContent = 'Probá con otro estado o volvé a «Todos» para ver el listado completo.';
+    }
+  }
+
+  if (countEl) {
+    if (totalPedidos === 0) {
+      countEl.textContent = '';
+    } else if (filtroPedidosAdmin === 'todos') {
+      countEl.textContent = `${totalPedidos} pedido${totalPedidos !== 1 ? 's' : ''}`;
+    } else {
+      countEl.textContent = `${listaFiltrada.length} de ${totalPedidos}`;
+    }
+  }
+}
+
+function crearDesgloseProductosPedido(pedido) {
+  const items = Array.isArray(pedido.productos) ? pedido.productos : [];
+  if (items.length === 0) {
+    return '<p class="admin-order-detail__empty">Este pedido no tiene ítems registrados.</p>';
+  }
+
+  const filas = items
+    .map((item) => {
+      const prenda = escaparTextoHtml(item.nombre || 'Producto');
+      const talle = escaparTextoHtml(item.talle || '—');
+      const cantidad = Number(item.cantidad) || 0;
+      return `
+        <li class="admin-order-detail__item">
+          <span class="admin-order-detail__prenda">${prenda}</span>
+          <span class="admin-order-detail__meta">Talle: <strong>${talle}</strong></span>
+          <span class="admin-order-detail__meta">Cant: <strong>${cantidad}</strong></span>
+          <span class="admin-order-detail__meta">${formatearPrecio(item.precio * cantidad)}</span>
+        </li>
+      `;
+    })
+    .join('');
+
+  return `
+    <div class="admin-order-detail__panel">
+      <h3 class="admin-order-detail__title">Desglose de productos</h3>
+      <ul class="admin-order-detail__list">${filas}</ul>
+    </div>
+  `;
+}
+
+/** True si el pedido se pagó (o se pagará) por transferencia bancaria. */
+function esMetodoPagoTransferenciaPedido(metodoPago) {
+  const valor = String(metodoPago || '').trim().toLowerCase();
+  return valor === 'transferencia' || valor.includes('transferencia');
+}
+
+/** True si el pedido usa Mercado Pago (aprobación vía webhook). */
+function esMetodoPagoMercadoPagoPedido(metodoPago) {
+  const valor = String(metodoPago || '').trim().toLowerCase();
+  return valor.includes('mercado pago') || valor === 'mercadopago' || valor === 'mp';
+}
+
+function crearAccionesRapidasPedido(pedido) {
+  const estado = normalizarEstadoPedidoCliente(pedido.estado);
+  const idSeguro = escaparAtributoHtml(pedido.id);
+  const metodoPago = pedido.metodoPago || pedido.pago || '';
+  const esTransferencia = esMetodoPagoTransferenciaPedido(metodoPago);
+  const esMercadoPago = esMetodoPagoMercadoPagoPedido(metodoPago);
+  const partes = [];
+
+  // Flujo dinámico según estado + método de pago:
+  // PENDIENTE + Transferencia → Aprobar Pago + Cancelar
+  // PENDIENTE + Mercado Pago → solo Cancelar (aprobación automática por webhook)
+  // PREPARACIÓN → Etiqueta + Marcar como Enviado
+  // ENVIADO → Finalizar Entrega
+  if (estado === 'pendiente_pago') {
+    // Solo transferencia requiere validación manual del comprobante.
+    if (esTransferencia && !esMercadoPago) {
+      partes.push(`
+        <button
+          type="button"
+          class="btn-order-action btn-order-action--approve"
+          data-order-action="aprobar"
+          data-order-id="${idSeguro}"
+        >
+          Aprobar Pago
+        </button>
+      `);
+    }
+    partes.push(`
+      <button
+        type="button"
+        class="btn-order-action btn-order-action--cancel"
+        data-order-action="cancelar"
+        data-order-id="${idSeguro}"
+      >
+        Cancelar
+      </button>
+    `);
+    // Mercado Pago pendiente: sin botón de aprobar; Cancelar + Ver detalle.
+    if (esMercadoPago || !esTransferencia) {
+      partes.push(`
+        <button
+          type="button"
+          class="btn-detail"
+          data-order-action="detalle"
+          data-order-id="${idSeguro}"
+        >
+          Ver detalle
+        </button>
+      `);
+    }
+  } else if (estado === 'listo_empaquetar') {
+    partes.push(crearBotonEtiquetaEnvio(pedido.id));
+    partes.push(`
+      <button
+        type="button"
+        class="btn-order-action btn-order-action--ship"
+        data-order-action="enviar"
+        data-order-id="${idSeguro}"
+      >
+        Marcar como Enviado
+      </button>
+    `);
+  } else if (estado === 'despachado') {
+    partes.push(crearBotonEtiquetaEnvio(pedido.id));
+    partes.push(`
+      <button
+        type="button"
+        class="btn-order-action btn-order-action--deliver"
+        data-order-action="finalizar"
+        data-order-id="${idSeguro}"
+      >
+        Finalizar Entrega
+      </button>
+    `);
+  } else if (estado === 'entregado' || estado === 'cancelado') {
+    partes.push(`
+      <button
+        type="button"
+        class="btn-detail"
+        data-order-action="detalle"
+        data-order-id="${idSeguro}"
+      >
+        Ver detalle
+      </button>
+    `);
+  }
+
+  if (partes.length === 0) {
+    partes.push(`
+      <button
+        type="button"
+        class="btn-detail"
+        data-order-action="detalle"
+        data-order-id="${idSeguro}"
+      >
+        Ver detalle
+      </button>
+    `);
+  }
+
+  return `<div class="admin-table__actions">${partes.join('')}</div>`;
+}
 
 function renderizarTablaPedidosAdmin(listaPedidos) {
   const tbody = document.getElementById('admin-orders-body');
   if (!tbody) return;
 
-  if (listaPedidos.length === 0) {
+  const filtrados = obtenerPedidosFiltradosAdmin(listaPedidos);
+  actualizarTabsFiltroPedidosAdmin(listaPedidos);
+  actualizarVistaVaciaPedidosAdmin(filtrados, listaPedidos.length);
+
+  if (filtrados.length === 0) {
     tbody.innerHTML = '';
-    pedidosAdminIdsPrevios = new Set();
+    pedidosAdminIdsPrevios = new Set(listaPedidos.map((p) => String(p.id)));
     return;
   }
 
-  const ordenados = [...listaPedidos].sort(
+  const ordenados = [...filtrados].sort(
     (a, b) => new Date(b.fecha) - new Date(a.fecha)
   );
 
@@ -8905,36 +9744,44 @@ function renderizarTablaPedidosAdmin(listaPedidos) {
       const idVisible = escaparTextoHtml(pedido.numeroPedido || pedido.id);
       const idPedido = escaparAtributoHtml(pedido.id);
       const nombreCliente = escaparTextoHtml(pedido.cliente?.nombre || '—');
-      const telefono = escaparTextoHtml(pedido.cliente?.telefono || '—');
-      const resumen = resumirProductos(pedido.productos);
-      const resumenSeguro = escaparTextoHtml(resumen);
-      const resumenAttr = escaparAtributoHtml(resumen);
+      const metodoPago = escaparTextoHtml(pedido.metodoPago || '—');
+      const expandido = String(pedidoAdminExpandidoId) === String(pedido.id);
       const esNuevo = !pedidosAdminIdsPrevios.has(String(pedido.id));
       const enterClass =
         !preferReducedMotion() && (esPrimeraCarga || esNuevo) ? ' table-row-enter' : '';
 
       return `
-        <tr class="${enterClass.trim()}" data-order-id="${idPedido}">
-          <td><span class="admin-table__id">#${idVisible}</span></td>
-          <td>${formatearFechaCorta(pedido.fecha)}</td>
-          <td>${nombreCliente}</td>
-          <td>${telefono}</td>
-          <td><span class="admin-table__products" title="${resumenAttr}">${resumenSeguro}</span></td>
-          <td class="admin-table__total">${formatearPrecio(pedido.total)}</td>
-          <td>${crearBadgeEstadoPedido(pedido.estado)}</td>
-          <td>
-            <div class="admin-table__actions">
-              ${crearBotonEtiquetaEnvio(pedido.id)}
-              ${crearBotonNotificarDespacho(pedido.id, pedido.estado)}
-              <button
-                class="btn-detail"
-                type="button"
-                data-order-id="${idPedido}"
-              >
-                Ver detalle
-              </button>
-            </div>
+        <tr
+          class="admin-order-row${enterClass}${expandido ? ' is-expanded' : ''}"
+          data-order-id="${idPedido}"
+          aria-expanded="${expandido ? 'true' : 'false'}"
+        >
+          <td class="admin-table__td-expand">
+            <button
+              type="button"
+              class="admin-order-expand"
+              data-order-toggle="${idPedido}"
+              aria-label="${expandido ? 'Ocultar' : 'Ver'} desglose del pedido #${idVisible}"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clip-rule="evenodd"/>
+              </svg>
+            </button>
           </td>
+          <td><span class="admin-table__id">#${idVisible}</span></td>
+          <td>${nombreCliente}</td>
+          <td>${formatearFechaCorta(pedido.fecha)}</td>
+          <td><span class="admin-table__pago">${metodoPago}</span></td>
+          <td class="admin-table__total">${formatearPrecio(pedido.total)}</td>
+          <td>${crearBadgeEstadoPedido(pedido.estado, { admin: true })}</td>
+          <td>${crearAccionesRapidasPedido(pedido)}</td>
+        </tr>
+        <tr
+          class="admin-order-detail"
+          data-order-detail-for="${idPedido}"
+          ${expandido ? '' : 'hidden'}
+        >
+          <td colspan="8">${crearDesgloseProductosPedido(pedido)}</td>
         </tr>
       `;
     })
@@ -8946,7 +9793,41 @@ function renderizarTablaPedidosAdmin(listaPedidos) {
     });
   }
 
-  pedidosAdminIdsPrevios = idsActuales;
+  // Trackear todos los IDs conocidos (no solo el filtro activo) para detectar pedidos nuevos.
+  pedidosAdminIdsPrevios = new Set(listaPedidos.map((p) => String(p.id)));
+}
+
+function alternarDetallePedidoAdmin(pedidoId) {
+  if (!pedidoId) return;
+
+  const tbody = document.getElementById('admin-orders-body');
+  if (!tbody) return;
+
+  const yaAbierto = String(pedidoAdminExpandidoId) === String(pedidoId);
+  pedidoAdminExpandidoId = yaAbierto ? null : pedidoId;
+
+  tbody.querySelectorAll('.admin-order-row').forEach((fila) => {
+    const id = fila.dataset.orderId;
+    const abierto = String(pedidoAdminExpandidoId) === String(id);
+    fila.classList.toggle('is-expanded', abierto);
+    fila.setAttribute('aria-expanded', abierto ? 'true' : 'false');
+  });
+
+  tbody.querySelectorAll('.admin-order-detail').forEach((detalle) => {
+    const id = detalle.dataset.orderDetailFor;
+    const abierto = String(pedidoAdminExpandidoId) === String(id);
+    detalle.hidden = !abierto;
+  });
+}
+
+function aplicarFiltroPedidosAdmin(filtro) {
+  const valor = String(filtro || 'todos').trim();
+  const permitidos = ['todos', 'pendiente_pago', 'listo_empaquetar', 'despachado', 'entregado', 'cancelado'];
+  if (!permitidos.includes(valor)) return;
+
+  filtroPedidosAdmin = valor;
+  pedidoAdminExpandidoId = null;
+  renderizarTablaPedidosAdmin(pedidos);
 }
 
 /**
@@ -8957,7 +9838,7 @@ async function notificarDespachoServidor(pedidoId, botonElemento) {
   if (!pedidoId || !botonElemento || botonElemento.disabled) return;
 
   const codigoIngresado = window.prompt(
-    'Ingresa el código de seguimiento del envío (deja en blanco si no aplica):',
+    'Pegá el código de seguimiento del envío (dejá en blanco si no aplica):',
     ''
   );
 
@@ -8978,18 +9859,18 @@ async function notificarDespachoServidor(pedidoId, botonElemento) {
 
     const pedidoActualizado = respuesta?.pedido;
     if (pedidoActualizado?.id) {
-      const indice = pedidos.findIndex((p) => p.id === pedidoActualizado.id);
+      const indice = pedidos.findIndex((p) => String(p.id) === String(pedidoActualizado.id));
       if (indice >= 0) {
         pedidos[indice] = { ...pedidos[indice], ...pedidoActualizado };
       }
     } else {
-      const local = pedidos.find((p) => p.id === pedidoId);
+      const local = pedidos.find((p) => String(p.id) === String(pedidoId));
       if (local) local.estado = 'despachado';
     }
 
     renderizarTablaPedidosAdmin(pedidos);
     await cargarMetricasDashboard();
-    mostrarToast(respuesta?.mensaje || 'Notificación de despacho enviada.');
+    mostrarToast(respuesta?.mensaje || 'Pedido marcado como Enviado y cliente notificado.');
   } catch (error) {
     botonElemento.disabled = false;
     botonElemento.innerHTML = htmlOriginal;
@@ -9004,19 +9885,6 @@ async function cargarPanelAdmin() {
     cargarEstadisticasAdmin(),
     cargarMetricasDashboard(),
   ]);
-
-  const vacio = pedidos.length === 0;
-  const wrapper = document.querySelector('#admin-panel-pedidos .admin-table-wrapper');
-  const emptyEl = document.getElementById('admin-empty');
-  const countEl = document.getElementById('orders-count');
-
-  wrapper?.classList.toggle('admin-table-wrapper--empty', vacio);
-  if (emptyEl) emptyEl.hidden = !vacio;
-  if (countEl) {
-    countEl.textContent = vacio
-      ? ''
-      : `${pedidos.length} pedido${pedidos.length !== 1 ? 's' : ''}`;
-  }
 
   renderizarGraficoVentasAdmin(estadisticasAdmin);
   renderizarTablaPedidosAdmin(pedidos);
@@ -9092,11 +9960,21 @@ function renderizarGestionBanners(banners) {
 
   bannersAdminCache = slotsBannersAdminCompletos(banners);
 
+  const previewVacio = `
+    <div class="admin-banner-card__preview-empty">
+      <svg class="admin-banner-card__preview-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z"/>
+      </svg>
+      <span>Sin banner cargado</span>
+    </div>
+  `;
+
   grid.innerHTML = bannersAdminCache.map((banner) => {
     const nro = banner.index + 1;
+    const ejemplo = BANNERS_HOME_EJEMPLOS[banner.index] || BANNERS_HOME_EJEMPLOS[0];
     const preview = banner.imagenUrl
       ? `<img class="admin-banner-card__preview-img" src="${escaparHtmlTexto(banner.imagenUrl)}" alt="Vista previa banner ${nro}">`
-      : '<span class="admin-banner-card__preview-empty">Sin imagen</span>';
+      : previewVacio;
 
     return `
       <article class="admin-banner-card" data-banner-index="${banner.index}">
@@ -9126,7 +10004,7 @@ function renderizarGestionBanners(banners) {
               id="banner-titulo-${banner.index}"
               class="admin-banner-card__input"
               value="${escaparHtmlTexto(banner.titulo)}"
-              placeholder="Ej: CAMISETAS DE FÚTBOL"
+              placeholder="Ej: ${escaparHtmlTexto(ejemplo.titulo)}"
               maxlength="80"
               data-banner-titulo="${banner.index}"
             >
@@ -9138,7 +10016,7 @@ function renderizarGestionBanners(banners) {
               id="banner-enlace-${banner.index}"
               class="admin-banner-card__input"
               value="${escaparHtmlTexto(banner.enlace)}"
-              placeholder="Ej: /productos?categoria=retro"
+              placeholder="Ej: ${escaparHtmlTexto(ejemplo.enlace)}"
               maxlength="300"
               data-banner-enlace="${banner.index}"
             >
@@ -9310,41 +10188,50 @@ function renderizarGestionPortada() {
       const imagen = obtenerImagenFrente(producto) || 'https://placehold.co/144x180/f3f4f6/9ca3af?text=Sin+img';
       const destacado = producto.destacado === true;
       const enOferta = producto.enOferta === true || producto.en_oferta === true;
+      const categoria = producto.categoria || 'Sin categoría';
 
       return `
         <article class="admin-portada-card" data-product-id="${producto.id}">
-          <img class="admin-portada-card__thumb" src="${imagen}" alt="" width="72" height="90" loading="lazy">
-          <div class="admin-portada-card__body">
+          <img
+            class="admin-portada-card__thumb"
+            src="${imagen}"
+            alt=""
+            width="60"
+            height="60"
+            loading="lazy"
+          >
+          <div class="admin-portada-card__info">
             <h3 class="admin-portada-card__nombre" title="${escaparAtributoHtml(producto.nombre)}">${escaparHtmlTexto(producto.nombre)}</h3>
-            <p class="admin-portada-card__meta">${producto.categoria || 'Sin categoría'} · ${formatearPrecio(producto.precio)}</p>
-            <div class="admin-portada-card__switches">
-              <label class="admin-portada-card__switch">
-                <span>Productos Destacados</span>
-                <span class="admin-toggle" title="Marcar como destacado">
-                  <input
-                    type="checkbox"
-                    class="admin-toggle__input admin-portada-toggle"
-                    data-product-id="${producto.id}"
-                    data-campo="destacado"
-                    ${destacado ? 'checked' : ''}
-                  >
-                  <span class="admin-toggle__track" aria-hidden="true"></span>
-                </span>
-              </label>
-              <label class="admin-portada-card__switch">
-                <span>En Oferta</span>
-                <span class="admin-toggle" title="Marcar en oferta">
-                  <input
-                    type="checkbox"
-                    class="admin-toggle__input admin-portada-toggle"
-                    data-product-id="${producto.id}"
-                    data-campo="enOferta"
-                    ${enOferta ? 'checked' : ''}
-                  >
-                  <span class="admin-toggle__track" aria-hidden="true"></span>
-                </span>
-              </label>
-            </div>
+            <p class="admin-portada-card__meta">${escaparHtmlTexto(categoria)} • ${formatearPrecio(producto.precio)}</p>
+            <span class="admin-portada-card__saving" aria-live="polite">Guardando…</span>
+          </div>
+          <div class="admin-portada-card__controls">
+            <label class="admin-portada-card__switch">
+              <span class="admin-portada-card__switch-label">Destacados</span>
+              <span class="admin-toggle" title="Marcar como destacado">
+                <input
+                  type="checkbox"
+                  class="admin-toggle__input admin-portada-toggle"
+                  data-product-id="${producto.id}"
+                  data-campo="destacado"
+                  ${destacado ? 'checked' : ''}
+                >
+                <span class="admin-toggle__track" aria-hidden="true"></span>
+              </span>
+            </label>
+            <label class="admin-portada-card__switch">
+              <span class="admin-portada-card__switch-label">En Oferta</span>
+              <span class="admin-toggle" title="Marcar en oferta">
+                <input
+                  type="checkbox"
+                  class="admin-toggle__input admin-portada-toggle"
+                  data-product-id="${producto.id}"
+                  data-campo="enOferta"
+                  ${enOferta ? 'checked' : ''}
+                >
+                <span class="admin-toggle__track" aria-hidden="true"></span>
+              </span>
+            </label>
           </div>
         </article>
       `;
@@ -9361,7 +10248,16 @@ async function cambiarAtributoPortadaProducto(id, campo, valor, input) {
     ? producto.destacado === true
     : producto.enOferta === true || producto.en_oferta === true;
 
+  const card = input?.closest('.admin-portada-card');
+  const toggles = card
+    ? [...card.querySelectorAll('.admin-portada-toggle')]
+    : (input ? [input] : []);
+
   if (input) input.dataset.saving = 'true';
+  card?.classList.add('is-saving');
+  toggles.forEach((toggle) => {
+    toggle.disabled = true;
+  });
 
   try {
     const body = campo === 'destacado'
@@ -9390,6 +10286,10 @@ async function cambiarAtributoPortadaProducto(id, campo, valor, input) {
     mostrarToast(error?.message || 'No se pudo actualizar la portada.', 'error');
   } finally {
     if (input) delete input.dataset.saving;
+    card?.classList.remove('is-saving');
+    toggles.forEach((toggle) => {
+      toggle.disabled = false;
+    });
   }
 }
 
@@ -9444,68 +10344,93 @@ async function cambiarEstadoActivoProducto(id, activo, input) {
   }
 }
 
+async function quitarOfertasMasivo() {
+  const selectCategoria = document.getElementById('precios-masivo-categoria');
+  const btn = document.getElementById('btn-quitar-ofertas-masivo');
+  const categoria = selectCategoria?.value?.trim() || '';
+  const alcance = categoria ? `la categoría «${categoria}»` : 'todo el catálogo';
+
+  const confirmar = confirm(`¿Confirmás quitar los descuentos de oferta en ${alcance}?`);
+  if (!confirmar) return;
+
+  if (btn) btn.disabled = true;
+
+  try {
+    const resultado = await apiFetch('/api/productos/quitar-ofertas-masivo', {
+      method: 'PUT',
+      body: JSON.stringify({
+        ...(categoria ? { categoria } : {}),
+      }),
+    });
+
+    await cargarProductos({ todos: true });
+    actualizarVistaCatalogoAdmin();
+    sincronizarVistaTiendaTrasCambioCatalogo();
+
+    mostrarToast(
+      `Descuentos quitados en ${resultado.actualizados} producto${resultado.actualizados !== 1 ? 's' : ''}.`
+    );
+  } catch (error) {
+    mostrarToast(error?.message || 'No se pudieron quitar los descuentos.', 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 async function aplicarActualizacionPreciosMasivo() {
-  const selectTipo = document.getElementById('precios-masivo-tipo');
   const inputPorcentaje = document.getElementById('precios-masivo-porcentaje');
   const selectCategoria = document.getElementById('precios-masivo-categoria');
   const btn = document.getElementById('btn-aplicar-precios-masivo');
 
-  const tipo = selectTipo?.value || 'descuento';
+  const tipoAjuste = obtenerTipoPreciosMasivo();
   const categoria = selectCategoria?.value?.trim() || '';
-  const alcance = categoria ? `la categoría «${categoria}»` : 'todo el catálogo';
-
-  if (tipo === 'quitar-ofertas') {
-    const confirmar = confirm(`¿Confirmás quitar los descuentos de oferta en ${alcance}?`);
-    if (!confirmar) return;
-
-    if (btn) btn.disabled = true;
-
-    try {
-      const resultado = await apiFetch('/api/productos/quitar-ofertas-masivo', {
-        method: 'PUT',
-        body: JSON.stringify({
-          ...(categoria ? { categoria } : {}),
-        }),
-      });
-
-      await cargarProductos({ todos: true });
-      actualizarVistaCatalogoAdmin();
-      sincronizarVistaTiendaTrasCambioCatalogo();
-
-      mostrarToast(
-        `Descuentos quitados en ${resultado.actualizados} producto${resultado.actualizados !== 1 ? 's' : ''}.`
-      );
-    } catch (error) {
-      mostrarToast(error?.message || 'No se pudieron quitar los descuentos.', 'error');
-    } finally {
-      if (btn) btn.disabled = false;
-    }
-    return;
-  }
-
-  const tipoAjuste = tipo === 'aumento' ? 'aumento' : 'descuento';
   const porcentajeIngresado = Number(inputPorcentaje?.value);
+  const alcance = categoria ? `la categoría «${categoria}»` : 'todo el catálogo';
 
   if (!Number.isFinite(porcentajeIngresado) || porcentajeIngresado <= 0) {
     mostrarToast('Ingresá un porcentaje válido mayor a cero.', 'error');
     inputPorcentaje?.focus();
+    actualizarPreviewPreciosMasivo();
     return;
   }
 
-  const porcentaje = tipoAjuste === 'descuento' ? -porcentajeIngresado : porcentajeIngresado;
-  const confirmar = confirm(
-    `¿Confirmás aplicar un ${tipoAjuste} del ${porcentajeIngresado}% sobre ${alcance}?`
-  );
-  if (!confirmar) return;
+  if (porcentajeIngresado > PRECIOS_MASIVO_MAX_PCT) {
+    mostrarToast(
+      `Por seguridad, el porcentaje no puede superar el ±${PRECIOS_MASIVO_MAX_PCT}%.`,
+      'error'
+    );
+    inputPorcentaje?.focus();
+    actualizarPreviewPreciosMasivo();
+    return;
+  }
 
-  if (btn) btn.disabled = true;
+  let confirmarTodo = false;
+
+  if (!categoria) {
+    const confirmarCatalogo = confirm(
+      '⚠ ¿Estás seguro de impactar a toda la tienda?\n\n' +
+        `Se aplicará un ${tipoAjuste} del ${porcentajeIngresado}% a TODO EL CATÁLOGO.\n` +
+        'Esta acción no se puede deshacer fácilmente.'
+    );
+    if (!confirmarCatalogo) return;
+    confirmarTodo = true;
+  } else {
+    const confirmar = confirm(
+      `¿Confirmás aplicar un ${tipoAjuste} del ${porcentajeIngresado}% sobre ${alcance}?`
+    );
+    if (!confirmar) return;
+  }
+
+  const porcentaje = tipoAjuste === 'descuento' ? -porcentajeIngresado : porcentajeIngresado;
+
+  setLoadingPreciosMasivo(btn, true);
 
   try {
     const resultado = await apiFetch('/api/productos/actualizar-precios-masivo', {
       method: 'PUT',
       body: JSON.stringify({
         porcentaje,
-        ...(categoria ? { categoria } : {}),
+        ...(categoria ? { categoria } : { confirmarTodo }),
       }),
     });
 
@@ -9520,21 +10445,31 @@ async function aplicarActualizacionPreciosMasivo() {
   } catch (error) {
     mostrarToast(error?.message || 'No se pudo aplicar la actualización masiva.', 'error');
   } finally {
-    if (btn) btn.disabled = false;
+    setLoadingPreciosMasivo(btn, false);
+    actualizarPreviewPreciosMasivo();
   }
 }
 
-async function cambiarEstadoPedidoAdmin(id, nuevoEstado) {
-  const pedido = pedidos.find((p) => p.id === id);
+async function cambiarEstadoPedidoAdmin(id, nuevoEstado, { mensajeExito } = {}) {
+  const pedido = pedidos.find((p) => String(p.id) === String(id));
   if (!pedido) return;
 
   try {
-    await apiFetch('/api/pedidos/cambiar-estado', {
+    const respuesta = await apiFetch('/api/pedidos/cambiar-estado', {
       method: 'POST',
       body: JSON.stringify({ id, nuevoEstado }),
     });
 
-    pedido.estado = nuevoEstado;
+    const pedidoActualizado = respuesta?.pedido;
+    if (pedidoActualizado?.id) {
+      const indice = pedidos.findIndex((p) => String(p.id) === String(pedidoActualizado.id));
+      if (indice >= 0) {
+        pedidos[indice] = { ...pedidos[indice], ...pedidoActualizado };
+      }
+    } else {
+      pedido.estado = nuevoEstado;
+    }
+
     renderizarTablaPedidosAdmin(pedidos);
     resaltarFilaEstado(id);
 
@@ -9543,6 +10478,11 @@ async function cambiarEstadoPedidoAdmin(id, nuevoEstado) {
 
     await Promise.all([cargarEstadisticasAdmin(), cargarMetricasDashboard()]);
     renderizarGraficoVentasAdmin(estadisticasAdmin);
+
+    const etiqueta = ETIQUETAS_ESTADO_PEDIDO_ADMIN[nuevoEstado]
+      || ETIQUETAS_ESTADO_PEDIDO[nuevoEstado]
+      || nuevoEstado;
+    mostrarToast(mensajeExito || `Pedido actualizado a «${etiqueta}».`);
   } catch (error) {
     mostrarToast(error?.message || 'No se pudo actualizar el estado del pedido.', 'error');
     cargarPanelAdmin();
@@ -9581,7 +10521,7 @@ function abrirModalPedido(id) {
       <div class="detail-section">
         <h3 class="detail-section__title">Estado</h3>
         <div class="detail-estado-row">
-          ${crearBadgeEstadoPedido(pedido.estado)}
+          ${crearBadgeEstadoPedido(pedido.estado, { admin: true })}
           <select
             class="status-select status-select--${claseEstado}"
             data-order-id="${escaparAtributoHtml(pedido.id)}"
@@ -9702,6 +10642,8 @@ function inicializarEventosAdmin() {
   document.getElementById('producto-imagen-espalda-quitar')?.addEventListener('click', () => {
     quitarImagenFormulario('espalda');
   });
+  // CSP (Helmet script-src sin unsafe-inline) bloquea onsubmit="...": hay que registrar el submit acá.
+  document.getElementById('product-form')?.addEventListener('submit', guardarNuevoProducto);
   btnAbrirCrearSeccion?.addEventListener('click', abrirModalCrearSeccion);
   document.getElementById('modal-seccion-escudo')?.addEventListener('change', manejarSeleccionEscudoSeccion);
   modalCrearSeccionForm?.addEventListener('submit', crearSeccionDesdeModal);
@@ -9782,12 +10724,20 @@ function inicializarEventosAdmin() {
   });
 
   document.getElementById('btn-aplicar-precios-masivo')?.addEventListener('click', aplicarActualizacionPreciosMasivo);
-  document.getElementById('precios-masivo-tipo')?.addEventListener('change', actualizarControlesPreciosMasivo);
+  document.getElementById('btn-quitar-ofertas-masivo')?.addEventListener('click', quitarOfertasMasivo);
+  document.querySelectorAll('.admin-precios-masivo__op[data-op]').forEach((btn) => {
+    btn.addEventListener('click', () => setTipoPreciosMasivo(btn.dataset.op));
+  });
+  document.getElementById('precios-masivo-porcentaje')?.addEventListener('input', actualizarPreviewPreciosMasivo);
+  document.getElementById('precios-masivo-porcentaje')?.addEventListener('change', actualizarPreviewPreciosMasivo);
+  document.getElementById('precios-masivo-categoria')?.addEventListener('change', actualizarPreviewPreciosMasivo);
   document.getElementById('btn-quitar-descuento-producto')?.addEventListener('click', quitarDescuentoProducto);
   document.getElementById('producto-en-oferta')?.addEventListener('change', actualizarControlesOfertaFormulario);
   document.getElementById('producto-precio-oferta')?.addEventListener('input', actualizarBotonQuitarDescuentoProducto);
-  document.getElementById('form-configuracion')?.addEventListener('submit', guardarConfiguracion);
   document.getElementById('form-crear-cupon')?.addEventListener('submit', crearCuponAdmin);
+  document.getElementById('cupon-codigo')?.addEventListener('input', normalizarCodigoCuponInput);
+  document.getElementById('cupon-descuento')?.addEventListener('input', actualizarPreviewCupon);
+  document.getElementById('cupon-descuento')?.addEventListener('change', actualizarPreviewCupon);
   document.getElementById('cupon-tipo-filtro')?.addEventListener('change', actualizarCamposFiltroCupon);
   document.getElementById('cupon-producto-buscar')?.addEventListener('input', () => {
     if (!Array.isArray(cuponProductosCache)) {
@@ -9800,7 +10750,9 @@ function inicializarEventosAdmin() {
     );
   });
   actualizarCamposFiltroCupon();
+  actualizarPreviewCupon();
   document.getElementById('admin-cupones-tbody')?.addEventListener('change', toggleCuponActivoAdmin);
+  document.getElementById('admin-cupones-tbody')?.addEventListener('click', eliminarCuponAdmin);
   document.getElementById('portada-buscar')?.addEventListener('input', () => {
     if (panelAdminActivo === 'portada') renderizarGestionPortada();
   });
@@ -9835,7 +10787,7 @@ function inicializarEventosAdmin() {
   document.getElementById('header-panel-control-btn')?.addEventListener('click', () => {
     if (!esSesionAdminActiva()) return;
     if (esPaginaCuenta()) {
-      window.location.href = 'index.html';
+      window.location.href = 'index.html#admin';
       return;
     }
     mostrarVistaAdmin();
@@ -9864,22 +10816,71 @@ function inicializarEventosAdmin() {
     cambiarEstadoPedidoAdmin(e.target.dataset.orderId, e.target.value);
   });
 
+  document.getElementById('admin-orders-tabs')?.addEventListener('click', (e) => {
+    const tab = e.target.closest('[data-orders-filter]');
+    if (!tab) return;
+    aplicarFiltroPedidosAdmin(tab.dataset.ordersFilter);
+  });
+
   tbody?.addEventListener('click', (e) => {
     const btnEtiqueta = e.target.closest('.btn-etiqueta-envio');
     if (btnEtiqueta) {
+      e.stopPropagation();
       abrirEtiquetaEnvio(btnEtiqueta.dataset.orderId);
       return;
     }
 
-    const btnNotificar = e.target.closest('.btn-notificar-despacho');
-    if (btnNotificar) {
-      notificarDespachoServidor(btnNotificar.dataset.orderId, btnNotificar);
+    const btnAccion = e.target.closest('[data-order-action]');
+    if (btnAccion) {
+      e.stopPropagation();
+      const pedidoId = btnAccion.dataset.orderId;
+      const accion = btnAccion.dataset.orderAction;
+
+      if (accion === 'aprobar') {
+        cambiarEstadoPedidoAdmin(pedidoId, 'listo_empaquetar', {
+          mensajeExito: 'Pago por transferencia aprobado. Pedido en En Preparación.',
+        });
+        return;
+      }
+
+      if (accion === 'cancelar') {
+        const confirmar = window.confirm('¿Cancelar este pedido? Se restaurará el stock reservado.');
+        if (!confirmar) return;
+        cambiarEstadoPedidoAdmin(pedidoId, 'cancelado', {
+          mensajeExito: 'Pedido cancelado correctamente.',
+        });
+        return;
+      }
+
+      if (accion === 'enviar') {
+        notificarDespachoServidor(pedidoId, btnAccion);
+        return;
+      }
+
+      if (accion === 'finalizar') {
+        cambiarEstadoPedidoAdmin(pedidoId, 'entregado', {
+          mensajeExito: 'Entrega finalizada. Pedido marcado como Finalizado.',
+        });
+        return;
+      }
+
+      if (accion === 'detalle') {
+        abrirModalPedido(pedidoId);
+      }
       return;
     }
 
-    const btn = e.target.closest('.btn-detail');
-    if (!btn) return;
-    abrirModalPedido(btn.dataset.orderId);
+    const btnToggle = e.target.closest('[data-order-toggle]');
+    if (btnToggle) {
+      e.stopPropagation();
+      alternarDetallePedidoAdmin(btnToggle.dataset.orderToggle);
+      return;
+    }
+
+    const fila = e.target.closest('tr.admin-order-row');
+    if (fila?.dataset.orderId) {
+      alternarDetallePedidoAdmin(fila.dataset.orderId);
+    }
   });
 
   btnRefresh?.addEventListener('click', () => cargarPanelAdmin());
@@ -9942,6 +10943,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const pagina = document.body?.dataset?.page || 'index';
 
   if (pagina === 'cuenta') {
+    // Aplicar panel del hash antes de revelar el layout (evita flash al recargar).
+    mostrarPanelCuenta(obtenerPanelCuentaDesdeHash());
     await inicializarAutenticacion();
     inicializarBuscadorPedidos();
     inicializarCuenta();
@@ -9961,6 +10964,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     await cargarConfiguracionTienda();
     await restaurarSesion();
     actualizarUIUsuario();
+    // Catálogo necesario para reparar precios del carrito si vinieron mal parseados.
+    await cargarProductos();
+    if (typeof cargarCarritoDeSesion === 'function') {
+      cargarCarritoDeSesion();
+    }
+    sincronizarPreciosCarritoDesdeCatalogo();
     inicializarCheckout();
     if (typeof inicializarPaginaCheckout === 'function') {
       await inicializarPaginaCheckout();
@@ -9968,18 +10977,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     return;
   }
 
+  aplicarBootVistaDesdeUrl();
+  inicializarRutasVista();
+
   await cargarConfiguracionTienda();
 
-  const hashInformativo = window.location.hash.replace('#', '');
-  const panelInfo =
-    hashInformativo === 'terminos' ? 'cambios' : hashInformativo;
-  if (PANELES_INFO.includes(panelInfo)) {
-    window.location.replace(`info.html#${panelInfo}`);
-    return;
+  if (!esHashRutaAdmin()) {
+    const hashInformativo = window.location.hash.replace('#', '');
+    const panelInfo =
+      hashInformativo === 'terminos' ? 'cambios' : hashInformativo;
+    if (PANELES_INFO.includes(panelInfo)) {
+      window.location.replace(`info.html#${panelInfo}`);
+      return;
+    }
   }
 
   inicializarDropdownCategorias();
-  inicializarClubNav();
   inicializarHeroStage();
   inicializarStadiumCarousel();
   inicializarNewsletter();
@@ -9989,7 +11002,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   inicializarBuscador();
   inicializarEnlaceProductos();
   await cargarSecciones();
-  renderizarCarruselSecciones();
   renderizarEnlacesMenuMobile();
   const productosCargados = await cargarProductos();
   renderizarSelectCategorias();

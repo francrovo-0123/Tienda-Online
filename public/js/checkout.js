@@ -41,6 +41,10 @@
   }
 
   function obtenerMetodoPagoSeleccionado() {
+    if (typeof obtenerMetodoPagoSeleccionadoUI === 'function') {
+      const metodo = obtenerMetodoPagoSeleccionadoUI();
+      if (metodo) return metodo;
+    }
     return (
       document.querySelector('input[name="metodo-pago"]:checked')?.value ||
       'transferencia'
@@ -49,7 +53,7 @@
 
   function textoMetodoPago(metodo) {
     return metodo === 'transferencia'
-      ? 'Transferencia bancaria (−10%) · WhatsApp'
+      ? 'Transferencia bancaria (-10%) · WhatsApp'
       : 'Mercado Pago';
   }
 
@@ -70,6 +74,10 @@
     return true;
   }
 
+  /**
+   * Recalcula por completo el paso 3 (textos + totales) según el método actual.
+   * Evita estados huérfanos al volver del paso 2 y cambiar el pago.
+   */
   function actualizarResumenConfirmacion() {
     const entregaEl = document.getElementById('resumen-entrega-texto');
     const pagoEl = document.getElementById('resumen-pago-texto');
@@ -109,9 +117,9 @@
         metodo === 'transferencia' ? 'Finalizar por WhatsApp' : 'Finalizar pedido';
     }
 
-    const ahorro = document.getElementById('contenedor-ahorro-transferencia');
-    if (ahorro) {
-      ahorro.hidden = metodo !== 'transferencia';
+    // Fuente única de verdad para etiqueta verde, totales y "Ahorrás $…".
+    if (typeof actualizarTotalCheckoutUI === 'function') {
+      actualizarTotalCheckoutUI();
     }
   }
 
@@ -124,6 +132,9 @@
   }
 
   function actualizarPasosUI(numeroPaso) {
+    // Preservar método de pago: fieldset[disabled] puede desmarcar radios en Chromium.
+    const metodoAntes = obtenerMetodoPagoSeleccionado();
+
     document.querySelectorAll('.checkout-step').forEach((step) => {
       const paso = Number(step.dataset.paso);
       const activo = paso === numeroPaso;
@@ -132,25 +143,43 @@
       step.classList.toggle('is-active', activo);
       step.classList.toggle('is-collapsed', !activo && !hecho);
       step.classList.toggle('is-done', hecho && !activo);
-      step.disabled = !activo;
 
-      if (activo) {
-        step.removeAttribute('disabled');
-      } else {
-        step.setAttribute('disabled', 'true');
-      }
-    });
-
-    // Re-habilitar fieldsets inactivos para que el submit lea inputs previos
-    document.querySelectorAll('.checkout-step.is-done, .checkout-step.is-collapsed').forEach((step) => {
+      // Nunca disabled en <fieldset>: pierde :checked de los radios al alternar pasos.
       step.removeAttribute('disabled');
-      if (!step.classList.contains('is-active')) {
+      if (activo) {
+        step.removeAttribute('aria-disabled');
+        step.removeAttribute('inert');
+      } else {
         step.setAttribute('aria-disabled', 'true');
+        step.setAttribute('inert', '');
       }
     });
-    document.querySelectorAll('.checkout-step.is-active').forEach((step) => {
-      step.removeAttribute('aria-disabled');
-    });
+
+    // Restaurar selección si el DOM la perdió al alternar pasos.
+    const radioActual = document.querySelector(
+      `input[name="metodo-pago"][value="${metodoAntes}"]`
+    );
+    if (radioActual && !radioActual.checked) {
+      radioActual.checked = true;
+    }
+  }
+
+  /**
+   * Recalcula totales desde el carrito en memoria (+ catálogo) y
+   * actualiza resumen + tarjetas del paso 2.
+   * No limpia método de pago, cupón ni costo de envío.
+   */
+  function refrescarTotalesDesdeCarrito() {
+    if (typeof sincronizarPreciosCarritoDesdeCatalogo === 'function') {
+      sincronizarPreciosCarritoDesdeCatalogo();
+    }
+    if (typeof renderizarResumenCheckout === 'function') {
+      renderizarResumenCheckout();
+    } else if (typeof actualizarTotalCheckoutUI === 'function') {
+      actualizarTotalCheckoutUI();
+    }
+    actualizarPreciosMetodoPago();
+    actualizarEnvioResumen();
   }
 
   function actualizarPreciosMetodoPago() {
@@ -158,10 +187,24 @@
     if (typeof formatearPrecio !== 'function') return;
 
     const desglose = calcularDesgloseCheckout();
+    const totalMp = desglose.totalConEnvio ?? desglose.totalConCupon;
+    const totalTr = desglose.totalTransferencia;
     const mp = document.getElementById('preview-total-mercadopago');
     const tr = document.getElementById('preview-total-transferencia');
-    if (mp) mp.textContent = formatearPrecio(desglose.totalConEnvio ?? desglose.totalConCupon);
-    if (tr) tr.textContent = formatearPrecio(desglose.totalTransferencia);
+    const trBase = document.getElementById('preview-total-transferencia-base');
+
+    if (mp) mp.textContent = formatearPrecio(totalMp);
+    if (tr) tr.textContent = formatearPrecio(totalTr);
+
+    // Precio base (sin −10%) tachado junto al total con descuento por transferencia.
+    if (trBase) {
+      const hayAhorro =
+        Number.isFinite(Number(totalMp))
+        && Number.isFinite(Number(totalTr))
+        && Number(totalMp) - Number(totalTr) > 0.005;
+      trBase.textContent = hayAhorro ? formatearPrecio(totalMp) : '';
+      trBase.hidden = !hayAhorro;
+    }
   }
 
   function mostrarTiempoEnvioEstimado(tiempo) {
@@ -270,7 +313,10 @@
     actualizarProgressUI(pasoActual);
     actualizarPasosUI(pasoActual);
 
-    if (pasoActual === 2) actualizarPreciosMetodoPago();
+    if (pasoActual === 2) {
+      // Siempre recalcular desde el carrito real (primera carga y "Volver").
+      refrescarTotalesDesdeCarrito();
+    }
     if (pasoActual === 3) actualizarResumenConfirmacion();
 
     if (persistir) guardarPasoEnSesion(pasoActual);
@@ -338,7 +384,11 @@
 
     document.querySelectorAll('input[name="metodo-pago"]').forEach((input) => {
       input.addEventListener('change', () => {
+        // Recalcular siempre al cambiar el método (evita totales huérfanos).
         actualizarPreciosMetodoPago();
+        if (typeof actualizarTotalCheckoutUI === 'function') {
+          actualizarTotalCheckoutUI();
+        }
         if (pasoActual === 3) actualizarResumenConfirmacion();
       });
     });
@@ -348,14 +398,9 @@
   }
 
   function sincronizarTotalesPagina() {
-    if (typeof actualizarTotalCheckoutUI === 'function') {
-      actualizarTotalCheckoutUI();
-    }
+    refrescarTotalesDesdeCarrito();
     const subtotalRow = document.getElementById('checkout-summary-subtotal-row');
     if (subtotalRow) subtotalRow.hidden = false;
-
-    actualizarPreciosMetodoPago();
-    actualizarEnvioResumen();
   }
 
   /**
@@ -381,6 +426,11 @@
       limpiarPasoGuardado();
       window.location.replace('index.html');
       return;
+    }
+
+    // Si el catálogo ya está cargado, reparar precios en 0 / mal parseados.
+    if (typeof sincronizarPreciosCarritoDesdeCatalogo === 'function') {
+      sincronizarPreciosCarritoDesdeCatalogo();
     }
 
     enlazarControlesPasos();
@@ -415,8 +465,7 @@
         window.location.replace('index.html');
         return;
       }
-      if (typeof renderizarResumenCheckout === 'function') renderizarResumenCheckout();
-      sincronizarTotalesPagina();
+      refrescarTotalesDesdeCarrito();
     });
   };
 

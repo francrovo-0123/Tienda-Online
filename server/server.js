@@ -9,7 +9,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
-const rateLimit = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const fs = require('fs');
 const multer = require('multer');
 const mongoose = require('mongoose');
@@ -17,7 +17,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const { spawn } = require('child_process');
 const { v2: cloudinary } = require('cloudinary');
-const { MercadoPagoConfig, Preference, Payment } = require('mercadopago');
+const { MercadoPagoConfig, Preference, Payment, MerchantOrder } = require('mercadopago');
 const {
   verificarConexionSmtp,
   enviarCodigoVerificacion,
@@ -26,6 +26,7 @@ const {
   enviarMensajeContacto,
   enviarMailDespacho,
 } = require('./mailService');
+const { sanitizarUrlBanner } = require('../scripts/sanitize-banner-url');
 
 const app = express();
 const PORT = 3000;
@@ -74,20 +75,117 @@ const MONGO_OPTIONS = {
 
 let conexionDBPromise = null;
 let inicializacionLocalCompleta = false;
-const NOMBRE_TIENDA_DEFECTO = String(process.env.NOMBRE_TIENDA || 'Jersey Store').trim();
-const WHATSAPP_NUMERO = String(process.env.WHATSAPP_NUMERO || '').trim();
+/*
+ * Datos estructurales de la tienda — SOLO variables de entorno (sin panel admin ni MongoDB).
+ * Añadí / actualizá estas claves en tu archivo `server/.env`:
+ *   STORE_NAME=Jersey Store
+ *   WHATSAPP_NUMBER=5491123456789
+ *   AFIP_URL=https://servicios1.afip.gov.ar/f960/DATA/...
+ * Compatibilidad legacy (se usan si faltan las nuevas):
+ *   NOMBRE_TIENDA, WHATSAPP_NUMERO
+ */
+const STORE_NAME = String(
+  process.env.STORE_NAME || process.env.NOMBRE_TIENDA || 'Jersey Store'
+).trim();
+const WHATSAPP_NUMBER = String(
+  process.env.WHATSAPP_NUMBER || process.env.WHATSAPP_NUMERO || ''
+).replace(/^\+/, '').replace(/\D/g, '').trim();
+const AFIP_URL = String(process.env.AFIP_URL || '').trim();
+
+/*
+ * Cloudinary — SOLO variables de entorno (nunca en MongoDB ni en la UI admin).
+ * Obligatorias para subidas firmadas del admin:
+ *   CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET
+ * Opcional (legacy / unsigned; el flujo actual del admin usa firma server-side):
+ *   CLOUDINARY_UPLOAD_PRESET
+ */
 const CLOUDINARY_CLOUD_NAME = String(process.env.CLOUDINARY_CLOUD_NAME || '').trim();
+const CLOUDINARY_API_KEY = String(process.env.CLOUDINARY_API_KEY || '').trim();
+const CLOUDINARY_API_SECRET = String(process.env.CLOUDINARY_API_SECRET || '').trim();
 const CLOUDINARY_UPLOAD_PRESET = String(process.env.CLOUDINARY_UPLOAD_PRESET || '').trim();
 const MP_ACCESS_TOKEN = String(process.env.MP_ACCESS_TOKEN || '').trim();
 const MP_SANDBOX = String(process.env.MP_SANDBOX || '').toLowerCase() === 'true';
 /** Secret de firma de webhooks (panel MP → Webhooks → Configurar notificaciones). */
 const MP_WEBHOOK_SECRET = String(process.env.MP_WEBHOOK_SECRET || '').trim();
-const CLOUDINARY_API_KEY = String(process.env.CLOUDINARY_API_KEY || '').trim();
-const CLOUDINARY_API_SECRET = String(process.env.CLOUDINARY_API_SECRET || '').trim();
 const USE_NGROK = String(process.env.USE_NGROK || '').toLowerCase() === 'true';
 const COOKIE_AUTH_ADMIN = 'js_admin_token';
 const COOKIE_AUTH_CLIENTE = 'js_cliente_token';
 const ES_PRODUCCION = Boolean(process.env.VERCEL) || process.env.NODE_ENV === 'production';
+const MONGO_URI = String(process.env.MONGO_URI || process.env.MONGODB_URI || '').trim();
+
+/**
+ * Fail-safe al arrancar: lista en terminal exactamente qué falta en server/.env.
+ * No detiene el proceso (excepto JWT_SECRET, ya validado arriba) para no
+ * bloquear desarrollo local parcial; sí marca con error/warn lo crítico.
+ */
+(function validarVariablesEntornoCriticas() {
+  const faltantesCriticos = [];
+  const faltantesRecomendados = [];
+
+  if (!MONGO_URI) {
+    faltantesCriticos.push('MONGO_URI (conexión a MongoDB)');
+  }
+  if (!WHATSAPP_NUMBER) {
+    faltantesCriticos.push(
+      'WHATSAPP_NUMBER (pedidos por transferencia / FAB de contacto)'
+    );
+  }
+  if (!CLOUDINARY_CLOUD_NAME) {
+    faltantesCriticos.push('CLOUDINARY_CLOUD_NAME');
+  }
+  if (!CLOUDINARY_API_KEY) {
+    faltantesCriticos.push('CLOUDINARY_API_KEY (subidas firmadas del admin)');
+  }
+  if (!CLOUDINARY_API_SECRET) {
+    faltantesCriticos.push('CLOUDINARY_API_SECRET (subidas firmadas del admin)');
+  }
+
+  if (!STORE_NAME || STORE_NAME === 'Jersey Store') {
+    if (!process.env.STORE_NAME && !process.env.NOMBRE_TIENDA) {
+      faltantesRecomendados.push(
+        "STORE_NAME (ej: Jersey Store) — usando fallback 'Jersey Store'"
+      );
+    }
+  }
+  if (!AFIP_URL) {
+    faltantesRecomendados.push('AFIP_URL (enlace Data Fiscal; se oculta en el front si falta)');
+  }
+  // CLOUDINARY_UPLOAD_PRESET: opcional/legacy; no se avisa (el admin usa firma con API_KEY/SECRET).
+  if (!MP_ACCESS_TOKEN) {
+    faltantesRecomendados.push('MP_ACCESS_TOKEN (checkout Mercado Pago)');
+  }
+  if (!String(process.env.SMTP_HOST || '').trim()
+    || !String(process.env.SMTP_USER || '').trim()
+    || !String(process.env.SMTP_PASS || '').trim()) {
+    faltantesRecomendados.push(
+      'SMTP_HOST / SMTP_USER / SMTP_PASS (emails de verificación y pedidos)'
+    );
+  }
+
+  if (faltantesCriticos.length > 0) {
+    console.error('');
+    console.error('╔════════════════════════════════════════════════════════════╗');
+    console.error('║  .env INCOMPLETO — variables críticas faltantes            ║');
+    console.error('║  Archivo esperado: server/.env                             ║');
+    console.error('╚════════════════════════════════════════════════════════════╝');
+    for (const item of faltantesCriticos) {
+      console.error(`  ✗ FALTA: ${item}`);
+    }
+    console.error('');
+  }
+
+  if (faltantesRecomendados.length > 0) {
+    console.warn('=> Advertencia .env — variables recomendadas sin definir:');
+    for (const item of faltantesRecomendados) {
+      console.warn(`  · ${item}`);
+    }
+    console.warn('');
+  }
+
+  if (faltantesCriticos.length === 0 && faltantesRecomendados.length === 0) {
+    console.log('=> .env: variables estructurales y de infraestructura OK.');
+  }
+})();
 
 if (CLOUDINARY_CLOUD_NAME && CLOUDINARY_API_KEY && CLOUDINARY_API_SECRET) {
   cloudinary.config({
@@ -96,10 +194,10 @@ if (CLOUDINARY_CLOUD_NAME && CLOUDINARY_API_KEY && CLOUDINARY_API_SECRET) {
     api_secret: CLOUDINARY_API_SECRET,
     secure: true,
   });
-} else if (ES_PRODUCCION && CLOUDINARY_CLOUD_NAME) {
-  console.warn(
-    '=> Seguridad: en producción faltan CLOUDINARY_API_KEY/SECRET. '
-    + 'Las subidas firmadas no estarán disponibles y el preset unsigned no se expone.'
+} else if (ES_PRODUCCION) {
+  console.error(
+    '=> Cloudinary: en producción las subidas firmadas NO estarán disponibles '
+    + 'hasta completar CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY y CLOUDINARY_API_SECRET.'
   );
 }
 const NGROK_AUTHTOKEN = String(process.env.NGROK_AUTHTOKEN || '').trim();
@@ -146,6 +244,7 @@ const ZONA_HORARIA_TIENDA = 'America/Argentina/Buenos_Aires';
 const mercadoPagoClient = new MercadoPagoConfig({ accessToken: MP_ACCESS_TOKEN });
 const preferenceClient = new Preference(mercadoPagoClient);
 const paymentClient = new Payment(mercadoPagoClient);
+const merchantOrderClient = new MerchantOrder(mercadoPagoClient);
 const ESTADOS_VENTA_VALIDA = ['listo_empaquetar', 'despachado', 'entregado'];
 const ESTADOS_PEDIDO_ACTIVO = ['pendiente_pago', 'listo_empaquetar'];
 
@@ -216,58 +315,112 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(cookieParser());
 
-// Confiar en el primer proxy (Vercel, Cloudflare, Nginx) para leer la IP real del cliente.
-// Sin esto, express-rate-limit vería la IP del proxy y podría bloquear a muchos usuarios a la vez.
-app.set('trust proxy', 1);
+/**
+ * [M7] No usar `trust proxy = 1` / `true` con express-rate-limit:
+ * un hop count permisivo permite falsificar X-Forwarded-For y evadir el límite por IP.
+ *
+ * Express no confía en headers de forwarding. La IP de rate-limit se resuelve en
+ * `ipClienteRateLimit` solo cuando el peer es un proxy de confianza o el edge de Vercel.
+ */
+app.set('trust proxy', false);
+
+/** @param {string | undefined} ip */
+function normalizarIp(ip) {
+  return String(ip || '').replace(/^::ffff:/i, '').trim();
+}
+
+/**
+ * Proxies cuyo socket.remoteAddress puede reportar el cliente vía X-Forwarded-For.
+ * El proxy DEBE reemplazar XFF (no append de valores enviados por el cliente).
+ * Ej: TRUSTED_PROXIES=127.0.0.1,10.0.0.1
+ */
+const TRUSTED_PROXIES = new Set(
+  String(process.env.TRUSTED_PROXIES || '')
+    .split(',')
+    .map((s) => normalizarIp(s))
+    .filter(Boolean)
+);
+
+/**
+ * IP del cliente para rate-limit sin bypass por X-Forwarded-For falsificado.
+ * - Vercel: el edge controla `x-forwarded-for` (no es el header crudo del cliente).
+ * - TRUSTED_PROXIES: solo si la conexión directa viene de esa IP.
+ * - Resto: únicamente `socket.remoteAddress` (ignora XFF).
+ * @param {import('express').Request} req
+ */
+function ipClienteRateLimit(req) {
+  const socketIp = normalizarIp(req.socket?.remoteAddress);
+
+  if (process.env.VERCEL) {
+    const xff = req.headers['x-forwarded-for'];
+    if (typeof xff === 'string' && xff.trim()) {
+      return normalizarIp(xff.split(',')[0]) || socketIp || 'unknown';
+    }
+    return socketIp || 'unknown';
+  }
+
+  if (socketIp && TRUSTED_PROXIES.has(socketIp)) {
+    const xff = String(req.headers['x-forwarded-for'] || '').split(',')[0];
+    const cliente = normalizarIp(xff);
+    if (cliente) return cliente;
+  }
+
+  return socketIp || 'unknown';
+}
+
+/** Opciones comunes: key por IP segura (no req.ip / XFF permisivo). */
+const rateLimitBase = {
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => ipKeyGenerator(ipClienteRateLimit(req)),
+  validate: {
+    // IP vía keyGenerator propio; no usar el default basado en trust proxy / XFF.
+    xForwardedForHeader: false,
+  },
+};
 
 // Rate limiting por IP (fuerza bruta / spam en auth y contacto).
 const limitadorAuth = rateLimit({
+  ...rateLimitBase,
   windowMs: 15 * 60 * 1000,
   max: 10,
-  standardHeaders: true,
-  legacyHeaders: false,
   message: { error: 'Demasiados intentos. Esperá unos minutos e intentá de nuevo.' },
 });
 
 /** Más estricto que limitadorAuth: OTP de 6 dígitos es adivinable por fuerza bruta. */
 const limitadorOtp = rateLimit({
+  ...rateLimitBase,
   windowMs: 15 * 60 * 1000,
   max: 5,
-  standardHeaders: true,
-  legacyHeaders: false,
   message: { error: 'Demasiados intentos. Esperá unos minutos e intentá de nuevo.' },
 });
 
 const limitadorContacto = rateLimit({
+  ...rateLimitBase,
   windowMs: 15 * 60 * 1000,
   max: 5,
-  standardHeaders: true,
-  legacyHeaders: false,
   message: { error: 'Demasiados mensajes. Esperá unos minutos e intentá de nuevo.' },
 });
 
 const limitadorCheckout = rateLimit({
+  ...rateLimitBase,
   windowMs: 15 * 60 * 1000,
   max: 20,
-  standardHeaders: true,
-  legacyHeaders: false,
   message: { error: 'Demasiados intentos de compra. Esperá unos minutos e intentá de nuevo.' },
 });
 
 const limitadorPassword = rateLimit({
+  ...rateLimitBase,
   windowMs: 60 * 60 * 1000,
   max: 5,
-  standardHeaders: true,
-  legacyHeaders: false,
   message: { error: 'Demasiados cambios de contraseña. Esperá un rato e intentá de nuevo.' },
 });
 
 /** Techo general anti-abuso sobre /api (los limitadores de ruta siguen aplicando). */
 const limitadorApiGeneral = rateLimit({
+  ...rateLimitBase,
   windowMs: 15 * 60 * 1000,
   max: 600,
-  standardHeaders: true,
-  legacyHeaders: false,
   message: { error: 'Demasiadas solicitudes. Esperá unos minutos e intentá de nuevo.' },
 });
 
@@ -320,8 +473,12 @@ app.use(verificarOrigenMutacion);
 function esUrlHttpSegura(valor, { permitirVacio = true } = {}) {
   const url = String(valor || '').trim();
   if (!url) return permitirVacio;
+  // Rechazar protocolo relativo antes de new URL (heredaría https del base).
+  if (url.startsWith('//')) return false;
+  // Rutas locales de la tienda
+  if (url.startsWith('/') && !url.startsWith('//')) return true;
   try {
-    const parsed = new URL(url, APP_BASE_URL);
+    const parsed = new URL(url);
     if (parsed.protocol === 'https:') return true;
     if (parsed.protocol === 'http:' && esHostLocal(parsed.href)) return true;
     return false;
@@ -329,6 +486,23 @@ function esUrlHttpSegura(valor, { permitirVacio = true } = {}) {
     return false;
   }
 }
+
+function leerAssetVersion() {
+  const desdeEnv = String(process.env.ASSET_VERSION || '').trim();
+  if (desdeEnv) return desdeEnv;
+  try {
+    const data = JSON.parse(
+      fs.readFileSync(path.join(__dirname, '..', 'data', 'asset-version.json'), 'utf8')
+    );
+    const v = String(data.version || '').trim();
+    if (v) return v;
+  } catch {
+    // fallback abajo
+  }
+  return '1.0.0';
+}
+
+const ASSET_VERSION = leerAssetVersion();
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -342,29 +516,96 @@ app.get('/favicon.ico', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'favic
 app.get('/favicon.svg', (_req, res) => res.type('image/svg+xml').sendFile(path.join(PUBLIC_DIR, 'favicon.svg')));
 app.get('/favicon.png', (_req, res) => res.sendFile(path.join(PUBLIC_DIR, 'favicon.png')));
 
-app.use(express.static(PUBLIC_DIR));
+/**
+ * Retorno unificado Mercado Pago (B4).
+ * Canónico: /pago-resultado?status=success|failure|pending
+ * Alias legacy redirigen preservando query de MP (payment_id, external_reference, …).
+ */
+function redirigirPagoResultado(statusFijo) {
+  return (req, res) => {
+    const q = new URLSearchParams();
+    for (const [key, value] of Object.entries(req.query || {})) {
+      if (value == null) continue;
+      if (Array.isArray(value)) {
+        value.forEach((v) => q.append(key, String(v)));
+      } else {
+        q.set(key, String(value));
+      }
+    }
+    if (!q.has('resultado')) {
+      q.set('resultado', statusFijo);
+    }
+    const qs = q.toString();
+    res.redirect(302, `/pago-resultado?${qs}`);
+  };
+}
+
+app.get('/pago-resultado', (_req, res) => {
+  res.sendFile(path.join(PUBLIC_DIR, 'pago-resultado.html'));
+});
+app.get('/pago-resultado.html', (_req, res) => {
+  res.sendFile(path.join(PUBLIC_DIR, 'pago-resultado.html'));
+});
+
+app.get(['/checkout-success', '/checkout-success.html', '/pago-exitoso.html'], redirigirPagoResultado('success'));
+app.get(['/checkout-failure', '/checkout-failure.html', '/pago-fallido.html'], redirigirPagoResultado('failure'));
+app.get(['/checkout-pending', '/checkout-pending.html', '/pago-pendiente.html'], redirigirPagoResultado('pending'));
+
+/** Metadata pública de la tienda desde .env (sin API de configuración editable). */
+app.get('/store-env.js', (_req, res) => {
+  const payload = {
+    storeName: STORE_NAME || 'Jersey Store',
+    STORE_NAME: STORE_NAME || 'Jersey Store',
+    whatsappNumber: WHATSAPP_NUMBER,
+    WHATSAPP_NUMBER: WHATSAPP_NUMBER,
+    afipUrl: AFIP_URL,
+    AFIP_URL: AFIP_URL,
+    assetVersion: ASSET_VERSION,
+    ASSET_VERSION,
+  };
+  res
+    .type('application/javascript; charset=utf-8')
+    .set('Cache-Control', 'no-store')
+    .send(`window.__STORE_ENV__=${JSON.stringify(payload)};`);
+});
+
+app.use(express.static(PUBLIC_DIR, {
+  setHeaders(res, filePath) {
+    const lower = String(filePath || '').toLowerCase();
+    if (lower.endsWith('.html')) {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    } else if (lower.endsWith('.js')) {
+      res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    } else if (lower.endsWith('.css')) {
+      res.setHeader('Content-Type', 'text/css; charset=utf-8');
+    }
+  },
+}));
 
 const BANNERS_POR_DEFECTO = [
   {
-    index: 0,
-    imagenUrl: 'https://images.unsplash.com/photo-1517466787929-bc90951d0974?auto=format&fit=crop&w=1920&q=80',
-    enlace: '',
-    titulo: 'CAMISETAS DE FÚTBOL',
-    activo: true,
+    id: 1,
+    orden: 0,
+    imagenUrl: '',
+    link: '/productos?categoria=remeras',
+    titulo: 'NUEVA COLECCIÓN - STREETWEAR',
+    activo: false,
   },
   {
-    index: 1,
-    imagenUrl: 'https://images.unsplash.com/photo-1551958219-acbc608c6377?auto=format&fit=crop&w=1920&q=80',
-    enlace: '',
-    titulo: 'CLUBES ARGENTINOS',
-    activo: true,
+    id: 2,
+    orden: 1,
+    imagenUrl: '',
+    link: '/productos?categoria=buzos',
+    titulo: 'BUZOS OVERSIZED & HOODIES',
+    activo: false,
   },
   {
-    index: 2,
-    imagenUrl: 'https://images.unsplash.com/photo-1579952363873-27f3bade9f55?auto=format&fit=crop&w=1920&q=80',
-    enlace: '',
-    titulo: 'SELECCIONES & RETRO',
-    activo: true,
+    id: 3,
+    orden: 2,
+    imagenUrl: '',
+    link: '/productos?categoria=remeras',
+    titulo: 'REMERAS & ESSENTIALS',
+    activo: false,
   },
 ];
 
@@ -442,6 +683,10 @@ const ESTADOS_PEDIDO_LEGACY = {
   Aprobado: 'listo_empaquetar',
   'Preparación de pedido': 'listo_empaquetar',
   'En Preparación': 'listo_empaquetar',
+  PREPARACIÓN: 'listo_empaquetar',
+  Preparación: 'listo_empaquetar',
+  PREPARACION: 'listo_empaquetar',
+  preparacion: 'listo_empaquetar',
   Enviado: 'despachado',
   Entregado: 'entregado',
   Listo: 'entregado',
@@ -655,15 +900,58 @@ seccionSchema.pre('save', function () {
 
 const Seccion = mongoose.model('Seccion', seccionSchema);
 
-const configuracionSchema = new mongoose.Schema({
-  nombreTienda: { type: String, default: 'Jersey Store' },
-  whatsappNumero: { type: String, default: '' },
-  cloudinaryCloudName: { type: String, default: '' },
-  cloudinaryUploadPreset: { type: String, default: '' },
-  afipLink: { type: String, default: '' },
+/**
+ * Banner de la home (slots fijos por `orden` 0..MAX_BANNERS-1).
+ * `imagenUrl` solo acepta https (o rutas locales); `//` se normaliza a https://.
+ */
+function sanitizarImagenUrlBanner(valor) {
+  return sanitizarUrlBanner(valor, { baseUrl: APP_BASE_URL, forzarHttps: true });
+}
+
+function sanitizarLinkBanner(valor) {
+  return sanitizarUrlBanner(valor, { baseUrl: APP_BASE_URL, forzarHttps: true });
+}
+
+const bannerSchema = new mongoose.Schema(
+  {
+    id: { type: Number, unique: true },
+    titulo: { type: String, default: '', trim: true },
+    imagenUrl: {
+      type: String,
+      default: '',
+      trim: true,
+      set: (valor) => sanitizarImagenUrlBanner(valor),
+    },
+    link: {
+      type: String,
+      default: '',
+      trim: true,
+      set: (valor) => sanitizarLinkBanner(valor),
+    },
+    activo: { type: Boolean, default: false },
+    orden: {
+      type: Number,
+      required: true,
+      min: 0,
+      unique: true,
+      index: true,
+    },
+  },
+  { timestamps: true }
+);
+
+bannerSchema.pre('validate', function () {
+  if (this.id == null && this.orden != null) {
+    this.id = Number(this.orden) + 1;
+  }
+  // Refuerzo: setters no siempre corren en updates parciales.
+  this.imagenUrl = sanitizarImagenUrlBanner(this.imagenUrl);
+  this.link = sanitizarLinkBanner(this.link);
 });
 
-const Configuracion = mongoose.model('Configuracion', configuracionSchema);
+bannerSchema.index({ activo: 1, orden: 1 });
+
+const Banner = mongoose.model('Banner', bannerSchema);
 
 const SECCIONES_BASE = [
   { id: 1, nombre: 'Remeras', grupo: 'general', esFija: false, padreId: null, mostrarEnCarrusel: true },
@@ -789,13 +1077,8 @@ async function verificarPassword(password, passwordAlmacenada) {
   return bcrypt.compare(password, passwordAlmacenada);
 }
 
-async function obtenerNombreTienda() {
-  try {
-    const config = await obtenerConfiguracionUnica();
-    return formatearConfiguracion(config).nombreTienda;
-  } catch {
-    return NOMBRE_TIENDA_DEFECTO || 'Jersey Store';
-  }
+function obtenerNombreTienda() {
+  return STORE_NAME || 'Jersey Store';
 }
 
 /**
@@ -1981,38 +2264,6 @@ function formatearPedido(pedido) {
   };
 }
 
-function obtenerConfiguracionDesdeEnv() {
-  return {
-    nombreTienda: NOMBRE_TIENDA_DEFECTO || 'Jersey Store',
-    whatsappNumero: WHATSAPP_NUMERO.replace(/^\+/, ''),
-    cloudinaryCloudName: CLOUDINARY_CLOUD_NAME,
-    cloudinaryUploadPreset: CLOUDINARY_UPLOAD_PRESET,
-  };
-}
-
-function formatearConfiguracion(config) {
-  const datos = config?.toObject ? config.toObject() : config || {};
-  const cloudName = String(datos.cloudinaryCloudName || CLOUDINARY_CLOUD_NAME || '').trim();
-  const firmado = Boolean(cloudName && CLOUDINARY_API_KEY && CLOUDINARY_API_SECRET);
-  const presetUnsigned = String(
-    datos.cloudinaryUploadPreset || CLOUDINARY_UPLOAD_PRESET || ''
-  ).trim();
-
-  // En producción no exponemos preset unsigned (abuso de subidas). Solo firmado o vacío.
-  const cloudinaryUploadPreset = firmado
-    ? ''
-    : (ES_PRODUCCION ? '' : presetUnsigned);
-
-  return {
-    nombreTienda: String(datos.nombreTienda || NOMBRE_TIENDA_DEFECTO || 'Jersey Store').trim(),
-    whatsappNumero: String(datos.whatsappNumero || '').replace(/^\+/, '').trim(),
-    cloudinaryCloudName: cloudName,
-    cloudinaryUploadPreset,
-    cloudinaryFirmado: firmado,
-    afipLink: String(datos.afipLink || '').trim(),
-  };
-}
-
 function parsearIndiceBanner(valor) {
   const index = Number(valor);
   if (!Number.isInteger(index) || index < 0 || index >= MAX_BANNERS) {
@@ -2021,60 +2272,114 @@ function parsearIndiceBanner(valor) {
   return index;
 }
 
+/**
+ * Normaliza un banner al shape de Mongo (`orden` / `link`) y sanitiza URLs.
+ * Acepta aliases legacy: index→orden, enlace→link.
+ */
 function normalizarBanner(banner, indexFallback = 0) {
   const datos = banner && typeof banner === 'object' ? banner : {};
-  const index = parsearIndiceBanner(datos.index ?? datos.slot ?? indexFallback);
-  const indexFinal = index === null ? indexFallback : index;
+  const orden = parsearIndiceBanner(datos.orden ?? datos.index ?? datos.slot ?? indexFallback);
+  const ordenFinal = orden === null ? indexFallback : orden;
+  const idNum = Number(datos.id);
+  const id = Number.isInteger(idNum) && idNum > 0 ? idNum : ordenFinal + 1;
 
   return {
-    index: indexFinal,
-    imagenUrl: String(datos.imagenUrl || datos.imagen_url || datos.imagen || '').trim(),
-    enlace: String(datos.enlace || datos.link || '').trim(),
+    id,
+    orden: ordenFinal,
+    imagenUrl: sanitizarImagenUrlBanner(
+      datos.imagenUrl || datos.imagen_url || datos.imagen || ''
+    ),
+    link: sanitizarLinkBanner(datos.link || datos.enlace || ''),
     titulo: String(datos.titulo || '').trim(),
     activo: datos.activo !== false,
   };
 }
 
+/** Shape de API (compat frontend: index + enlace). */
+function serializarBannerApi(banner) {
+  const n = normalizarBanner(banner, banner?.orden ?? banner?.index ?? 0);
+  return {
+    id: n.id,
+    index: n.orden,
+    orden: n.orden,
+    imagenUrl: n.imagenUrl,
+    enlace: n.link,
+    link: n.link,
+    titulo: n.titulo,
+    activo: n.activo,
+  };
+}
+
 function completarListaBanners(lista = []) {
-  const porIndex = new Map();
+  const porOrden = new Map();
 
   (Array.isArray(lista) ? lista : []).forEach((banner, position) => {
     const normalizado = normalizarBanner(banner, position);
-    porIndex.set(normalizado.index, normalizado);
+    porOrden.set(normalizado.orden, normalizado);
   });
 
-  return Array.from({ length: MAX_BANNERS }, (_, index) => (
-    porIndex.get(index) || { ...BANNERS_POR_DEFECTO[index], index }
-  ));
+  return Array.from({ length: MAX_BANNERS }, (_, orden) => (
+    porOrden.get(orden) || { ...BANNERS_POR_DEFECTO[orden], orden }
+  )).map(serializarBannerApi);
 }
 
-function leerBannersDesdeJson() {
-  asegurarDirectoriosBanners();
+/**
+ * Si la colección está vacía, siembra desde data/banners.json (migración) o defaults.
+ */
+async function asegurarBannersIniciales() {
+  const existentes = await Banner.countDocuments();
+  if (existentes > 0) return;
 
+  let semilla = BANNERS_POR_DEFECTO;
   try {
-    if (!fs.existsSync(BANNERS_JSON_PATH)) {
-      escribirBannersEnJson(BANNERS_POR_DEFECTO);
-      return completarListaBanners(BANNERS_POR_DEFECTO);
+    if (fs.existsSync(BANNERS_JSON_PATH)) {
+      const crudo = JSON.parse(fs.readFileSync(BANNERS_JSON_PATH, 'utf8'));
+      const lista = Array.isArray(crudo) ? crudo : crudo?.banners;
+      if (Array.isArray(lista) && lista.length) {
+        semilla = lista;
+      }
     }
-
-    const crudo = JSON.parse(fs.readFileSync(BANNERS_JSON_PATH, 'utf8'));
-    const lista = Array.isArray(crudo) ? crudo : crudo?.banners;
-    if (!Array.isArray(lista)) {
-      escribirBannersEnJson(BANNERS_POR_DEFECTO);
-      return completarListaBanners(BANNERS_POR_DEFECTO);
-    }
-
-    return completarListaBanners(lista);
   } catch (error) {
-    console.warn('No se pudo leer data/banners.json:', error.message);
-    return completarListaBanners(BANNERS_POR_DEFECTO);
+    console.warn('No se pudo migrar data/banners.json:', error.message);
   }
+
+  const lista = completarListaBanners(semilla).map((b) => ({
+    id: b.id,
+    orden: b.orden,
+    titulo: b.titulo,
+    imagenUrl: b.imagenUrl,
+    link: b.link,
+    activo: Boolean(b.activo && b.imagenUrl),
+  }));
+
+  await Banner.insertMany(lista);
 }
 
-function escribirBannersEnJson(banners) {
-  asegurarDirectoriosBanners();
+async function obtenerBannersActuales() {
+  await asegurarBannersIniciales();
+  const docs = await Banner.find().sort({ orden: 1 }).lean();
+  return completarListaBanners(docs);
+}
+
+async function guardarBanners(banners) {
   const lista = completarListaBanners(banners);
-  fs.writeFileSync(BANNERS_JSON_PATH, `${JSON.stringify(lista, null, 2)}\n`, 'utf8');
+  const ops = lista.map((banner) => ({
+    updateOne: {
+      filter: { orden: banner.orden },
+      update: {
+        $set: {
+          id: banner.id,
+          titulo: banner.titulo,
+          imagenUrl: banner.imagenUrl,
+          link: banner.link,
+          activo: banner.activo,
+          orden: banner.orden,
+        },
+      },
+      upsert: true,
+    },
+  }));
+  await Banner.bulkWrite(ops);
   return lista;
 }
 
@@ -2094,55 +2399,6 @@ function eliminarArchivoBannerLocal(url) {
       console.warn('No se pudo eliminar imagen de banner:', error.message);
     }
   }
-}
-
-function obtenerBannersActuales() {
-  return leerBannersDesdeJson();
-}
-
-function guardarBanners(banners) {
-  return escribirBannersEnJson(banners);
-}
-
-async function migrarNombreTiendaSiCorresponde(config) {
-  if (!config) return;
-
-  const nombreNuevo = NOMBRE_TIENDA_DEFECTO || 'Jersey Store';
-  const nombreActual = String(config.nombreTienda || '').trim();
-
-  if (nombreActual === nombreNuevo) {
-    return;
-  }
-
-  // Forzar rebrand: el logo lee este valor desde /api/config
-  config.nombreTienda = nombreNuevo;
-  await config.save();
-  console.log(`=> Nombre de tienda actualizado a ${nombreNuevo} (antes: ${nombreActual || 'vacío'}).`);
-}
-
-async function obtenerConfiguracionUnica() {
-  let config = await Configuracion.findOne();
-
-  if (!config) {
-    await inicializarConfiguracion();
-    config = await Configuracion.findOne();
-  }
-
-  await migrarNombreTiendaSiCorresponde(config);
-  return config;
-}
-
-async function inicializarConfiguracion() {
-  const total = await Configuracion.countDocuments();
-
-  if (total === 0) {
-    await Configuracion.create(obtenerConfiguracionDesdeEnv());
-    console.log('=> Éxito: Configuración inicial de la tienda creada desde .env.');
-    return;
-  }
-
-  const config = await Configuracion.findOne();
-  await migrarNombreTiendaSiCorresponde(config);
 }
 
 async function inicializarAdministrador() {
@@ -2503,52 +2759,81 @@ async function validarItemsYReservarStock(items) {
     });
   }
 
+  // Reserva multi-ítem en una transacción ACID: si falla cualquier variante,
+  // abortTransaction hace rollback de todos los $inc previos (hallazgo M5).
+  const session = await mongoose.startSession();
   const decrementosRealizados = [];
+  let errorReserva = null;
 
-  for (const linea of lineasValidadas) {
-    const productoIdStr = String(linea.producto._id);
-    const cantidad = linea.cantidad;
-    const talle = linea.talle;
-    const filtro = {
-      _id: productoIdStr,
-      activo: { $ne: false },
-      stock: { $gte: cantidad },
-    };
-    const update = { $inc: { stock: -cantidad } };
-    let talleDecrementado = null;
+  try {
+    session.startTransaction();
 
-    if (talle && documentoTrackeaStockPorTalle(linea.producto.stockTalles)) {
-      const pathKey = resolverClaveFisicaStockTalle(linea.producto.stockTalles, talle);
-      if (!pathKey) {
-        await revertirDecrementosStock(decrementosRealizados);
-        return {
-          error: `No se pudo reservar stock del talle «${talle}» para «${linea.producto.nombre}». Reintentá o contactá a la tienda.`,
+    for (const linea of lineasValidadas) {
+      const productoIdStr = String(linea.producto._id);
+      const cantidad = linea.cantidad;
+      const talle = linea.talle;
+      const filtro = {
+        _id: productoIdStr,
+        activo: { $ne: false },
+        stock: { $gte: cantidad },
+      };
+      const update = { $inc: { stock: -cantidad } };
+      let talleDecrementado = null;
+
+      if (talle && documentoTrackeaStockPorTalle(linea.producto.stockTalles)) {
+        const pathKey = resolverClaveFisicaStockTalle(linea.producto.stockTalles, talle);
+        if (!pathKey) {
+          errorReserva = {
+            error: `No se pudo reservar stock del talle «${talle}» para «${linea.producto.nombre}». Reintentá o contactá a la tienda.`,
+            status: 409,
+          };
+          await session.abortTransaction();
+          break;
+        }
+        // $inc sobre Mixed: path "stockTalles.41" / "stockTalles.40__DOT__5" (no operador $ de array).
+        filtro[`stockTalles.${pathKey}`] = { $gte: cantidad };
+        update.$inc[`stockTalles.${pathKey}`] = -cantidad;
+        talleDecrementado = normalizarClaveTalle(talle);
+      }
+
+      const actualizado = await Producto.findOneAndUpdate(filtro, update, {
+        new: true,
+        session,
+      });
+
+      if (!actualizado) {
+        errorReserva = {
+          error: `Lo sentimos, el producto ${linea.producto.nombre} en talle ${talle || 'único'} se agotó debido a una compra simultánea.`,
           status: 409,
         };
+        await session.abortTransaction();
+        break;
       }
-      // $inc sobre Mixed: path "stockTalles.41" / "stockTalles.40__DOT__5" (no operador $ de array).
-      filtro[`stockTalles.${pathKey}`] = { $gte: cantidad };
-      update.$inc[`stockTalles.${pathKey}`] = -cantidad;
-      talleDecrementado = normalizarClaveTalle(talle);
+
+      decrementosRealizados.push({
+        productoId: productoIdStr,
+        cantidad,
+        // Solo revertir path de talle si realmente se descontó en stockTalles.
+        talle: talleDecrementado,
+      });
     }
 
-    const actualizado = await Producto.findOneAndUpdate(filtro, update, { new: true });
-
-    if (!actualizado) {
-      await revertirDecrementosStock(decrementosRealizados);
-
-      return {
-        error: `Lo sentimos, el producto ${linea.producto.nombre} en talle ${talle || 'único'} se agotó debido a una compra simultánea.`,
-        status: 409,
-      };
+    if (errorReserva) {
+      return errorReserva;
     }
 
-    decrementosRealizados.push({
-      productoId: productoIdStr,
-      cantidad,
-      // Solo revertir path de talle si realmente se descontó en stockTalles.
-      talle: talleDecrementado,
-    });
+    await session.commitTransaction();
+  } catch (err) {
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
+    console.error('Error en transacción de reserva de stock:', err);
+    return {
+      error: 'No se pudo reservar el stock. Intentá de nuevo.',
+      status: 500,
+    };
+  } finally {
+    session.endSession();
   }
 
   const productosPedido = lineasValidadas.map(({ producto, cantidad, talle, precioUnitario }) => {
@@ -2772,37 +3057,61 @@ function construirItemsMercadoPago(productosPedido, totalFinal) {
   return items;
 }
 
-function obtenerPaymentIdDesdeNotificacion(req) {
-  const tipo = req.query?.type || req.query?.topic || req.body?.type || req.body?.topic;
-
-  if (tipo !== 'payment') return null;
+/**
+ * Extrae tipo/acción e IDs de notificaciones IPN (notification_url) y Webhooks v2.
+ * Soporta payment, payment.updated / payment.created y merchant_order (Checkout Pro).
+ */
+function parsearNotificacionMercadoPago(req) {
+  const action = String(req.body?.action || req.query?.action || '').toLowerCase();
+  const tipo = String(
+    req.query?.type || req.query?.topic || req.body?.type || req.body?.topic || ''
+  ).toLowerCase();
 
   const id = req.query?.['data.id']
     || req.query?.id
-    || req.body?.data?.id;
+    || req.body?.data?.id
+    || null;
 
-  return id ? String(id) : null;
+  const esPayment = tipo === 'payment' || action.startsWith('payment.');
+  const esMerchantOrder = tipo === 'merchant_order' || action.startsWith('merchant_order.');
+
+  return {
+    tipo,
+    action,
+    esPayment,
+    esMerchantOrder,
+    resourceId: id ? String(id) : null,
+  };
+}
+
+function obtenerPaymentIdDesdeNotificacion(req) {
+  const info = parsearNotificacionMercadoPago(req);
+  if (!info.esPayment) return null;
+  return info.resourceId;
 }
 
 /** Ventana máxima de antigüedad del webhook MP (anti-replay). */
 const WEBHOOK_MP_TOLERANCIA_MS = 300_000; // 5 minutos
 
 /**
- * [ALTO-03] Valida x-signature de webhooks de Mercado Pago (HMAC-SHA256)
- * y rechaza notificaciones fuera de la ventana de 5 minutos (anti-replay).
+ * [M1] Valida OBLIGATORIAMENTE x-signature de webhooks de Mercado Pago (HMAC-SHA256).
+ * Sin firma, sin secret o firma inválida → rechazo (HTTP 401 en el handler).
+ * También rechaza notificaciones fuera de la ventana de 5 minutos (anti-replay).
+ *
  * Manifest oficial: id:{data.id};request-id:{x-request-id};ts:{ts};
- * @returns {{ ok: true } | { ok: false, motivo: 'sin_secret'|'firma'|'expirada', diferenciaMs?: number }}
+ * (si data.id o x-request-id no vienen, se omiten del manifest según docs MP).
+ *
+ * @returns {{ ok: true, modo?: string } | { ok: false, motivo: string, diferenciaMs?: number }}
  * @see https://www.mercadopago.com.ar/developers/es/docs/your-integrations/notifications/webhooks
  */
 function validarFirmaWebhookMercadoPago(req) {
   if (!MP_WEBHOOK_SECRET) {
-    console.warn('Webhook MP rechazado: MP_WEBHOOK_SECRET no configurado.');
     return { ok: false, motivo: 'sin_secret' };
   }
 
   const xSignature = String(req.headers['x-signature'] || '').trim();
   if (!xSignature) {
-    return { ok: false, motivo: 'firma' };
+    return { ok: false, motivo: 'sin_firma' };
   }
 
   const partesFirma = {};
@@ -2863,7 +3172,281 @@ function validarFirmaWebhookMercadoPago(req) {
     return { ok: false, motivo: 'expirada', diferenciaMs };
   }
 
+  return { ok: true, motivo: 'firma_ok' };
+}
+
+/**
+ * Busca el pedido asociado a un pago de MP por preferenceId o external_reference.
+ */
+async function buscarPedidoDesdePagoMp(paymentData) {
+  const preferenceId = paymentData?.preference_id
+    ? String(paymentData.preference_id)
+    : null;
+  const externalReference = paymentData?.external_reference != null
+    && String(paymentData.external_reference).trim() !== ''
+    ? String(paymentData.external_reference).trim()
+    : null;
+
+  let pedido = null;
+
+  if (preferenceId) {
+    pedido = await Pedido.findOne({ mercadopagoPreferenceId: preferenceId });
+  }
+
+  if (!pedido && externalReference) {
+    pedido = await Pedido.findOne({ id: externalReference });
+  }
+
+  return { pedido, preferenceId, externalReference };
+}
+
+/**
+ * C2: Valida external_reference y monto de un pago MP contra un pedido conocido.
+ * Nunca inyecta ni reescribe paymentData.external_reference.
+ *
+ * @returns {{ ok: true } | { ok: false, codigo: string, mensaje: string }}
+ */
+function validarPagoMercadoPagoContraPedido(paymentData, pedidoId, totalPedido) {
+  const pedidoIdStr = String(pedidoId || '').trim();
+  const externalRefRaw = paymentData?.external_reference;
+  const externalRef = externalRefRaw != null && String(externalRefRaw).trim() !== ''
+    ? String(externalRefRaw).trim()
+    : null;
+
+  // C2: rechazo inmediato si falta o no coincide exactamente con el ID del pedido.
+  if (!externalRef) {
+    logError(
+      'MP_EXTERNAL_REFERENCE_AUSENTE',
+      new Error('Pago sin external_reference — operación rechazada (C2)'),
+      { pedidoId: pedidoIdStr, paymentStatus: paymentData?.status }
+    );
+    return {
+      ok: false,
+      codigo: 'external_reference_ausente',
+      mensaje: 'El pago no incluye external_reference. Operación rechazada.',
+    };
+  }
+
+  if (externalRef !== pedidoIdStr) {
+    logError(
+      'MP_EXTERNAL_REFERENCE_MISMATCH',
+      new Error('external_reference no coincide con el pedido — operación rechazada (C2)'),
+      {
+        pedidoId: pedidoIdStr,
+        external_reference: externalRef,
+        paymentStatus: paymentData?.status,
+      }
+    );
+    return {
+      ok: false,
+      codigo: 'external_reference_mismatch',
+      mensaje: 'El pago no corresponde a este pedido.',
+    };
+  }
+
+  const estadoPago = String(paymentData?.status || '').toLowerCase();
+  if (estadoPago !== 'approved') {
+    return {
+      ok: false,
+      codigo: 'pago_no_aprobado',
+      mensaje: `El pago no está aprobado (status=${estadoPago || 'desconocido'}).`,
+    };
+  }
+
+  // C1: el monto acreditado debe cubrir al menos el total del pedido.
+  const montoPagado = Number(paymentData?.transaction_amount);
+  const montoPedido = Number(totalPedido);
+  if (
+    !Number.isFinite(montoPagado)
+    || !Number.isFinite(montoPedido)
+    || montoPagado + 0.01 < montoPedido
+  ) {
+    logError(
+      'MP_FRAUDE_MONTO',
+      new Error('transaction_amount insuficiente respecto al total del pedido'),
+      { pedidoId: pedidoIdStr, montoPagado, montoPedido }
+    );
+    return {
+      ok: false,
+      codigo: 'monto_invalido',
+      mensaje: 'El monto del pago no cubre el total del pedido.',
+    };
+  }
+
   return { ok: true };
+}
+
+/**
+ * Aplica el estado de un pago MP al pedido (approved → listo_empaquetar / PREPARACIÓN).
+ * @returns {'aprobado'|'cancelado'|'ignorado'|'no_encontrado'|'monto_invalido'|'ref_invalida'|'ya_procesado'}
+ */
+async function aplicarEstadoPagoMercadoPago(paymentId, paymentData) {
+  const estadoPago = String(paymentData?.status || '').toLowerCase();
+  const { pedido, preferenceId, externalReference } = await buscarPedidoDesdePagoMp(paymentData);
+
+  console.log(
+    `[Webhook MP] payment=${paymentId} status=${estadoPago}`
+    + ` preferenceId=${preferenceId || 'n/a'} external_ref=${externalReference || 'n/a'}`
+  );
+
+  if (!pedido) {
+    console.warn(
+      `[Webhook MP] Pedido no encontrado para payment ${paymentId}`
+      + ` (preferenceId=${preferenceId || 'n/a'}, external_ref=${externalReference || 'n/a'}).`
+    );
+    return 'no_encontrado';
+  }
+
+  // C2 unificado y OBLIGATORIO: nunca aprobar/procesar solo con preferenceId.
+  // validarPagoMercadoPagoContraPedido exige external_reference == pedido.id
+  // (y, si status=approved, también valida monto). No se inyecta ni reescribe la ref.
+  const validacionC2 = validarPagoMercadoPagoContraPedido(
+    paymentData,
+    pedido.id,
+    pedido.total
+  );
+
+  if (
+    !validacionC2.ok
+    && (
+      validacionC2.codigo === 'external_reference_ausente'
+      || validacionC2.codigo === 'external_reference_mismatch'
+    )
+  ) {
+    logError(
+      'WEBHOOK_MP_C2_RECHAZADO',
+      new Error(validacionC2.mensaje || 'Validación C2 fallida en webhook'),
+      {
+        pedidoId: pedido.id,
+        paymentId,
+        preferenceId,
+        external_reference: externalReference,
+        codigo: validacionC2.codigo,
+      }
+    );
+    return 'ref_invalida';
+  }
+
+  if (
+    pedido.estado === 'listo_empaquetar'
+    || pedido.estado === 'cancelado'
+    || pedido.estado === 'despachado'
+    || pedido.estado === 'entregado'
+  ) {
+    console.log(
+      `[Webhook MP] Pedido ${pedido.id} ya en estado terminal/avanzado (${pedido.estado}). Se ignora.`
+    );
+    return 'ya_procesado';
+  }
+
+  if (estadoPago === 'approved') {
+    // C1/C2: si llegamos aquí con validacionC2.ok=false, es monto u otro rechazo.
+    if (!validacionC2.ok) {
+      return validacionC2.codigo === 'monto_invalido' ? 'monto_invalido' : 'ref_invalida';
+    }
+
+    // Claim atómico: solo el primer webhook concurrente confirma la venta.
+    const pedidoAprobado = await Pedido.findOneAndUpdate(
+      {
+        _id: pedido._id,
+        estado: { $nin: ['cancelado', 'listo_empaquetar', 'despachado', 'entregado'] },
+      },
+      {
+        $set: {
+          estado: 'listo_empaquetar',
+          mercadopagoPaymentId: String(paymentId),
+        },
+      },
+      { new: true }
+    );
+
+    if (!pedidoAprobado) {
+      console.log(`[Webhook MP] Pedido ${pedido.id}: claim perdido (otro proceso ya lo actualizó).`);
+      return 'ya_procesado';
+    }
+
+    console.log(
+      `[Webhook MP] ✅ Pago APROBADO — pedido ${pedidoAprobado.id}`
+      + ` (nº ${pedidoAprobado.numeroPedido || '—'}) actualizado a PREPARACIÓN (listo_empaquetar).`
+      + ` paymentId=${paymentId}`
+    );
+
+    try {
+      await incrementarVentasContadorDesdePedido(pedidoAprobado);
+    } catch (ventasError) {
+      logError('WEBHOOK_MP_VENTAS_CONTADOR', ventasError, {
+        pedidoId: pedidoAprobado.id,
+        paymentId,
+      });
+    }
+
+    try {
+      await desactivarProductosSinStockDesdePedido(pedidoAprobado);
+    } catch (stockError) {
+      logError('WEBHOOK_MP_DESACTIVAR_SIN_STOCK', stockError, {
+        pedidoId: pedidoAprobado.id,
+        paymentId,
+      });
+    }
+
+    setImmediate(async () => {
+      try {
+        const usuarioPedido = await Usuario.findOne({
+          email: normalizarEmail(pedidoAprobado.emailUsuario),
+        });
+        await notificarConfirmacionCompraSegura(pedidoAprobado, usuarioPedido);
+      } catch (mailError) {
+        logError('EMAIL_CONFIRMACION_COMPRA_MP', mailError, {
+          pedidoId: pedidoAprobado.id,
+          emailUsuario: pedidoAprobado.emailUsuario,
+        });
+      }
+    });
+
+    return 'aprobado';
+  }
+
+  if (['rejected', 'cancelled', 'refunded', 'charged_back'].includes(estadoPago)) {
+    const pedidoCancelado = await Pedido.findOneAndUpdate(
+      {
+        _id: pedido._id,
+        estado: { $nin: ['cancelado', 'listo_empaquetar', 'despachado', 'entregado'] },
+      },
+      {
+        $set: {
+          estado: 'cancelado',
+          mercadopagoPaymentId: String(paymentId),
+        },
+      },
+      { new: true }
+    );
+
+    if (!pedidoCancelado) {
+      return 'ya_procesado';
+    }
+
+    console.log(
+      `[Webhook MP] Pago ${estadoPago} — pedido ${pedidoCancelado.id} cancelado. paymentId=${paymentId}`
+    );
+    await restaurarStockDesdePedido(pedidoCancelado);
+    return 'cancelado';
+  }
+
+  console.log(
+    `[Webhook MP] Payment ${paymentId} con status="${estadoPago}" — sin cambio de estado para pedido ${pedido.id}.`
+  );
+  return 'ignorado';
+}
+
+/**
+ * Resuelve payment IDs desde una merchant_order (Checkout Pro suele notificar así).
+ */
+async function obtenerPaymentIdsDesdeMerchantOrder(merchantOrderId) {
+  const order = await merchantOrderClient.get({ merchantOrderId: String(merchantOrderId) });
+  const payments = Array.isArray(order?.payments) ? order.payments : [];
+  return payments
+    .map((p) => (p?.id != null ? String(p.id) : null))
+    .filter(Boolean);
 }
 
 function obtenerInitPointMercadoPago(preferenceResponse) {
@@ -3002,7 +3585,6 @@ async function ejecutarInicializacionLocal() {
 
   inicializacionLocalCompleta = true;
   await inicializarAdministrador();
-  await inicializarConfiguracion();
 }
 
 async function asegurarConexionDB() {
@@ -3012,7 +3594,7 @@ async function asegurarConexionDB() {
 
   if (!conexionDBPromise) {
     conexionDBPromise = mongoose
-      .connect(process.env.MONGO_URI, MONGO_OPTIONS)
+      .connect(MONGO_URI, MONGO_OPTIONS)
       .then(async () => {
         if (!process.env.VERCEL) {
           await ejecutarInicializacionLocal();
@@ -3037,23 +3619,16 @@ app.use('/api', async (req, res, next) => {
   }
 });
 
-// ── Configuración pública ──
-
-app.get('/api/config', async (_req, res) => {
-  try {
-    const config = await obtenerConfiguracionUnica();
-    res.json(formatearConfiguracion(config));
-  } catch (error) {
-    console.error('Error al obtener configuración:', error);
-    res.status(500).json({ error: 'Error interno del servidor.' });
-  }
-});
+// ── Cloudinary (firma de subida admin; credenciales solo desde .env) ──
 
 app.post('/api/admin/cloudinary-firma', verificarAdminJWT, async (req, res) => {
   try {
+    // Credenciales únicamente desde process.env (ver comentario junto a CLOUDINARY_* arriba).
     if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_API_KEY || !CLOUDINARY_API_SECRET) {
       return res.status(503).json({
-        error: 'Subida firmada no configurada. Definí CLOUDINARY_API_KEY y CLOUDINARY_API_SECRET.',
+        error:
+          'Subida firmada no configurada. Definí en .env: '
+          + 'CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY y CLOUDINARY_API_SECRET.',
       });
     }
 
@@ -3076,55 +3651,22 @@ app.post('/api/admin/cloudinary-firma', verificarAdminJWT, async (req, res) => {
   }
 });
 
-app.put('/api/config', verificarJWT, esAdmin, async (req, res) => {
+// ── Banners de la Home (MongoDB + Multer) ──
+
+app.get('/api/banners', async (_req, res) => {
   try {
-    const nombreTienda = String(req.body?.nombreTienda || '').trim();
-    const whatsappNumero = String(req.body?.whatsappNumero || '').replace(/^\+/, '').trim();
-    const cloudinaryCloudName = String(req.body?.cloudinaryCloudName || '').trim();
-    const cloudinaryUploadPreset = String(req.body?.cloudinaryUploadPreset || '').trim();
-    const afipLink = String(req.body?.afipLink || '').trim();
+    await asegurarBannersIniciales();
+    const docs = await Banner.find({
+      activo: true,
+      imagenUrl: { $nin: [null, ''] },
+    })
+      .sort({ orden: 1 })
+      .lean();
 
-    if (!nombreTienda) {
-      return res.status(400).json({ error: 'El nombre de la tienda es obligatorio.' });
-    }
+    const banners = docs
+      .map(serializarBannerApi)
+      .filter((banner) => banner.activo && banner.imagenUrl);
 
-    if (!whatsappNumero) {
-      return res.status(400).json({ error: 'El número de WhatsApp es obligatorio.' });
-    }
-
-    if (afipLink && !esUrlHttpSegura(afipLink, { permitirVacio: false })) {
-      return res.status(400).json({ error: 'El enlace AFIP debe ser una URL http(s) válida.' });
-    }
-
-    let config = await Configuracion.findOne();
-
-    if (!config) {
-      config = new Configuracion();
-    }
-
-    config.nombreTienda = nombreTienda;
-    config.whatsappNumero = whatsappNumero;
-    config.cloudinaryCloudName = cloudinaryCloudName;
-    config.cloudinaryUploadPreset = cloudinaryUploadPreset;
-    config.afipLink = afipLink;
-    await config.save();
-
-    res.json({
-      ok: true,
-      mensaje: 'Configuración actualizada correctamente.',
-      ...formatearConfiguracion(config),
-    });
-  } catch (error) {
-    console.error('Error al actualizar configuración:', error);
-    res.status(500).json({ error: 'Error interno del servidor.' });
-  }
-});
-
-// ── Banners de la Home (data/banners.json + Multer) ──
-
-app.get('/api/banners', (_req, res) => {
-  try {
-    const banners = obtenerBannersActuales().filter((banner) => banner.activo && banner.imagenUrl);
     res.json({ banners });
   } catch (error) {
     console.error('Error al obtener banners:', error);
@@ -3132,9 +3674,9 @@ app.get('/api/banners', (_req, res) => {
   }
 });
 
-app.get('/api/admin/banners', verificarAdminJWT, (_req, res) => {
+app.get('/api/admin/banners', verificarAdminJWT, async (_req, res) => {
   try {
-    res.json({ banners: obtenerBannersActuales() });
+    res.json({ banners: await obtenerBannersActuales() });
   } catch (error) {
     console.error('Error al obtener banners admin:', error);
     res.status(500).json({ error: 'Error interno del servidor.' });
@@ -3142,7 +3684,7 @@ app.get('/api/admin/banners', verificarAdminJWT, (_req, res) => {
 });
 
 app.post('/api/admin/banners', verificarAdminJWT, (req, res) => {
-  uploadBanner.single('imagen')(req, res, (errorMulter) => {
+  uploadBanner.single('imagen')(req, res, async (errorMulter) => {
     if (errorMulter) {
       const mensaje = errorMulter.code === 'LIMIT_FILE_SIZE'
         ? 'La imagen supera el máximo de 5 MB.'
@@ -3169,33 +3711,34 @@ app.post('/api/admin/banners', verificarAdminJWT, (req, res) => {
         return res.status(400).json({ error: validacionArchivo.error });
       }
 
-      const enlaceRaw = String(req.body?.enlace || '').trim();
+      const enlaceRaw = String(req.body?.enlace || req.body?.link || '').trim();
       if (enlaceRaw && !esUrlHttpSegura(enlaceRaw, { permitirVacio: false })) {
         if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
         return res.status(400).json({
           error: 'El enlace del banner debe ser una URL http(s) válida.',
         });
       }
-      const enlace = enlaceRaw;
+      const enlace = sanitizarLinkBanner(enlaceRaw);
       const titulo = String(req.body?.titulo || '').trim();
-      const imagenUrl = `/images/banners/${req.file.filename}`;
-      const banners = obtenerBannersActuales();
+      const imagenUrl = sanitizarImagenUrlBanner(`/images/banners/${req.file.filename}`);
+      const banners = await obtenerBannersActuales();
       const actual = banners.find((banner) => banner.index === index);
 
       if (actual?.imagenUrl) {
         eliminarArchivoBannerLocal(actual.imagenUrl);
       }
 
-      const actualizado = {
-        index,
+      const actualizado = serializarBannerApi({
+        id: actual?.id ?? index + 1,
+        orden: index,
         imagenUrl,
-        enlace: enlace || actual?.enlace || '',
+        link: enlace || actual?.link || actual?.enlace || '',
         titulo: titulo || actual?.titulo || '',
         activo: true,
-      };
+      });
 
       const lista = banners.map((banner) => (banner.index === index ? actualizado : banner));
-      const guardados = guardarBanners(lista);
+      const guardados = await guardarBanners(lista);
 
       res.json({
         ok: true,
@@ -3213,24 +3756,25 @@ app.post('/api/admin/banners', verificarAdminJWT, (req, res) => {
   });
 });
 
-app.post('/api/admin/banners/link', verificarAdminJWT, (req, res) => {
+app.post('/api/admin/banners/link', verificarAdminJWT, async (req, res) => {
   try {
     const index = parsearIndiceBanner(req.body?.index ?? req.body?.slot);
     if (index === null) {
       return res.status(400).json({ error: 'El índice del banner debe ser 0, 1 o 2.' });
     }
 
-    const enlace = String(req.body?.enlace || req.body?.link || '').trim();
-    if (enlace && !esUrlHttpSegura(enlace, { permitirVacio: false })) {
+    const enlaceRaw = String(req.body?.enlace || req.body?.link || '').trim();
+    if (enlaceRaw && !esUrlHttpSegura(enlaceRaw, { permitirVacio: false })) {
       return res.status(400).json({
         error: 'El enlace del banner debe ser una URL http(s) válida.',
       });
     }
+    const enlace = sanitizarLinkBanner(enlaceRaw);
     const titulo = req.body?.titulo !== undefined
       ? String(req.body.titulo || '').trim()
       : undefined;
 
-    const banners = obtenerBannersActuales();
+    const banners = await obtenerBannersActuales();
     const actual = banners.find((banner) => banner.index === index);
 
     if (!actual?.imagenUrl) {
@@ -3239,16 +3783,16 @@ app.post('/api/admin/banners/link', verificarAdminJWT, (req, res) => {
       });
     }
 
-    const actualizado = {
+    const actualizado = serializarBannerApi({
       ...actual,
-      index,
-      enlace,
+      orden: index,
+      link: enlace,
       titulo: titulo !== undefined ? titulo : actual.titulo,
       activo: true,
-    };
+    });
 
     const lista = banners.map((banner) => (banner.index === index ? actualizado : banner));
-    const guardados = guardarBanners(lista);
+    const guardados = await guardarBanners(lista);
 
     res.json({
       ok: true,
@@ -3262,29 +3806,30 @@ app.post('/api/admin/banners/link', verificarAdminJWT, (req, res) => {
   }
 });
 
-app.delete('/api/admin/banners/:index', verificarAdminJWT, (req, res) => {
+app.delete('/api/admin/banners/:index', verificarAdminJWT, async (req, res) => {
   try {
     const index = parsearIndiceBanner(req.params.index);
     if (index === null) {
       return res.status(400).json({ error: 'El índice del banner debe ser 0, 1 o 2.' });
     }
 
-    const banners = obtenerBannersActuales();
+    const banners = await obtenerBannersActuales();
     const actual = banners.find((banner) => banner.index === index);
     if (actual?.imagenUrl) {
       eliminarArchivoBannerLocal(actual.imagenUrl);
     }
 
-    const vacio = {
-      index,
+    const vacio = serializarBannerApi({
+      id: actual?.id ?? index + 1,
+      orden: index,
       imagenUrl: '',
-      enlace: '',
+      link: '',
       titulo: '',
       activo: false,
-    };
+    });
 
     const lista = banners.map((banner) => (banner.index === index ? vacio : banner));
-    const guardados = guardarBanners(lista);
+    const guardados = await guardarBanners(lista);
 
     res.json({
       ok: true,
@@ -3531,6 +4076,28 @@ app.delete('/api/secciones/:id', verificarAdminJWT, async (req, res) => {
 // ── Productos ──
 
 // Catálogo público. ?todos=true expone inactivos → solo admin (cookie HttpOnly o Bearer).
+/** [M3] Campos de catálogo: id/nombre/precio + variante (categoría/género/talles) + fotos + stock. */
+const CAMPOS_CATALOGO_PRODUCTO = [
+  'id',
+  'nombre',
+  'precio',
+  'precioOferta',
+  'destacado',
+  'enOferta',
+  'categoria',
+  'categoriaTipo',
+  'genero',
+  'imagenFrente',
+  'imagenEspalda',
+  'stock',
+  'stockTalles',
+  'activo',
+  'talles',
+  'descripcion',
+  'liga',
+  'tablaMedidas',
+].join(' ');
+
 app.get('/api/productos', async (req, res) => {
   try {
     const incluirInactivos = req.query.todos === 'true';
@@ -3576,20 +4143,29 @@ app.get('/api/productos', async (req, res) => {
       filtro.enOferta = true;
     }
 
-    let productos = await Producto.find(filtro);
+    let productos = await Producto.find(filtro).select(CAMPOS_CATALOGO_PRODUCTO);
 
     if (productos.length === 0 && incluirInactivos) {
       const total = await Producto.countDocuments();
       if (total === 0) {
-        productos = await Producto.insertMany(PRODUCTOS_BASE);
+        await Producto.insertMany(PRODUCTOS_BASE);
+        productos = await Producto.find(filtro).select(CAMPOS_CATALOGO_PRODUCTO);
       }
     } else if (productos.length === 0 && !incluirInactivos) {
       const total = await Producto.countDocuments();
       if (total === 0) {
-        productos = await Producto.insertMany(PRODUCTOS_BASE);
+        await Producto.insertMany(PRODUCTOS_BASE);
+        productos = await Producto.find(filtro).select(CAMPOS_CATALOGO_PRODUCTO);
       } else {
-        productos = await Producto.find(filtro);
+        productos = await Producto.find(filtro).select(CAMPOS_CATALOGO_PRODUCTO);
       }
+    }
+
+    // [M3] Caché corta solo en catálogo público; admin (?todos=true) sin store.
+    if (incluirInactivos) {
+      res.set('Cache-Control', 'private, no-store');
+    } else {
+      res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
     }
 
     res.json(productos.map(formatearProducto));
@@ -3641,15 +4217,32 @@ app.put('/api/productos/actualizar-precios-masivo', verificarAdminJWT, async (re
   try {
     const porcentaje = Number(req.body?.porcentaje);
     const categoriaRaw = req.body?.categoria;
+    const confirmarTodo = req.body?.confirmarTodo === true;
+    const PRECIOS_MASIVO_MAX_PCT = 50;
 
     if (!Number.isFinite(porcentaje) || porcentaje === 0) {
       return res.status(400).json({ error: 'El porcentaje debe ser un número distinto de cero.' });
     }
 
+    if (Math.abs(porcentaje) > PRECIOS_MASIVO_MAX_PCT) {
+      return res.status(400).json({
+        error: `Por seguridad, el porcentaje no puede superar el ±${PRECIOS_MASIVO_MAX_PCT}%.`,
+      });
+    }
+
     const factor = 1 + porcentaje / 100;
     const filtro = {};
+    const sinCategoria =
+      categoriaRaw === undefined || categoriaRaw === null || String(categoriaRaw).trim() === '';
 
-    if (categoriaRaw !== undefined && categoriaRaw !== null && String(categoriaRaw).trim() !== '') {
+    if (sinCategoria) {
+      if (!confirmarTodo) {
+        return res.status(400).json({
+          error:
+            'Para actualizar todo el catálogo debés confirmar la acción enviando confirmarTodo: true.',
+        });
+      }
+    } else {
       const categoriaNombre = await resolverCategoriaProducto(categoriaRaw);
       if (!categoriaNombre) {
         return res.status(400).json({ error: 'La categoría indicada no es válida.' });
@@ -3817,14 +4410,23 @@ app.patch('/api/productos/:id/portada', verificarAdminJWT, async (req, res) => {
 
 app.post('/api/productos', verificarAdminJWT, async (req, res) => {
   try {
-    const { nombre, precio, precioOferta, precio_oferta, categoria, genero, descripcion, tablaMedidas } = req.body;
-    const { imagenFrente, imagenEspalda } = resolverImagenesProducto(req.body);
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const { nombre, precio, precioOferta, precio_oferta, categoria, genero, descripcion, tablaMedidas } = body;
+    const { imagenFrente, imagenEspalda } = resolverImagenesProducto(body);
     const categoriaNombre = await resolverCategoriaProducto(categoria);
-    const { stock, stockTalles, talles, categoriaTipo } = resolverStockYTallesDesdeBody(req.body);
+    const { stock, stockTalles, talles, categoriaTipo } = resolverStockYTallesDesdeBody(body);
     const tablaMedidasNormalizada = normalizarTablaMedidas(tablaMedidas, categoriaTipo);
 
     if (!nombre || !categoriaNombre || !imagenFrente || !precio || Number(precio) <= 0) {
-      return res.status(400).json({ error: 'Datos de producto incompletos o inválidos.' });
+      return res.status(400).json({
+        error: 'Datos de producto incompletos o inválidos.',
+        detalle: {
+          nombre: Boolean(nombre),
+          categoria: Boolean(categoriaNombre),
+          imagenFrente: Boolean(imagenFrente),
+          precioValido: Boolean(precio && Number(precio) > 0),
+        },
+      });
     }
 
     const precioNumerico = Number(precio);
@@ -3833,13 +4435,13 @@ app.post('/api/productos', verificarAdminJWT, async (req, res) => {
 
     // Si no hay oferta válida, forzar enOferta=false y precioOferta=null.
     let enOferta = parsearBooleano(
-      req.body.enOferta !== undefined ? req.body.enOferta : req.body.en_oferta
+      body.enOferta !== undefined ? body.enOferta : body.en_oferta
     );
     if (precioOfertaNormalizado === null) {
       enOferta = false;
     } else if (
-      req.body.enOferta === undefined
-      && req.body.en_oferta === undefined
+      body.enOferta === undefined
+      && body.en_oferta === undefined
     ) {
       enOferta = true;
     }
@@ -3848,7 +4450,7 @@ app.post('/api/productos', verificarAdminJWT, async (req, res) => {
       nombre: String(nombre).trim().slice(0, 200),
       precio: precioNumerico,
       precioOferta: precioOfertaNormalizado,
-      destacado: parsearBooleano(req.body.destacado),
+      destacado: parsearBooleano(body.destacado),
       enOferta,
       categoria: categoriaNombre,
       categoriaTipo,
@@ -3864,8 +4466,8 @@ app.post('/api/productos', verificarAdminJWT, async (req, res) => {
 
     res.status(201).json(formatearProducto(nuevoProducto));
   } catch (error) {
-    console.error('Error detallado:', error);
-    res.status(500).json({ error: 'Error interno del servidor.' });
+    console.error('❌ ERROR CRÍTICO AL AGREGAR PRODUCTO:', error);
+    res.status(500).json({ error: error?.message || 'Error interno del servidor.' });
   }
 });
 
@@ -4158,20 +4760,16 @@ app.post('/api/pagar', limitadorCheckout, verificarClienteJWT, async (req, res) 
         name: payerName,
         surname: payerSurname,
       },
+      // back_urls solo redirigen al comprador; la confirmación del pedido es del webhook.
+      // Plantilla unificada. Usamos `resultado=` (no `status=`) para no pisar el status de MP.
       back_urls: {
-        success: `${APP_BASE_URL}/pago-exitoso.html`,
-        failure: `${APP_BASE_URL}/pago-fallido.html`,
-        pending: `${APP_BASE_URL}/pago-pendiente.html`,
+        success: `${APP_BASE_URL}/pago-resultado?resultado=success`,
+        failure: `${APP_BASE_URL}/pago-resultado?resultado=failure`,
+        pending: `${APP_BASE_URL}/pago-resultado?resultado=pending`,
       },
+      auto_return: 'approved',
       external_reference: pedidoId,
     };
-
-    // auto_return en sandbox/ngrok suele provocar bucles de redirección (ERR_TOO_MANY_REDIRECTS).
-    // Solo habilitarlo en producción con dominio propio estable.
-    const puedeUsarAutoReturn = !esUrlLocal(APP_BASE_URL) && !MP_SANDBOX;
-    if (puedeUsarAutoReturn) {
-      preferenceBody.auto_return = 'approved';
-    }
 
     // En local, Mercado Pago no puede alcanzar localhost: exponé el backend con ngrok
     // (ej. ngrok http 3000) y definí WEBHOOK_BASE_URL en .env.
@@ -4259,7 +4857,6 @@ app.get('/api/webhooks/mercadopago', manejarWebhookMercadoPago);
 
 async function manejarWebhookMercadoPago(req, res) {
   try {
-    // [ALTO-03] Sin firma válida / fuera de ventana no se procesa el estado del pedido.
     const resultadoFirma = validarFirmaWebhookMercadoPago(req);
     if (!resultadoFirma.ok) {
       if (resultadoFirma.motivo === 'expirada') {
@@ -4272,16 +4869,11 @@ async function manejarWebhookMercadoPago(req, res) {
 
       logError('WEBHOOK_MP_FIRMA_INVALIDA', new Error('Firma x-signature inválida o ausente'), {
         tieneXSignature: Boolean(req.headers['x-signature']),
+        tieneXRequestId: Boolean(req.headers['x-request-id']),
         tieneSecret: Boolean(MP_WEBHOOK_SECRET),
         motivo: resultadoFirma.motivo,
       });
       return res.sendStatus(401);
-    }
-
-    const paymentId = obtenerPaymentIdDesdeNotificacion(req);
-
-    if (!paymentId) {
-      return res.sendStatus(200);
     }
 
     if (!MP_ACCESS_TOKEN) {
@@ -4289,137 +4881,47 @@ async function manejarWebhookMercadoPago(req, res) {
       return res.sendStatus(200);
     }
 
-    let paymentData;
+    const notificacion = parsearNotificacionMercadoPago(req);
+    console.log(
+      `[Webhook MP] Notificación recibida — tipo=${notificacion.tipo || 'n/a'}`
+      + ` action=${notificacion.action || 'n/a'}`
+      + ` resourceId=${notificacion.resourceId || 'n/a'}`
+      + ` modoFirma=firma_ok`
+    );
 
-    try {
-      paymentData = await paymentClient.get({ id: paymentId });
-    } catch (mpError) {
-      logError('WEBHOOK_MP_CONSULTA', mpError, { paymentId });
-      return res.sendStatus(200);
-    }
+    /** @type {string[]} */
+    let paymentIds = [];
 
-    const estadoPago = String(paymentData?.status || '').toLowerCase();
-    const preferenceId = paymentData?.preference_id
-      ? String(paymentData.preference_id)
-      : null;
-    const externalReference = paymentData?.external_reference
-      ? String(paymentData.external_reference)
-      : null;
-
-    let pedido = null;
-
-    if (preferenceId) {
-      pedido = await Pedido.findOne({ mercadopagoPreferenceId: preferenceId });
-    }
-
-    if (!pedido && externalReference) {
-      pedido = await Pedido.findOne({ id: externalReference });
-    }
-
-    if (!pedido) {
-      console.warn(`Webhook MP: pedido no encontrado (payment ${paymentId}).`);
-      return res.sendStatus(200);
-    }
-
-    if (pedido.estado === 'listo_empaquetar' || pedido.estado === 'cancelado' || pedido.estado === 'despachado' || pedido.estado === 'entregado') {
-      return res.sendStatus(200);
-    }
-
-    if (estadoPago === 'approved') {
-      const montoPagado = Number(paymentData.transaction_amount);
-      const montoPedido = Number(pedido.total);
-
-      if (!Number.isFinite(montoPagado) || Math.abs(montoPagado - montoPedido) > 0.01) {
-        logError('WEBHOOK_MP_FRAUDE_MONTO', new Error('Monto de pago no coincide con el pedido'), {
-          pedidoId: pedido.id,
-          paymentId,
-          montoPagado,
-          montoPedido,
-          emailUsuario: pedido.emailUsuario,
-        });
-        return res.sendStatus(200);
-      }
-
-      // Claim atómico: solo el primer webhook concurrente confirma la venta
-      // (evita incrementar ventasContador dos veces ante notificaciones duplicadas).
-      const pedidoAprobado = await Pedido.findOneAndUpdate(
-        {
-          _id: pedido._id,
-          estado: { $nin: ['cancelado', 'listo_empaquetar', 'despachado', 'entregado'] },
-        },
-        {
-          $set: {
-            estado: 'listo_empaquetar',
-            mercadopagoPaymentId: paymentId,
-          },
-        },
-        { new: true }
-      );
-
-      if (!pedidoAprobado) {
-        return res.sendStatus(200);
-      }
-
+    if (notificacion.esPayment && notificacion.resourceId) {
+      paymentIds = [notificacion.resourceId];
+    } else if (notificacion.esMerchantOrder && notificacion.resourceId) {
       try {
-        await incrementarVentasContadorDesdePedido(pedidoAprobado);
-      } catch (ventasError) {
-        logError('WEBHOOK_MP_VENTAS_CONTADOR', ventasError, {
-          pedidoId: pedidoAprobado.id,
-          paymentId,
+        paymentIds = await obtenerPaymentIdsDesdeMerchantOrder(notificacion.resourceId);
+        console.log(
+          `[Webhook MP] merchant_order ${notificacion.resourceId}`
+          + ` → payments=[${paymentIds.join(', ') || 'ninguno'}]`
+        );
+      } catch (moError) {
+        logError('WEBHOOK_MP_MERCHANT_ORDER', moError, {
+          merchantOrderId: notificacion.resourceId,
         });
+        return res.sendStatus(200);
       }
-
-      // Compra confirmada: si algún modelo quedó sin stock, desactivarlo automáticamente.
-      try {
-        await desactivarProductosSinStockDesdePedido(pedidoAprobado);
-      } catch (stockError) {
-        logError('WEBHOOK_MP_DESACTIVAR_SIN_STOCK', stockError, {
-          pedidoId: pedidoAprobado.id,
-          paymentId,
-        });
-      }
-
-      setImmediate(async () => {
-        try {
-          const usuarioPedido = await Usuario.findOne({
-            email: normalizarEmail(pedidoAprobado.emailUsuario),
-          });
-          await notificarConfirmacionCompraSegura(pedidoAprobado, usuarioPedido);
-        } catch (mailError) {
-          logError('EMAIL_CONFIRMACION_COMPRA_MP', mailError, {
-            pedidoId: pedidoAprobado.id,
-            emailUsuario: pedidoAprobado.emailUsuario,
-          });
-        }
-      });
-
+    } else {
+      console.log('[Webhook MP] Notificación sin payment/merchant_order procesable. Se responde 200.');
       return res.sendStatus(200);
     }
 
-    if (['rejected', 'cancelled', 'refunded', 'charged_back'].includes(estadoPago)) {
-      // Claim atómico: solo el primer webhook concurrente pasa de un estado no terminal
-      // a 'cancelado'. Evita restaurar stock dos veces ante notificaciones duplicadas.
-      const pedidoCancelado = await Pedido.findOneAndUpdate(
-        {
-          _id: pedido._id,
-          estado: { $nin: ['cancelado', 'listo_empaquetar', 'despachado', 'entregado'] },
-        },
-        {
-          $set: {
-            estado: 'cancelado',
-            mercadopagoPaymentId: paymentId,
-          },
-        },
-        { new: true }
-      );
-
-      if (!pedidoCancelado) {
-        // Ya estaba en estado terminal; no volver a sumar stock.
-        return res.sendStatus(200);
+    for (const paymentId of paymentIds) {
+      let paymentData;
+      try {
+        paymentData = await paymentClient.get({ id: paymentId });
+      } catch (mpError) {
+        logError('WEBHOOK_MP_CONSULTA', mpError, { paymentId });
+        continue;
       }
 
-      await restaurarStockDesdePedido(pedidoCancelado);
-      return res.sendStatus(200);
+      await aplicarEstadoPagoMercadoPago(paymentId, paymentData);
     }
 
     return res.sendStatus(200);
@@ -4868,6 +5370,172 @@ app.post('/api/cupones/validar', limitadorAuth, async (req, res) => {
   } catch (error) {
     logError('VALIDAR_CUPON', error, { ruta: req.path, metodo: req.method });
     res.status(500).json({ error: 'Error interno del servidor.' });
+  }
+});
+
+/**
+ * Confirmación de pedido vía payment_id verificado en Mercado Pago.
+ * [M6] La página de retorno (pago-retorno.js) YA NO usa este endpoint:
+ * solo hace polling GET a /api/pedidos/mios; el webhook confirma el estado.
+ * PUT /api/pedidos/:id/estado  body: { estado, payment_id, status? }
+ */
+app.put('/api/pedidos/:id/estado', limitadorCheckout, verificarClienteJWT, async (req, res) => {
+  try {
+    const pedidoId = String(req.params.id || '').trim();
+    const paymentId = String(
+      req.body?.payment_id || req.body?.paymentId || req.body?.collection_id || ''
+    ).trim();
+    const statusUrl = String(req.body?.status || req.body?.collection_status || '')
+      .trim()
+      .toLowerCase();
+    const estadoSolicitadoRaw = String(req.body?.estado || 'listo_empaquetar').trim();
+    const estadoSolicitado = normalizarEstadoPedido(estadoSolicitadoRaw);
+    const esAdmin = req.usuario?.rol === 'admin';
+
+    // Estados que implican "pago aprobado" (legacy + canónicos).
+    const estadosAprobacionSolicitados = new Set([
+      'listo_empaquetar',
+      'approved',
+      'pagado',
+      'Aprobado',
+      'confirmado',
+      'PREPARACIÓN',
+      'PREPARACION',
+      'preparacion',
+    ]);
+    const solicitaAprobacion = estadosAprobacionSolicitados.has(estadoSolicitadoRaw)
+      || estadoSolicitado === 'listo_empaquetar';
+
+    if (!pedidoId) {
+      return res.status(400).json({ error: 'ID de pedido requerido.' });
+    }
+
+    if (estadoSolicitado !== 'listo_empaquetar') {
+      return res.status(400).json({
+        error: 'Solo se permite confirmar el pedido a PREPARACIÓN (listo_empaquetar) desde este endpoint.',
+      });
+    }
+
+    if (statusUrl && statusUrl !== 'approved') {
+      return res.status(400).json({
+        error: `El pago no está aprobado (status=${statusUrl}).`,
+        status: statusUrl,
+      });
+    }
+
+    const pedido = await Pedido.findOne({ id: pedidoId });
+    if (!pedido) {
+      return res.status(404).json({ error: 'Pedido no encontrado.' });
+    }
+
+    const emailSesion = normalizarEmail(req.usuario?.email);
+    const emailPedido = normalizarEmail(pedido.emailUsuario);
+    if (!esAdmin && emailSesion !== emailPedido) {
+      return res.status(403).json({ error: 'No podés actualizar este pedido.' });
+    }
+
+    const estadoActual = normalizarEstadoPedido(pedido.estado);
+    if (estadoActual === 'listo_empaquetar') {
+      return res.json({
+        ok: true,
+        yaProcesado: true,
+        pedidoId: pedido.id,
+        estado: estadoActual,
+        mensaje: 'El pedido ya estaba en PREPARACIÓN.',
+      });
+    }
+
+    if (estadoActual !== 'pendiente_pago') {
+      return res.status(409).json({
+        error: `No se puede confirmar el pedido desde el estado actual (${estadoActual}).`,
+        estado: estadoActual,
+      });
+    }
+
+    // C1: aprobar sin paymentId verificado en MP está prohibido para no-admin.
+    // (Los admin usan POST /api/pedidos/cambiar-estado para fulfillment manual.)
+    if (solicitaAprobacion && !esAdmin && !paymentId) {
+      logError(
+        'PEDIDO_ESTADO_SIN_PAYMENT_ID',
+        new Error('Intento de aprobar pedido sin paymentId (C1)'),
+        { pedidoId, emailUsuario: emailSesion }
+      );
+      return res.status(403).json({
+        error: 'Se requiere payment_id verificado en Mercado Pago para marcar el pedido como aprobado.',
+      });
+    }
+
+    if (!paymentId) {
+      return res.status(400).json({
+        error: 'Falta payment_id para confirmar el pedido. No se acepta status=approved sin verificación en Mercado Pago.',
+      });
+    }
+
+    if (!MP_ACCESS_TOKEN) {
+      return res.status(503).json({
+        error: 'Mercado Pago no está configurado. No se puede verificar el pago.',
+      });
+    }
+
+    // C1: verificación obligatoria contra la API de Mercado Pago.
+    let paymentData;
+    try {
+      paymentData = await paymentClient.get({ id: paymentId });
+    } catch (mpError) {
+      logError('CONFIRMAR_RETORNO_MP_CONSULTA', mpError, { pedidoId, paymentId });
+      return res.status(502).json({
+        error: 'No se pudo verificar el pago en Mercado Pago. Intentá de nuevo en unos segundos.',
+      });
+    }
+
+    // C2 + monto: validar external_reference y transaction_amount sin mutar paymentData.
+    const validacion = validarPagoMercadoPagoContraPedido(
+      paymentData,
+      pedidoId,
+      pedido.total
+    );
+    if (!validacion.ok) {
+      const statusHttp = validacion.codigo === 'monto_invalido' ? 409 : 400;
+      return res.status(statusHttp).json({
+        error: validacion.mensaje,
+        codigo: validacion.codigo,
+      });
+    }
+
+    const resultado = await aplicarEstadoPagoMercadoPago(paymentId, paymentData);
+
+    if (resultado === 'aprobado' || resultado === 'ya_procesado') {
+      const actualizado = await Pedido.findOne({ id: pedidoId }).lean();
+      return res.json({
+        ok: true,
+        pedidoId,
+        estado: actualizado?.estado || 'listo_empaquetar',
+        paymentId,
+        resultado,
+        mensaje: 'Pedido confirmado en PREPARACIÓN.',
+      });
+    }
+
+    if (resultado === 'monto_invalido' || resultado === 'ref_invalida') {
+      return res.status(409).json({
+        error: resultado === 'monto_invalido'
+          ? 'El monto del pago no cubre el total del pedido.'
+          : 'La referencia del pago no coincide con el pedido.',
+        resultado,
+      });
+    }
+
+    return res.status(409).json({
+      error: 'No se pudo confirmar el pedido con el pago informado.',
+      resultado,
+      statusPago: paymentData?.status || null,
+    });
+  } catch (error) {
+    logError('PEDIDO_ESTADO_RETORNO_MP', error, {
+      pedidoId: req.params?.id,
+      emailUsuario: normalizarEmail(req.usuario?.email),
+    });
+    return res.status(500).json({ error: 'Error interno del servidor.' });
   }
 });
 
@@ -5884,6 +6552,19 @@ app.put('/api/auth/password', limitadorPassword, verificarClienteJWT, async (req
 
 async function iniciarServidor() {
   try {
+    // Fail-fast certificación A+: en producción es obligatorio firmar webhooks MP.
+    if (process.env.NODE_ENV === 'production' && !process.env.MP_WEBHOOK_SECRET) {
+      console.error('');
+      console.error('╔════════════════════════════════════════════════════════════╗');
+      console.error('║  FATAL: MP_WEBHOOK_SECRET no está definido                 ║');
+      console.error('║  En producción los webhooks de Mercado Pago no pueden      ║');
+      console.error('║  validarse sin esta clave. Abortando arranque.             ║');
+      console.error('╚════════════════════════════════════════════════════════════╝');
+      console.error('  Definí MP_WEBHOOK_SECRET en server/.env (panel MP → Webhooks).');
+      console.error('');
+      process.exit(1);
+    }
+
     await asegurarConexionDB();
     console.log('  ✓ MongoDB conectado');
 
@@ -5901,7 +6582,7 @@ async function iniciarServidor() {
         console.log(`  ✓ Túnel ngrok     →  ${urlPublica}`);
       } catch (ngrokError) {
         console.warn(`  ⚠ ngrok no disponible: ${ngrokError.message}`);
-        console.warn('    Mercado Pago usará localhost (sin auto_return ni webhooks).');
+        console.warn('    Mercado Pago usará localhost (back_urls + auto_return; sin webhooks).');
       }
     }
 

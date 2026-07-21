@@ -58,9 +58,12 @@ Tienda online de camisetas de fútbol con catálogo, carrito de compras, seguimi
    SMTP_USER=xxxxxxxx@smtp-brevo.com
    SMTP_PASS=tu_clave_smtp_de_brevo
    SMTP_FROM=tu_email_verificado@tudominio.com
-   NOMBRE_TIENDA=Jersey Store
+   STORE_NAME=Jersey Store
+   WHATSAPP_NUMBER=54911XXXXXXXX
+   AFIP_URL=
    ```
 
+   > Datos de tienda (nombre, WhatsApp, AFIP) se leen solo desde `.env`; no hay panel de configuración editable.
    > **Brevo:** `SMTP_USER` es solo el login SMTP (`…@smtp-brevo.com`). El remitente visible va en `SMTP_FROM` y debe estar verificado en Brevo → Senders.
    > **Gmail:** `SMTP_HOST=smtp.gmail.com`, `SMTP_USER`/`SMTP_FROM` = tu Gmail, y una [Contraseña de aplicación](https://myaccount.google.com/apppasswords).
    > **Puerto 465:** SSL (`secure: true`). **587 / 2525:** STARTTLS (`requireTLS: true`).

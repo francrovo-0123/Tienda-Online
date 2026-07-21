@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Resultado del pago — Jersey Store</title>
+  <link rel="icon" href="/favicon.ico" sizes="32x32">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/favicon.png">
+  <link rel="stylesheet" href="css/global.css?v=15.2">
+  <style>
+    body { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: #f4f4f5; }
+    .pago-card { max-width: 480px; width: 100%; background: #fff; border-radius: 16px; padding: 32px; text-align: center; box-shadow: 0 8px 32px rgba(0,0,0,.08); }
+    .pago-card h1 { margin: 0 0 12px; font-size: 1.5rem; color: #111827; }
+    .pago-card p { margin: 0 0 24px; color: #4b5563; line-height: 1.6; }
+    .pago-card a { display: inline-block; padding: 12px 20px; border-radius: 8px; background: #111827; color: #fff; text-decoration: none; font-weight: 600; }
+    .pago-card[data-estado="failure"] h1 { color: #991b1b; }
+    .pago-card[data-estado="pending"] h1 { color: #92400e; }
+    .pago-card[data-estado="success"] h1 { color: #065f46; }
+  </style>
+</head>
+<body>
+  <!--
+    Plantilla unificada de retorno Mercado Pago (B4).
+    Rutas canónicas:
+      /pago-resultado?resultado=success|failure|pending
+      /pago-resultado.html?resultado=…
+    MP también envía status/collection_status (approved, rejected, pending, …);
+    pago-retorno.js prioriza `resultado=` y normaliza el status de MP.
+    Alias legacy (/checkout-success, /pago-exitoso.html, …) redirigen acá.
+  -->
+  <div class="pago-card" id="pago-card" data-estado="loading">
+    <h1 id="pago-retorno-status">Procesando tu pago…</h1>
+    <p id="pago-retorno-detail">Esperá un momento mientras verificamos la confirmación del pago.</p>
+    <a id="pago-retorno-cta" href="cuenta.html#pedidos">Ver mis pedidos</a>
+  </div>
+  <script src="js/pago-retorno.js?v=15.2"></script>
+</body>
+</html>

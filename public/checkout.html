@@ -8,11 +8,11 @@
   <link rel="icon" href="/favicon.ico" sizes="32x32">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/favicon.png">
-  <link rel="stylesheet" href="css/global.css?v=5.0">
-  <link rel="stylesheet" href="css/header.css?v=7.0">
-  <link rel="stylesheet" href="css/cart.css?v=3.2">
-  <link rel="stylesheet" href="css/checkout.css?v=1.2">
-  <link rel="stylesheet" href="css/footer.css?v=4.0">
+  <link rel="stylesheet" href="css/global.css?v=15.2">
+  <link rel="stylesheet" href="css/header.css?v=15.2">
+  <link rel="stylesheet" href="css/cart.css?v=15.2">
+  <link rel="stylesheet" href="css/checkout.css?v=15.2">
+  <link rel="stylesheet" href="css/footer.css?v=15.2">
 </head>
 <body data-page="checkout">
 
@@ -147,7 +147,7 @@
           </fieldset>
 
           <!-- Paso 2: Método de pago -->
-          <fieldset class="checkout-step is-collapsed" id="paso-2" data-paso="2" aria-labelledby="paso-2-title" disabled>
+          <fieldset class="checkout-step is-collapsed" id="paso-2" data-paso="2" aria-labelledby="paso-2-title" aria-disabled="true" inert>
             <legend class="checkout-step__legend" id="paso-2-title">
               <span class="checkout-step__index">2</span>
               Método de pago
@@ -161,9 +161,12 @@
                   <input type="radio" name="metodo-pago" value="transferencia" id="pago-transferencia" checked>
                   <span class="checkout-pago-card__content">
                     <span class="checkout-pago-card__title">Transferencia bancaria</span>
-                    <span class="checkout-pago-card__badge">−10%</span>
+                    <span class="checkout-pago-card__badge">-10%</span>
                     <span class="checkout-pago-card__desc">Coordinás el pago por WhatsApp y ahorrás en el total.</span>
-                    <span class="checkout-pago-card__price" id="preview-total-transferencia">$ 0</span>
+                    <span class="checkout-pago-card__price">
+                      <span class="checkout-pago-card__price-base" id="preview-total-transferencia-base" hidden></span>
+                      <span class="checkout-pago-card__price-final" id="preview-total-transferencia">$ 0</span>
+                    </span>
                   </span>
                 </label>
 
@@ -189,7 +192,7 @@
           </fieldset>
 
           <!-- Paso 3: Confirmación -->
-          <fieldset class="checkout-step is-collapsed" id="paso-3" data-paso="3" aria-labelledby="paso-3-title" disabled>
+          <fieldset class="checkout-step is-collapsed" id="paso-3" data-paso="3" aria-labelledby="paso-3-title" aria-disabled="true" inert>
             <legend class="checkout-step__legend" id="paso-3-title">
               <span class="checkout-step__index">3</span>
               Confirmación
@@ -224,10 +227,10 @@
                 <p class="checkout-cupon__msg" id="checkout-cupon-msg" hidden></p>
               </div>
 
-              <!-- Compatibilidad con actualizarTotalCheckoutUI / transferencia -->
+              <!-- Total final según método elegido (fuente: actualizarTotalCheckoutUI) -->
               <div id="contenedor-ahorro-transferencia" class="tarjeta-metodo-pago destacado-ahorro" hidden>
                 <div class="info-pago">
-                  <span class="metodo-etiqueta">TRANSFERENCIA BANCARIA (−10%)</span>
+                  <span class="metodo-etiqueta" id="etiqueta-metodo-pago-final">TRANSFERENCIA BANCARIA (-10%)</span>
                   <h3 class="monto-destacado" id="total-con-transferencia">$0,00</h3>
                   <div class="pildora-ahorro" id="pildora-ahorro-total">
                     <span>Ahorrás <strong id="monto-ahorrado-total">$0,00</strong> en total</span>
@@ -279,6 +282,10 @@
               <span id="checkout-summary-descuento-label">Descuento por cupón</span>
               <span id="checkout-summary-descuento">−$ 0</span>
             </div>
+            <div class="checkout-form__summary-row checkout-form__summary-row--discount" id="checkout-summary-descuento-transferencia-row" hidden>
+              <span id="checkout-summary-descuento-transferencia-label">Descuento por transferencia (-10%)</span>
+              <span id="checkout-summary-descuento-transferencia">−$ 0</span>
+            </div>
             <div class="checkout-form__summary-row" id="checkout-summary-envio-row">
               <span>Envío</span>
               <span id="checkout-summary-envio">A coordinar</span>
@@ -293,8 +300,8 @@
     </div>
   </main>
 
-  <script src="js/api.js"></script>
-  <script src="js/app.js?v=13.3"></script>
-  <script src="js/checkout.js?v=1.4"></script>
+  <script src="/store-env.js"></script>
+  <script src="js/app.js?v=15.2"></script>
+  <script src="js/checkout.js?v=15.2"></script>
 </body>
 </html>

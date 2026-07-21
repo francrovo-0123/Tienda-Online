@@ -8,11 +8,38 @@
   <link rel="icon" href="/favicon.ico" sizes="32x32">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/favicon.png">
-  <link rel="stylesheet" href="css/global.css?v=5.0">
-  <link rel="stylesheet" href="css/header.css?v=7.0">
-  <link rel="stylesheet" href="css/main.css?v=5.2">
-  <link rel="stylesheet" href="css/footer.css?v=4.1">
-  <link rel="stylesheet" href="css/cart.css?v=3.2">
+  <link rel="stylesheet" href="css/global.css?v=15.2">
+  <link rel="stylesheet" href="css/header.css?v=15.2">
+  <link rel="stylesheet" href="css/main.css?v=15.2">
+  <link rel="stylesheet" href="css/footer.css?v=15.2">
+  <link rel="stylesheet" href="css/cart.css?v=15.2">
+  <script>
+    (function () {
+      var hash = (location.hash || '').replace(/^#/, '');
+      var esAdminHash = hash === 'admin' || hash.indexOf('admin/') === 0;
+      var panelPersistido = '';
+      try { panelPersistido = sessionStorage.getItem('vista_admin_activa') || ''; } catch (e) { /* ignore */ }
+      if (!esAdminHash && !panelPersistido) return;
+      try {
+        var raw = localStorage.getItem('sesion_usuario') || sessionStorage.getItem('sesion_usuario');
+        var sesion = raw ? JSON.parse(raw) : null;
+        if (!sesion || sesion.rol !== 'admin') return;
+        document.documentElement.classList.add('view-admin-boot');
+        var panel = 'dashboard';
+        if (esAdminHash) {
+          panel = hash === 'admin' ? 'dashboard' : hash.slice(6).split(/[/?#]/)[0];
+        } else if (panelPersistido) {
+          panel = panelPersistido;
+        }
+        var validos = ['dashboard', 'pedidos', 'productos', 'portada', 'cupones'];
+        if (validos.indexOf(panel) === -1) panel = 'dashboard';
+        document.documentElement.setAttribute('data-admin-panel-boot', panel);
+        if (!esAdminHash) {
+          history.replaceState(null, '', panel === 'dashboard' ? '#admin' : '#admin/' + panel);
+        }
+      } catch (e) { /* ignore */ }
+    })();
+  </script>
 </head>
 <body>
 
@@ -178,20 +205,6 @@
           <span aria-hidden="true">★</span>
         </div>
       </div>
-
-      <nav class="club-nav" id="club-nav" aria-label="Filtrar por sección">
-        <div class="club-nav__carousel">
-          <button type="button" class="club-nav__arrow club-nav__arrow--prev" id="club-nav-prev" aria-label="Secciones anteriores">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
-          </button>
-          <div class="club-nav__viewport">
-            <ul class="club-nav__list" id="club-nav-list" role="list" aria-label="Secciones de la tienda"></ul>
-          </div>
-          <button type="button" class="club-nav__arrow club-nav__arrow--next" id="club-nav-next" aria-label="Secciones siguientes">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
-          </button>
-        </div>
-      </nav>
 
       <section class="stadium-section" id="nuevos-ingresos">
         <div class="stadium-section__inner carousel-container-wide">
@@ -483,7 +496,7 @@
           <h2 class="product-detail-modal__title" id="product-detail-title"></h2>
           <p class="product-detail-modal__price" id="product-detail-price"></p>
           <p class="product-detail-modal__description" id="product-detail-description"></p>
-          <div class="product-detail-modal__talles grilla-talles" id="product-detail-talles" hidden></div>
+          <div class="product-detail-modal__talles grilla-talles" id="product-detail-talles" hidden translate="no" lang="es"></div>
           <div class="product-detail-modal__medidas" id="product-detail-medidas" hidden aria-live="polite"></div>
           <div class="product-detail-modal__actions" id="product-detail-actions">
             <button
@@ -539,7 +552,7 @@
         Medidas tomadas sobre la prenda en plano. Compará la sisa y el largo con una prenda tuya que te quede bien.
       </p>
       <div class="modal-talles__panel" id="modal-guia-talles-panel" role="tabpanel">
-        <table class="tabla-medidas" id="modal-guia-talles-tabla">
+        <table class="tabla-medidas" id="modal-guia-talles-tabla" translate="no" lang="es">
           <thead>
             <tr id="modal-guia-talles-head">
               <th scope="col">Talle</th>
@@ -577,7 +590,7 @@
           </button>
         </div>
 
-        <form class="checkout-form" id="checkout-form" onsubmit="procesarPedido(event)">
+        <form class="checkout-form" id="checkout-form" novalidate>
           <div class="checkout-account" id="checkout-account">
             <span class="checkout-account__label">Comprando con</span>
             <strong id="checkout-cuenta-email" class="checkout-account__email"></strong>
@@ -730,42 +743,35 @@
         </div>
 
         <nav class="admin-sidebar__nav" aria-label="Navegación del panel">
-          <a href="#" class="admin-sidebar__link admin-sidebar__link--active" data-admin-panel="dashboard">
+          <a href="#admin" class="admin-sidebar__link admin-sidebar__link--active" data-admin-panel="dashboard">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z"/>
             </svg>
             <span>Dashboard</span>
           </a>
-          <a href="#" class="admin-sidebar__link" data-admin-panel="pedidos">
+          <a href="#admin/pedidos" class="admin-sidebar__link" data-admin-panel="pedidos">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15a2.25 2.25 0 012.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z"/>
             </svg>
             <span>Pedidos</span>
           </a>
-          <a href="#" class="admin-sidebar__link" data-admin-panel="productos">
+          <a href="#admin/productos" class="admin-sidebar__link" data-admin-panel="productos">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"/>
             </svg>
             <span>Productos</span>
           </a>
-          <a href="#" class="admin-sidebar__link" data-admin-panel="portada">
+          <a href="#admin/portada" class="admin-sidebar__link" data-admin-panel="portada">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z"/>
             </svg>
             <span>Gestión de Portada</span>
           </a>
-          <a href="#" class="admin-sidebar__link" data-admin-panel="cupones">
+          <a href="#admin/cupones" class="admin-sidebar__link" data-admin-panel="cupones">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 6v.75m0 3v.75m0 3v.75m0 3V18m-9-5.25h5.25M7.5 15h3M3.375 5.25c-.621 0-1.125.504-1.125 1.125v3.026a2.999 2.999 0 010 5.198v3.026c0 .621.504 1.125 1.125 1.125h17.25c.621 0 1.125-.504 1.125-1.125v-3.026a2.999 2.999 0 010-5.198V6.375c0-.621-.504-1.125-1.125-1.125H3.375z"/>
             </svg>
             <span>Cupones</span>
-          </a>
-          <a href="#" class="admin-sidebar__link" data-admin-panel="configuracion">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z"/>
-              <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-            </svg>
-            <span>Configuración</span>
           </a>
         </nav>
 
@@ -858,22 +864,53 @@
         <section class="admin-panel hidden" id="admin-panel-pedidos" data-admin-panel="pedidos">
         <section class="admin-orders" id="pedidos">
           <div class="admin-orders__header">
-            <h2 class="admin-orders__title">Pedidos recientes</h2>
+            <h2 class="admin-orders__title">Gestión de pedidos</h2>
             <p class="admin-orders__count" id="orders-count"></p>
           </div>
 
+          <div
+            class="admin-orders__tabs"
+            id="admin-orders-tabs"
+            role="tablist"
+            aria-label="Filtrar pedidos por estado"
+          >
+            <button type="button" class="admin-orders__tab is-active" role="tab" aria-selected="true" data-orders-filter="todos">
+              Todos <span class="admin-orders__tab-count" data-filter-count="todos">0</span>
+            </button>
+            <button type="button" class="admin-orders__tab" role="tab" aria-selected="false" data-orders-filter="pendiente_pago">
+              Pendientes <span aria-hidden="true">⏳</span>
+              <span class="admin-orders__tab-count" data-filter-count="pendiente_pago">0</span>
+            </button>
+            <button type="button" class="admin-orders__tab" role="tab" aria-selected="false" data-orders-filter="listo_empaquetar">
+              En Preparación <span aria-hidden="true">📦</span>
+              <span class="admin-orders__tab-count" data-filter-count="listo_empaquetar">0</span>
+            </button>
+            <button type="button" class="admin-orders__tab" role="tab" aria-selected="false" data-orders-filter="despachado">
+              Enviados <span aria-hidden="true">🚚</span>
+              <span class="admin-orders__tab-count" data-filter-count="despachado">0</span>
+            </button>
+            <button type="button" class="admin-orders__tab" role="tab" aria-selected="false" data-orders-filter="entregado">
+              Finalizados <span aria-hidden="true">✅</span>
+              <span class="admin-orders__tab-count" data-filter-count="entregado">0</span>
+            </button>
+            <button type="button" class="admin-orders__tab" role="tab" aria-selected="false" data-orders-filter="cancelado">
+              Cancelados <span aria-hidden="true">❌</span>
+              <span class="admin-orders__tab-count" data-filter-count="cancelado">0</span>
+            </button>
+          </div>
+
           <div class="admin-table-wrapper">
-            <table class="admin-table" id="admin-orders-table">
+            <table class="admin-table admin-table--orders" id="admin-orders-table">
               <thead>
                 <tr>
-                  <th>ID</th>
-                  <th>Fecha</th>
-                  <th>Cliente</th>
-                  <th>Teléfono</th>
-                  <th>Productos</th>
-                  <th>Total</th>
-                  <th>Estado</th>
-                  <th>Acciones</th>
+                  <th class="admin-table__th-expand" scope="col"><span class="visually-hidden">Detalle</span></th>
+                  <th scope="col">ID</th>
+                  <th scope="col">Cliente</th>
+                  <th scope="col">Fecha</th>
+                  <th scope="col">Método de Pago</th>
+                  <th scope="col">Total</th>
+                  <th scope="col">Estado</th>
+                  <th scope="col">Acciones</th>
                 </tr>
               </thead>
               <tbody id="admin-orders-body"></tbody>
@@ -883,8 +920,8 @@
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"/>
               </svg>
-              <p class="admin-empty__title">No hay pedidos aún</p>
-              <p class="admin-empty__text">Los pedidos realizados desde la tienda aparecerán aquí automáticamente.</p>
+              <p class="admin-empty__title" id="admin-empty-title">No hay pedidos aún</p>
+              <p class="admin-empty__text" id="admin-empty-text">Los pedidos realizados desde la tienda aparecerán aquí automáticamente.</p>
             </div>
           </div>
         </section>
@@ -915,16 +952,34 @@
           <div class="admin-precios-masivo" id="admin-precios-masivo">
             <div class="admin-precios-masivo__header">
               <h3 class="admin-precios-masivo__title">Actualización masiva de precios</h3>
-              <p class="admin-precios-masivo__hint">Aplicá un aumento o descuento porcentual al catálogo (módulo anti-inflación).</p>
+              <p class="admin-precios-masivo__hint">Aplicá un aumento o descuento porcentual al catálogo (módulo anti-inflación). Máximo ±50%.</p>
             </div>
             <div class="admin-precios-masivo__controls">
-              <div class="admin-precios-masivo__field">
-                <label for="precios-masivo-tipo" class="admin-precios-masivo__label">Operación</label>
-                <select id="precios-masivo-tipo" class="admin-precios-masivo__select" aria-label="Tipo de actualización">
-                  <option value="descuento">Descuento</option>
-                  <option value="aumento">Aumento</option>
-                  <option value="quitar-ofertas">Quitar descuentos de oferta</option>
-                </select>
+              <div class="admin-precios-masivo__field admin-precios-masivo__field--ops">
+                <span class="admin-precios-masivo__label" id="precios-masivo-ops-label">Operación</span>
+                <div class="admin-precios-masivo__ops" role="group" aria-labelledby="precios-masivo-ops-label">
+                  <button
+                    type="button"
+                    class="admin-precios-masivo__op admin-precios-masivo__op--aumento is-active"
+                    id="precios-masivo-op-aumento"
+                    data-op="aumento"
+                    aria-pressed="true"
+                  >
+                    <span class="admin-precios-masivo__op-icon" aria-hidden="true">+</span>
+                    Aumento
+                  </button>
+                  <button
+                    type="button"
+                    class="admin-precios-masivo__op admin-precios-masivo__op--descuento"
+                    id="precios-masivo-op-descuento"
+                    data-op="descuento"
+                    aria-pressed="false"
+                  >
+                    <span class="admin-precios-masivo__op-icon" aria-hidden="true">−</span>
+                    Descuento
+                  </button>
+                </div>
+                <input type="hidden" id="precios-masivo-tipo" value="aumento">
               </div>
               <div class="admin-precios-masivo__field" id="precios-masivo-porcentaje-wrap">
                 <label for="precios-masivo-porcentaje" class="admin-precios-masivo__label">Porcentaje (%)</label>
@@ -934,8 +989,11 @@
                   class="admin-precios-masivo__input"
                   step="0.1"
                   min="0"
+                  max="50"
                   placeholder="Ej: 15"
+                  inputmode="decimal"
                   aria-label="Porcentaje de ajuste de precios"
+                  aria-describedby="precios-masivo-preview"
                 >
               </div>
               <div class="admin-precios-masivo__field">
@@ -944,8 +1002,17 @@
                   <option value="">Todas las categorías</option>
                 </select>
               </div>
-              <button type="button" class="admin-precios-masivo__btn" id="btn-aplicar-precios-masivo">
-                Aplicar actualización
+              <button type="button" class="admin-precios-masivo__btn" id="btn-aplicar-precios-masivo" disabled data-blocked="true">
+                <span class="admin-precios-masivo__btn-label">Aplicar actualización</span>
+                <span class="admin-precios-masivo__btn-spinner" aria-hidden="true"></span>
+              </button>
+            </div>
+            <p class="admin-precios-masivo__preview" id="precios-masivo-preview" aria-live="polite">
+              Ingresa un porcentaje para ver la proyección del cambio.
+            </p>
+            <div class="admin-precios-masivo__footer">
+              <button type="button" class="admin-precios-masivo__link" id="btn-quitar-ofertas-masivo">
+                Quitar descuentos de oferta…
               </button>
             </div>
           </div>
@@ -965,27 +1032,32 @@
                 <span class="admin-banners__summary-hint">3 slides principales · 1920×600 px recomendado</span>
               </summary>
               <p class="admin-banners__intro">
-                Subí la imagen de cada promo y definí el enlace de redirección
-                (ej: <code>/productos?categoria=retro</code>).
+                Subí la imagen de cada promo del carrusel superior y definí el enlace de redirección
+                (ej: <code>/productos?categoria=buzos</code> o <code>/productos?categoria=remeras</code>).
                 Tamaño óptimo recomendado: <strong>1920×600 px</strong>.
               </p>
               <div class="admin-banners__list" id="admin-banners-grid" aria-label="Gestión de banners del carrusel"></div>
             </details>
 
             <p class="admin-portada__hint">
-              Marcá qué productos aparecen en <strong>Productos Destacados</strong> y en <strong>En Oferta</strong> en la página de inicio.
+              Marcá qué productos aparecen en <strong>Destacados</strong> y en <strong>En Oferta</strong> en la página de inicio.
               Para «En Oferta» el producto debe tener un <strong>precio de oferta</strong> definido en el formulario de edición.
               Los cambios se reflejan al instante en la tienda.
             </p>
             <div class="admin-portada__toolbar">
-              <input
-                type="search"
-                id="portada-buscar"
-                class="admin-portada__search"
-                placeholder="Buscar producto..."
-                autocomplete="off"
-                aria-label="Buscar producto en portada"
-              >
+              <label class="admin-portada__search-wrap" for="portada-buscar">
+                <svg class="admin-portada__search-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"/>
+                </svg>
+                <input
+                  type="search"
+                  id="portada-buscar"
+                  class="admin-portada__search"
+                  placeholder="Buscar producto..."
+                  autocomplete="off"
+                  aria-label="Buscar producto en portada"
+                >
+              </label>
             </div>
             <div class="admin-portada__grid" id="admin-portada-grid" aria-label="Productos de portada"></div>
             <p class="admin-portada__empty hidden" id="admin-portada-empty">No hay productos en el catálogo.</p>
@@ -993,197 +1065,142 @@
         </section>
 
         <section class="admin-panel hidden" id="admin-panel-cupones" data-admin-panel="cupones">
-          <div class="admin-config">
-            <div class="admin-config__header">
-              <h2 class="admin-config__title">Cupones de descuento</h2>
-              <p class="admin-config__subtitle">Creá códigos personalizados. El descuento se aplica en el checkout al validar el cupón.</p>
+          <div class="admin-cupones">
+            <div class="admin-cupones__header">
+              <h2 class="admin-cupones__title">Cupones de descuento</h2>
+              <p class="admin-cupones__subtitle">Creá códigos personalizados. El descuento se aplica en el checkout al validar el cupón.</p>
             </div>
 
-            <form class="admin-config__form" id="form-crear-cupon">
-              <div class="admin-config__field">
-                <label for="cupon-codigo" class="admin-config__label">Código</label>
-                <input
-                  type="text"
-                  id="cupon-codigo"
-                  class="admin-config__input"
-                  required
-                  maxlength="40"
-                  placeholder="Ej: VERANO15"
-                  autocomplete="off"
-                  spellcheck="false"
-                >
-                <p class="admin-config__hint">Se guardará en mayúsculas. Debe ser único.</p>
-              </div>
+            <div class="admin-cupones__layout">
+              <aside class="admin-cupones__form-col" aria-labelledby="admin-cupones-form-title">
+                <h3 class="admin-cupones__col-title" id="admin-cupones-form-title">Crear nuevo cupón</h3>
 
-              <div class="admin-config__field">
-                <label for="cupon-descuento" class="admin-config__label">Descuento (%)</label>
-                <input
-                  type="number"
-                  id="cupon-descuento"
-                  class="admin-config__input"
-                  required
-                  min="1"
-                  max="100"
-                  step="1"
-                  placeholder="Ej: 15"
-                  inputmode="numeric"
-                >
-              </div>
-
-              <div class="admin-config__field">
-                <label for="cupon-tipo-filtro" class="admin-config__label">Aplicar descuento a:</label>
-                <select id="cupon-tipo-filtro" class="admin-config__input admin-config__select" required>
-                  <option value="todos" selected>Toda la tienda</option>
-                  <option value="seccion">Una Sección específica</option>
-                  <option value="producto">Un Producto específico</option>
-                </select>
-              </div>
-
-              <div class="admin-config__field hidden" id="cupon-filtro-seccion-wrap" hidden>
-                <label for="cupon-seccion" class="admin-config__label">Sección</label>
-                <select id="cupon-seccion" class="admin-config__input admin-config__select">
-                  <option value="">Cargando secciones…</option>
-                </select>
-                <p class="admin-config__hint">El cupón solo aplicará a productos de esta sección. «Calzado» incluye todos sus subtipos.</p>
-              </div>
-
-              <div class="admin-config__field hidden" id="cupon-filtro-producto-wrap" hidden>
-                <label for="cupon-producto-buscar" class="admin-config__label">Producto</label>
-                <input
-                  type="search"
-                  id="cupon-producto-buscar"
-                  class="admin-config__input"
-                  placeholder="Buscar por nombre…"
-                  autocomplete="off"
-                  spellcheck="false"
-                >
-                <select id="cupon-producto" class="admin-config__input admin-config__select" aria-label="Producto seleccionado">
-                  <option value="">Cargando productos…</option>
-                </select>
-                <p class="admin-config__hint">Escribí para filtrar y elegí el producto exacto.</p>
-              </div>
-
-              <div class="admin-config__field">
-                <label class="admin-config__switch-row" for="cupon-activo">
-                  <span class="admin-config__label">Activo</span>
-                  <span class="admin-toggle" title="Activar o desactivar el cupón al crearlo">
+                <form class="admin-cupones__form" id="form-crear-cupon">
+                  <div class="admin-cupones__field">
+                    <label for="cupon-codigo" class="admin-cupones__label">Código</label>
                     <input
-                      type="checkbox"
-                      id="cupon-activo"
-                      class="admin-toggle__input"
-                      checked
+                      type="text"
+                      id="cupon-codigo"
+                      class="admin-cupones__input"
+                      required
+                      maxlength="40"
+                      placeholder="Ej: VERANO15"
+                      autocomplete="off"
+                      spellcheck="false"
+                      aria-describedby="cupon-codigo-hint"
                     >
-                    <span class="admin-toggle__track" aria-hidden="true"></span>
-                  </span>
-                </label>
-              </div>
+                    <p class="admin-cupones__hint" id="cupon-codigo-hint">Se normaliza a mayúsculas. Debe ser único.</p>
+                  </div>
 
-              <div class="admin-config__actions">
-                <button type="submit" class="admin-config__submit" id="btn-crear-cupon">
-                  Crear cupón
-                </button>
-              </div>
-            </form>
+                  <div class="admin-cupones__field-row">
+                    <div class="admin-cupones__field">
+                      <label for="cupon-descuento" class="admin-cupones__label">Descuento (%)</label>
+                      <input
+                        type="number"
+                        id="cupon-descuento"
+                        class="admin-cupones__input"
+                        required
+                        min="1"
+                        max="100"
+                        step="1"
+                        placeholder="Ej: 15"
+                        inputmode="numeric"
+                      >
+                    </div>
 
-            <div class="admin-cupones-lista">
-              <h3 class="admin-cupones-lista__title">Cupones existentes</h3>
-              <div class="admin-table-wrapper" id="admin-cupones-table-wrap">
-                <table class="admin-table" id="admin-cupones-table">
-                  <thead>
-                    <tr>
-                      <th>Código</th>
-                      <th>Descuento</th>
-                      <th>Aplica a</th>
-                      <th>Estado</th>
-                      <th>Activo</th>
-                    </tr>
-                  </thead>
-                  <tbody id="admin-cupones-tbody">
-                    <tr>
-                      <td colspan="5">Cargando cupones…</td>
-                    </tr>
-                  </tbody>
-                </table>
+                    <div class="admin-cupones__field admin-cupones__field--switch">
+                      <label class="admin-cupones__switch-row" for="cupon-activo">
+                        <span class="admin-cupones__label">Activo</span>
+                        <span class="admin-toggle" title="Activar o desactivar el cupón al crearlo">
+                          <input
+                            type="checkbox"
+                            id="cupon-activo"
+                            class="admin-toggle__input"
+                            checked
+                          >
+                          <span class="admin-toggle__track" aria-hidden="true"></span>
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div class="admin-cupones__field">
+                    <label for="cupon-tipo-filtro" class="admin-cupones__label">Aplicar descuento a</label>
+                    <select id="cupon-tipo-filtro" class="admin-cupones__input admin-cupones__select" required>
+                      <option value="todos" selected>Toda la tienda</option>
+                      <option value="seccion">Una Sección específica</option>
+                      <option value="producto">Un Producto específico</option>
+                    </select>
+                  </div>
+
+                  <div class="admin-cupones__field hidden" id="cupon-filtro-seccion-wrap" hidden>
+                    <label for="cupon-seccion" class="admin-cupones__label">Sección</label>
+                    <select id="cupon-seccion" class="admin-cupones__input admin-cupones__select">
+                      <option value="">Cargando secciones…</option>
+                    </select>
+                    <p class="admin-cupones__hint">El cupón solo aplicará a productos de esta sección. «Calzado» incluye todos sus subtipos.</p>
+                  </div>
+
+                  <div class="admin-cupones__field hidden" id="cupon-filtro-producto-wrap" hidden>
+                    <label for="cupon-producto-buscar" class="admin-cupones__label">Producto</label>
+                    <input
+                      type="search"
+                      id="cupon-producto-buscar"
+                      class="admin-cupones__input"
+                      placeholder="Buscar por nombre…"
+                      autocomplete="off"
+                      spellcheck="false"
+                    >
+                    <select id="cupon-producto" class="admin-cupones__input admin-cupones__select" aria-label="Producto seleccionado">
+                      <option value="">Cargando productos…</option>
+                    </select>
+                    <p class="admin-cupones__hint">Escribí para filtrar y elegí el producto exacto.</p>
+                  </div>
+
+                  <div
+                    class="admin-cupon-preview"
+                    id="cupon-preview"
+                    aria-live="polite"
+                    aria-label="Vista previa del cupón"
+                  >
+                    <div class="admin-cupon-preview__ticket">
+                      <span class="admin-cupon-preview__label">Vista previa</span>
+                      <span class="admin-cupon-preview__codigo" id="cupon-preview-codigo">TU CÓDIGO</span>
+                      <span class="admin-cupon-preview__descuento" id="cupon-preview-descuento">−0%</span>
+                    </div>
+                  </div>
+
+                  <div class="admin-cupones__actions">
+                    <button type="submit" class="admin-cupones__submit" id="btn-crear-cupon">
+                      Crear cupón
+                    </button>
+                  </div>
+                </form>
+              </aside>
+
+              <div class="admin-cupones__list-col" aria-labelledby="admin-cupones-list-title">
+                <h3 class="admin-cupones__col-title" id="admin-cupones-list-title">Cupones existentes</h3>
+                <div class="admin-cupones__table-wrap" id="admin-cupones-table-wrap">
+                  <table class="admin-cupones__table" id="admin-cupones-table">
+                    <thead>
+                      <tr>
+                        <th>Código</th>
+                        <th>Descuento</th>
+                        <th>Aplica a</th>
+                        <th>Estado</th>
+                        <th>Activo</th>
+                        <th>Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody id="admin-cupones-tbody">
+                      <tr>
+                        <td colspan="6">Cargando cupones…</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
-          </div>
-        </section>
-
-        <section class="admin-panel hidden" id="seccion-configuracion" data-admin-panel="configuracion">
-          <div class="admin-config">
-            <div class="admin-config__header">
-              <h2 class="admin-config__title">Configuración de la tienda</h2>
-              <p class="admin-config__subtitle">Editá los datos públicos de tu marca. Los cambios se aplican al instante en toda la tienda.</p>
-            </div>
-
-            <form class="admin-config__form" id="form-configuracion">
-              <div class="admin-config__field">
-                <label for="config-nombre-tienda" class="admin-config__label">Nombre de la Tienda</label>
-                <input
-                  type="text"
-                  id="config-nombre-tienda"
-                  class="admin-config__input"
-                  required
-                  maxlength="80"
-                  placeholder="Ej: Jersey Store"
-                  autocomplete="organization"
-                >
-              </div>
-
-              <div class="admin-config__field">
-                <label for="config-whatsapp" class="admin-config__label">WhatsApp (sin el +)</label>
-                <input
-                  type="text"
-                  id="config-whatsapp"
-                  class="admin-config__input"
-                  required
-                  inputmode="numeric"
-                  placeholder="Ej: 5491123456789"
-                  autocomplete="tel"
-                >
-                <p class="admin-config__hint">Código de país + número, sin espacios ni símbolos.</p>
-              </div>
-
-              <div class="admin-config__field">
-                <label for="config-cloudinary-cloud-name" class="admin-config__label">Cloudinary Cloud Name</label>
-                <input
-                  type="text"
-                  id="config-cloudinary-cloud-name"
-                  class="admin-config__input"
-                  placeholder="tu_cloud_name"
-                  autocomplete="off"
-                >
-              </div>
-
-              <div class="admin-config__field">
-                <label for="config-cloudinary-upload-preset" class="admin-config__label">Cloudinary Upload Preset</label>
-                <input
-                  type="text"
-                  id="config-cloudinary-upload-preset"
-                  class="admin-config__input"
-                  placeholder="tu_upload_preset"
-                  autocomplete="off"
-                >
-              </div>
-
-              <div class="admin-config__field">
-                <label for="config-afip-link" class="admin-config__label">Enlace de AFIP Data Fiscal (URL)</label>
-                <input
-                  type="url"
-                  id="config-afip-link"
-                  class="admin-config__input"
-                  placeholder="https://servicios1.afip.gov.ar/f960/DATA/..."
-                  autocomplete="off"
-                >
-                <p class="admin-config__hint">Opcional. Si lo dejás vacío, el logo de Data Fiscal no se mostrará en el footer.</p>
-              </div>
-
-              <div class="admin-config__actions">
-                <button type="submit" class="admin-config__submit" id="btn-guardar-configuracion">
-                  Guardar Cambios
-                </button>
-              </div>
-            </form>
           </div>
         </section>
       </div>
@@ -1201,7 +1218,7 @@
           </button>
         </div>
 
-        <form class="product-form" id="product-form" enctype="multipart/form-data" onsubmit="guardarNuevoProducto(event)">
+        <form class="product-form" id="product-form" novalidate>
           <div class="product-form__field">
             <label for="producto-nombre" class="product-form__label">Título del Producto</label>
             <input type="text" id="producto-nombre" class="product-form__input" required placeholder="Ej: Remera Oversize Algodón" name="nombre">
@@ -1651,7 +1668,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-  <script src="js/api.js"></script>
-  <script src="js/app.js?v=13.3"></script>
+  <script src="/store-env.js"></script>
+  <script src="js/app.js?v=15.2"></script>
 </body>
 </html>

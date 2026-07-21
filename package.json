@@ -7,10 +7,12 @@
     "node": "24.x"
   },
   "scripts": {
-    "start": "npm --prefix server start",
+    "start": "npm run assets:version && npm --prefix server start",
     "install:server": "npm --prefix server install",
     "reset-db": "npm --prefix server run reset-db",
-    "clean-demo": "node scripts/clean-demo-db.js"
+    "clean-demo": "node scripts/clean-demo-db.js",
+    "assets:version": "node scripts/apply-asset-version.js",
+    "assets:version:dry": "node scripts/apply-asset-version.js --dry-run"
   },
   "keywords": [
     "ecommerce",

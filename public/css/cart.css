@@ -738,6 +738,10 @@ body.cart-open {
   gap: 1rem;
 }
 
+.checkout-form__summary-row[hidden] {
+  display: none !important;
+}
+
 .checkout-form__summary-row--discount {
   color: var(--grass-mid, #2d8a4e);
 }

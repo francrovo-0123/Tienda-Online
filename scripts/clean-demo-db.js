@@ -7,7 +7,7 @@
  *  3. Elimina productos de prueba (placeholders / nombres incoherentes) y
  *     reestablece stock de talles/variantes de los productos reales.
  *  4. Reemplaza cupones por cupones demo profesionales (BIENVENIDO10).
- *  5. Limpia clientes de prueba y registros pendientes (no toca Configuracion/Seccion).
+ *  5. Limpia clientes de prueba y registros pendientes (no toca Seccion).
  *
  * Uso (desde la raíz del repo):
  *   node scripts/clean-demo-db.js
@@ -376,7 +376,7 @@ async function cleanDemoDb() {
   console.log(`\n=> Usuarios cliente eliminados: ${clientesAntes}`);
   console.log(`=> Registros pendientes eliminados: ${pendientesAntes}`);
   console.log(`=> Usuarios admin intactos: ${adminsRestantes}`);
-  console.log('=> Configuracion / Seccion: sin cambios.');
+  console.log('=> Seccion: sin cambios.');
 
   console.log('\n════════════════════════════════════════');
   console.log('  TIENDA DEMO LISTA');
