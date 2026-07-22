@@ -866,7 +866,7 @@ async function notificarErrorPedidoCheckout(error, fallback) {
       duracion: 9000,
     });
     try {
-      const lista = await apiFetch('/api/productos');
+      const lista = await apiFetch('/api/productos', { cache: 'no-store' });
       if (Array.isArray(lista)) {
         productos = lista;
         actualizarCarritoUI();
@@ -4978,7 +4978,9 @@ async function cargarProductos(opciones = {}) {
 
   try {
     const ruta = incluirInactivos ? '/api/productos?todos=true' : '/api/productos';
-    productos = await apiFetch(ruta);
+    // no-store: evita que el browser reutilice un GET viejo (max-age) y tape
+    // cambios de portada (destacado / enOferta) al volver del admin.
+    productos = await apiFetch(ruta, { cache: 'no-store' });
     if (!incluirInactivos) {
       renderizarFiltrosCategorias(productos);
     }

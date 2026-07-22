@@ -4192,11 +4192,12 @@ app.get('/api/productos', async (req, res) => {
       }
     }
 
-    // [M3] Caché corta solo en catálogo público; admin (?todos=true) sin store.
+    // Catálogo público: revalidar siempre (destacado/enOferta/stock cambian desde admin).
+    // stale-while-revalidate permite respuesta rápida mientras se refresca en background.
     if (incluirInactivos) {
       res.set('Cache-Control', 'private, no-store');
     } else {
-      res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+      res.set('Cache-Control', 'public, max-age=0, must-revalidate, stale-while-revalidate=60');
     }
 
     res.json(productos.map(formatearProducto));
