@@ -410,8 +410,6 @@ function obtenerImagenPrincipal(producto) {
 const API_BASE = window.location.origin;
 let NOMBRE_TIENDA = 'Jersey Store';
 let WHATSAPP_NUMERO = '';
-/** Cloud name cacheado tras una firma de subida admin (no proviene del panel de config). */
-let CLOUDINARY_CLOUD_NAME = '';
 const SESSION_USER_KEY = 'sesion_usuario';
 const ADMIN_TOKEN_KEY = 'admin_jwt_token'; // legacy: se limpia al restaurar sesión
 const CLIENTE_TOKEN_KEY = 'cliente_jwt_token'; // legacy: se limpia al restaurar sesión
@@ -709,7 +707,7 @@ function actualizarEnlaceAfipDataFiscal(afipLink) {
   }
 }
 
-async function subirImagenACloudinary(archivo) {
+async function subirImagenABlob(archivo) {
   if (!esSesionAdminActiva()) {
     throw new Error('Debés iniciar sesión como administrador para subir imágenes.');
   }
@@ -717,27 +715,15 @@ async function subirImagenACloudinary(archivo) {
   const formData = new FormData();
   formData.append('file', archivo);
 
-  const firma = await apiFetch('/api/admin/cloudinary-firma', { method: 'POST' });
-  const cloudName = String(firma.cloudName || '').trim();
-  if (!cloudName) {
-    throw new Error('La subida de imágenes no está configurada en el servidor.');
+  const datos = await apiFetch('/api/admin/blob-subir', {
+    method: 'POST',
+    body: formData,
+  });
+  const url = String(datos.url || '').trim();
+  if (!url) {
+    throw new Error('No se pudo subir la imagen.');
   }
-
-  CLOUDINARY_CLOUD_NAME = cloudName;
-  formData.append('api_key', firma.apiKey);
-  formData.append('timestamp', String(firma.timestamp));
-  formData.append('signature', firma.signature);
-  formData.append('folder', firma.folder);
-
-  const respuesta = await fetch(
-    `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
-    { method: 'POST', body: formData }
-  );
-  const datos = await respuesta.json().catch(() => ({}));
-  if (!respuesta.ok || !datos.secure_url) {
-    throw new Error(datos.error?.message || 'No se pudo subir la imagen a Cloudinary.');
-  }
-  return datos.secure_url;
+  return url;
 }
 
 function extraerMensajeErrorApi(datos, status) {
@@ -1747,7 +1733,7 @@ async function crearSeccionDesdeModal(event) {
   try {
     let escudoUrl = '';
     if (archivoEscudoPendiente) {
-      escudoUrl = await subirImagenACloudinary(archivoEscudoPendiente);
+      escudoUrl = await subirImagenABlob(archivoEscudoPendiente);
     }
 
     const mostrarEnCarrusel = obtenerMostrarEnCarruselDesdeCheckbox(
@@ -2069,7 +2055,7 @@ async function guardarEscudoSeccion() {
   btnGuardar?.setAttribute('disabled', 'true');
 
   try {
-    const escudoUrl = await subirImagenACloudinary(archivoEscudoDetallePendiente);
+    const escudoUrl = await subirImagenABlob(archivoEscudoDetallePendiente);
     const actualizada = await apiFetch(`/api/secciones/${seccion.id}`, {
       method: 'PUT',
       body: JSON.stringify({
@@ -3580,45 +3566,14 @@ function esUrlEscudoValida(url) {
   return /^https?:\/\/.+/i.test(String(url || '').trim());
 }
 
-function extraerRutaAssetCloudinary(url) {
-  const match = String(url || '').match(/res\.cloudinary\.com\/[^/]+\/image\/upload\/(?:.+\/)?(v\d+\/.+)$/);
-  return match ? match[1] : null;
-}
-
-function extraerCloudNameCloudinary(url) {
-  const match = String(url || '').match(/res\.cloudinary\.com\/([^/]+)\/image\/upload\//);
-  return match ? match[1] : '';
-}
-
 function optimizarUrlEscudo(url) {
   const limpia = String(url || '').trim();
-  if (!esUrlEscudoValida(limpia)) return '';
-
-  const assetPath = extraerRutaAssetCloudinary(limpia);
-  if (!assetPath) return limpia;
-
-  const cloudName = extraerCloudNameCloudinary(limpia) || CLOUDINARY_CLOUD_NAME;
-  if (!cloudName) return limpia;
-
-  const transform =
-    'e_trim:color_FFFFFF;tolerance_60,e_trim:color_F5F5F5;tolerance_40,e_trim/c_scale,h_280/c_pad,w_360,h_360,g_south,b_rgb:F5F5F5,f_png,q_auto';
-
-  return `https://res.cloudinary.com/${cloudName}/image/upload/${transform}/${assetPath}`;
+  return esUrlEscudoValida(limpia) ? limpia : '';
 }
 
-function optimizarUrlImagenProducto(url, opciones = {}) {
+function optimizarUrlImagenProducto(url) {
   const limpia = String(url || '').trim();
-  if (!/^https?:\/\/.+/i.test(limpia)) return limpia;
-
-  const assetPath = extraerRutaAssetCloudinary(limpia);
-  if (!assetPath) return limpia;
-
-  const cloudName = extraerCloudNameCloudinary(limpia) || CLOUDINARY_CLOUD_NAME;
-  if (!cloudName) return limpia;
-
-  // c_fill recorta sin deformar; c_scale con w+h estiraba las camisetas.
-  const transform = opciones.transform || 'c_fill,g_center,w_600,h_750,q_auto,f_auto';
-  return `https://res.cloudinary.com/${cloudName}/image/upload/${transform}/${assetPath}`;
+  return limpia;
 }
 
 function mostrarPlaceholderEscudo(img, placeholder, seccion) {
@@ -5382,11 +5337,11 @@ async function guardarNuevoProducto(event) {
     let imagenEspalda = imagenEspaldaFormulario;
 
     if (archivoPendienteFrente) {
-      imagenFrente = await subirImagenACloudinary(archivoPendienteFrente);
+      imagenFrente = await subirImagenABlob(archivoPendienteFrente);
     }
 
     if (archivoPendienteEspalda) {
-      imagenEspalda = await subirImagenACloudinary(archivoPendienteEspalda);
+      imagenEspalda = await subirImagenABlob(archivoPendienteEspalda);
     }
 
     if (!imagenFrente) {

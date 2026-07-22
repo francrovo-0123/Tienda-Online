@@ -61,9 +61,11 @@ Tienda online de camisetas de fútbol con catálogo, carrito de compras, seguimi
    STORE_NAME=Jersey Store
    WHATSAPP_NUMBER=54911XXXXXXXX
    AFIP_URL=
+   BLOB_READ_WRITE_TOKEN=vercel_blob_rw_...
    ```
 
    > Datos de tienda (nombre, WhatsApp, AFIP) se leen solo desde `.env`; no hay panel de configuración editable.
+   > **Vercel Blob:** creá un Blob store **público** en Vercel → Storage → Blob, conectalo al proyecto y copiá `BLOB_READ_WRITE_TOKEN` a `server/.env` (y a las env del proyecto en Vercel). Obligatoria para subir imágenes de productos y escudos.
    > **Brevo:** `SMTP_USER` es solo el login SMTP (`…@smtp-brevo.com`). El remitente visible va en `SMTP_FROM` y debe estar verificado en Brevo → Senders.
    > **Gmail:** `SMTP_HOST=smtp.gmail.com`, `SMTP_USER`/`SMTP_FROM` = tu Gmail, y una [Contraseña de aplicación](https://myaccount.google.com/apppasswords).
    > **Puerto 465:** SSL (`secure: true`). **587 / 2525:** STARTTLS (`requireTLS: true`).

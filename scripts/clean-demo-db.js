@@ -173,7 +173,7 @@ function imagenEsPlaceholder(url) {
 
 /**
  * Heurística segura: solo elimina productos claramente de prueba.
- * Los catálogos reales (Cloudinary + nombres de clubes) se conservan.
+ * Los catálogos reales (URLs de Blob/Cloudinary legacy + nombres de clubes) se conservan.
  */
 function esProductoDePrueba(producto) {
   const nombre = String(producto.nombre || '').trim();

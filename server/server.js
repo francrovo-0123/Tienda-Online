@@ -16,7 +16,7 @@ const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const { spawn } = require('child_process');
-const { v2: cloudinary } = require('cloudinary');
+const { put, del } = require('@vercel/blob');
 const { MercadoPagoConfig, Preference, Payment, MerchantOrder } = require('mercadopago');
 const {
   verificarConexionSmtp,
@@ -92,17 +92,8 @@ const WHATSAPP_NUMBER = String(
 ).replace(/^\+/, '').replace(/\D/g, '').trim();
 const AFIP_URL = String(process.env.AFIP_URL || '').trim();
 
-/*
- * Cloudinary — SOLO variables de entorno (nunca en MongoDB ni en la UI admin).
- * Obligatorias para subidas firmadas del admin:
- *   CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET
- * Opcional (legacy / unsigned; el flujo actual del admin usa firma server-side):
- *   CLOUDINARY_UPLOAD_PRESET
- */
-const CLOUDINARY_CLOUD_NAME = String(process.env.CLOUDINARY_CLOUD_NAME || '').trim();
-const CLOUDINARY_API_KEY = String(process.env.CLOUDINARY_API_KEY || '').trim();
-const CLOUDINARY_API_SECRET = String(process.env.CLOUDINARY_API_SECRET || '').trim();
-const CLOUDINARY_UPLOAD_PRESET = String(process.env.CLOUDINARY_UPLOAD_PRESET || '').trim();
+/** Token privado para subir productos y escudos a Vercel Blob. */
+const BLOB_READ_WRITE_TOKEN = String(process.env.BLOB_READ_WRITE_TOKEN || '').trim();
 const MP_ACCESS_TOKEN = String(process.env.MP_ACCESS_TOKEN || '').trim();
 const MP_SANDBOX = String(process.env.MP_SANDBOX || '').toLowerCase() === 'true';
 /** Secret de firma de webhooks (panel MP → Webhooks → Configurar notificaciones). */
@@ -130,14 +121,8 @@ const MONGO_URI = String(process.env.MONGO_URI || process.env.MONGODB_URI || '')
       'WHATSAPP_NUMBER (pedidos por transferencia / FAB de contacto)'
     );
   }
-  if (!CLOUDINARY_CLOUD_NAME) {
-    faltantesCriticos.push('CLOUDINARY_CLOUD_NAME');
-  }
-  if (!CLOUDINARY_API_KEY) {
-    faltantesCriticos.push('CLOUDINARY_API_KEY (subidas firmadas del admin)');
-  }
-  if (!CLOUDINARY_API_SECRET) {
-    faltantesCriticos.push('CLOUDINARY_API_SECRET (subidas firmadas del admin)');
+  if (!BLOB_READ_WRITE_TOKEN) {
+    faltantesCriticos.push('BLOB_READ_WRITE_TOKEN (subidas de productos, escudos y banners)');
   }
 
   if (!STORE_NAME || STORE_NAME === 'Jersey Store') {
@@ -150,7 +135,6 @@ const MONGO_URI = String(process.env.MONGO_URI || process.env.MONGODB_URI || '')
   if (!AFIP_URL) {
     faltantesRecomendados.push('AFIP_URL (enlace Data Fiscal; se oculta en el front si falta)');
   }
-  // CLOUDINARY_UPLOAD_PRESET: opcional/legacy; no se avisa (el admin usa firma con API_KEY/SECRET).
   if (!MP_ACCESS_TOKEN) {
     faltantesRecomendados.push('MP_ACCESS_TOKEN (checkout Mercado Pago)');
   }
@@ -187,17 +171,10 @@ const MONGO_URI = String(process.env.MONGO_URI || process.env.MONGODB_URI || '')
   }
 })();
 
-if (CLOUDINARY_CLOUD_NAME && CLOUDINARY_API_KEY && CLOUDINARY_API_SECRET) {
-  cloudinary.config({
-    cloud_name: CLOUDINARY_CLOUD_NAME,
-    api_key: CLOUDINARY_API_KEY,
-    api_secret: CLOUDINARY_API_SECRET,
-    secure: true,
-  });
-} else if (ES_PRODUCCION) {
+if (!BLOB_READ_WRITE_TOKEN && ES_PRODUCCION) {
   console.error(
-    '=> Cloudinary: en producción las subidas firmadas NO estarán disponibles '
-    + 'hasta completar CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY y CLOUDINARY_API_SECRET.'
+    '=> Vercel Blob: en producción las subidas NO estarán disponibles '
+    + 'hasta definir BLOB_READ_WRITE_TOKEN.'
   );
 }
 const NGROK_AUTHTOKEN = String(process.env.NGROK_AUTHTOKEN || '').trim();
@@ -292,7 +269,6 @@ app.use(helmet({
       imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
       connectSrc: [
         "'self'",
-        'https://api.cloudinary.com',
         'https://api.mercadopago.com',
         'https://sdk.mercadopago.com',
       ],
@@ -617,23 +593,10 @@ function asegurarDirectoriosBanners() {
   }
 }
 
-const almacenamientoBanners = multer.diskStorage({
-  destination(_req, _file, cb) {
-    asegurarDirectoriosBanners();
-    cb(null, BANNERS_DIR);
-  },
-  filename(_req, file, cb) {
-    const mime = String(file.mimetype || '').toLowerCase();
-    const ext = EXT_IMAGENES_POR_MIME[mime] || '.jpg';
-    const indexRaw = _req.body?.index ?? _req.body?.slot;
-    const index = String(indexRaw ?? 'x').replace(/\D/g, '');
-    cb(null, `banner-${index || 'x'}-${Date.now()}${ext}`);
-  },
-});
-
-const uploadBanner = multer({
-  storage: almacenamientoBanners,
-  limits: { fileSize: 5 * 1024 * 1024 },
+/** Subidas a Vercel Blob (memoria). En Vercel el FS de /var/task es de solo lectura. */
+const uploadImagenBlob = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 4 * 1024 * 1024 },
   fileFilter(_req, file, cb) {
     const mime = String(file.mimetype || '').toLowerCase();
     if (!MIME_IMAGENES_PERMITIDAS.has(mime)) {
@@ -643,6 +606,9 @@ const uploadBanner = multer({
     cb(null, true);
   },
 });
+
+/** Alias: banners usan el mismo Multer en memoria (antes era disco local). */
+const uploadBanner = uploadImagenBlob;
 
 const productoItemPedidoSchema = new mongoose.Schema(
   {
@@ -1293,8 +1259,7 @@ function detectarMimeImagenPorMagicBytes(buffer) {
   return null;
 }
 
-function validarArchivoImagenSubido(rutaArchivo, mimeDeclarado) {
-  const buffer = fs.readFileSync(rutaArchivo);
+function validarBufferImagen(buffer, mimeDeclarado) {
   const mimeReal = detectarMimeImagenPorMagicBytes(buffer);
   if (!mimeReal || !MIME_IMAGENES_PERMITIDAS.has(mimeReal)) {
     return { ok: false, error: 'El archivo no es una imagen JPEG, PNG, WebP o GIF válida.' };
@@ -1307,6 +1272,39 @@ function validarArchivoImagenSubido(rutaArchivo, mimeDeclarado) {
     }
   }
   return { ok: true, mime: mimeReal };
+}
+
+function validarArchivoImagenSubido(rutaArchivo, mimeDeclarado) {
+  const buffer = fs.readFileSync(rutaArchivo);
+  return validarBufferImagen(buffer, mimeDeclarado);
+}
+
+function esUrlBlobVercel(url) {
+  const valor = String(url || '').trim();
+  if (!valor.startsWith('https://')) return false;
+  try {
+    const host = new URL(valor).hostname.toLowerCase();
+    return host.endsWith('.blob.vercel-storage.com') || host === 'blob.vercel-storage.com';
+  } catch {
+    return false;
+  }
+}
+
+async function eliminarBlobSiAplica(url) {
+  if (!esUrlBlobVercel(url) || !BLOB_READ_WRITE_TOKEN) return;
+  try {
+    await del(url, { token: BLOB_READ_WRITE_TOKEN });
+  } catch (error) {
+    console.warn('No se pudo eliminar blob:', error.message);
+  }
+}
+
+async function eliminarImagenBanner(url) {
+  if (esUrlImagenLocalBanner(url)) {
+    eliminarArchivoBannerLocal(url);
+    return;
+  }
+  await eliminarBlobSiAplica(url);
 }
 
 function sanitizarUsuario(usuario) {
@@ -3619,36 +3617,53 @@ app.use('/api', async (req, res, next) => {
   }
 });
 
-// ── Cloudinary (firma de subida admin; credenciales solo desde .env) ──
+// ── Vercel Blob (productos, escudos y banners) ──
 
-app.post('/api/admin/cloudinary-firma', verificarAdminJWT, async (req, res) => {
-  try {
-    // Credenciales únicamente desde process.env (ver comentario junto a CLOUDINARY_* arriba).
-    if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_API_KEY || !CLOUDINARY_API_SECRET) {
+app.post('/api/admin/blob-subir', verificarAdminJWT, (req, res) => {
+  uploadImagenBlob.fields([
+    { name: 'file', maxCount: 1 },
+    { name: 'imagen', maxCount: 1 },
+  ])(req, res, async (errorMulter) => {
+    if (errorMulter) {
+      const mensaje = errorMulter.code === 'LIMIT_FILE_SIZE'
+        ? 'La imagen supera el máximo de 4 MB.'
+        : (errorMulter.message || 'No se pudo procesar la imagen.');
+      return res.status(400).json({ error: mensaje });
+    }
+
+    const archivo = req.files?.file?.[0] || req.files?.imagen?.[0];
+    if (!archivo) {
+      return res.status(400).json({ error: 'Seleccioná una imagen para subir.' });
+    }
+    if (!BLOB_READ_WRITE_TOKEN) {
       return res.status(503).json({
-        error:
-          'Subida firmada no configurada. Definí en .env: '
-          + 'CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY y CLOUDINARY_API_SECRET.',
+        error: 'La subida de imágenes no está configurada en el servidor.',
       });
     }
 
-    const timestamp = Math.round(Date.now() / 1000);
-    const folder = 'jerseys-store/productos';
-    const paramsToSign = { timestamp, folder };
-    const signature = cloudinary.utils.api_sign_request(paramsToSign, CLOUDINARY_API_SECRET);
+    try {
+      const nombreSeguro = String(archivo.originalname || 'imagen')
+        .normalize('NFKD')
+        .replace(/[^\w.-]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        || 'imagen';
+      const blob = await put(`productos/${Date.now()}-${nombreSeguro}`, archivo.buffer, {
+        access: 'public',
+        contentType: archivo.mimetype,
+        addRandomSuffix: true,
+        token: BLOB_READ_WRITE_TOKEN,
+      });
 
-    res.json({
-      ok: true,
-      cloudName: CLOUDINARY_CLOUD_NAME,
-      apiKey: CLOUDINARY_API_KEY,
-      timestamp,
-      folder,
-      signature,
-    });
-  } catch (error) {
-    logError('CLOUDINARY_FIRMA', error);
-    res.status(500).json({ error: 'No se pudo generar la firma de subida.' });
-  }
+      return res.json({
+        ok: true,
+        url: blob.url,
+        pathname: blob.pathname,
+      });
+    } catch (error) {
+      logError('BLOB_SUBIR', error);
+      return res.status(500).json({ error: 'No se pudo subir la imagen.' });
+    }
+  });
 });
 
 // ── Banners de la Home (MongoDB + Multer) ──
@@ -3687,7 +3702,7 @@ app.post('/api/admin/banners', verificarAdminJWT, (req, res) => {
   uploadBanner.single('imagen')(req, res, async (errorMulter) => {
     if (errorMulter) {
       const mensaje = errorMulter.code === 'LIMIT_FILE_SIZE'
-        ? 'La imagen supera el máximo de 5 MB.'
+        ? 'La imagen supera el máximo de 4 MB.'
         : (errorMulter.message || 'No se pudo procesar la imagen.');
       return res.status(400).json({ error: mensaje });
     }
@@ -3695,37 +3710,56 @@ app.post('/api/admin/banners', verificarAdminJWT, (req, res) => {
     try {
       const index = parsearIndiceBanner(req.body?.index ?? req.body?.slot);
       if (index === null) {
-        if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
         return res.status(400).json({
           error: 'El índice del banner debe ser 0, 1 o 2.',
         });
       }
 
-      if (!req.file) {
+      if (!req.file?.buffer) {
         return res.status(400).json({ error: 'Debés subir una imagen para el banner.' });
       }
 
-      const validacionArchivo = validarArchivoImagenSubido(req.file.path, req.file.mimetype);
+      if (!BLOB_READ_WRITE_TOKEN) {
+        return res.status(503).json({
+          error: 'La subida de banners no está configurada en el servidor.',
+        });
+      }
+
+      const validacionArchivo = validarBufferImagen(req.file.buffer, req.file.mimetype);
       if (!validacionArchivo.ok) {
-        if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
         return res.status(400).json({ error: validacionArchivo.error });
       }
 
       const enlaceRaw = String(req.body?.enlace || req.body?.link || '').trim();
       if (enlaceRaw && !esUrlHttpSegura(enlaceRaw, { permitirVacio: false })) {
-        if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
         return res.status(400).json({
           error: 'El enlace del banner debe ser una URL http(s) válida.',
         });
       }
       const enlace = sanitizarLinkBanner(enlaceRaw);
       const titulo = String(req.body?.titulo || '').trim();
-      const imagenUrl = sanitizarImagenUrlBanner(`/images/banners/${req.file.filename}`);
+
+      const blob = await put(
+        `banners/banner-${index}-${Date.now()}`,
+        req.file.buffer,
+        {
+          access: 'public',
+          contentType: validacionArchivo.mime || req.file.mimetype,
+          addRandomSuffix: true,
+          token: BLOB_READ_WRITE_TOKEN,
+        }
+      );
+
+      const imagenUrl = sanitizarImagenUrlBanner(blob.url);
+      if (!imagenUrl) {
+        return res.status(500).json({ error: 'No se pudo registrar la URL del banner.' });
+      }
+
       const banners = await obtenerBannersActuales();
       const actual = banners.find((banner) => banner.index === index);
 
       if (actual?.imagenUrl) {
-        eliminarArchivoBannerLocal(actual.imagenUrl);
+        await eliminarImagenBanner(actual.imagenUrl);
       }
 
       const actualizado = serializarBannerApi({
@@ -3748,9 +3782,6 @@ app.post('/api/admin/banners', verificarAdminJWT, (req, res) => {
       });
     } catch (error) {
       console.error('Error al guardar banner:', error);
-      if (req.file?.path && fs.existsSync(req.file.path)) {
-        try { fs.unlinkSync(req.file.path); } catch { /* ignore */ }
-      }
       res.status(500).json({ error: 'Error interno del servidor.' });
     }
   });
@@ -3816,7 +3847,7 @@ app.delete('/api/admin/banners/:index', verificarAdminJWT, async (req, res) => {
     const banners = await obtenerBannersActuales();
     const actual = banners.find((banner) => banner.index === index);
     if (actual?.imagenUrl) {
-      eliminarArchivoBannerLocal(actual.imagenUrl);
+      await eliminarImagenBanner(actual.imagenUrl);
     }
 
     const vacio = serializarBannerApi({
